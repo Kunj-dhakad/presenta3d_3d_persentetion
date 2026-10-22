@@ -1,7 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
+import Database from "better-sqlite3";
 
 // Each test process uses an isolated data directory and SQLite database; never the dev database.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strata-test-"));
@@ -12,10 +12,14 @@ process.env.SESSION_SECRET = "test-session-secret-0123456789abcdef0123456789";
 process.env.AI_PROVIDER = "mock";
 process.env.OPENAI_API_KEY = "";
 process.env.OPENAI_MODEL = "";
+process.env.STORAGE_DRIVER = "local";
 (process.env as Record<string, string>).NODE_ENV = "test";
 
-// Apply migrations to the fresh test database.
-execFileSync(process.execPath, [path.join(process.cwd(), "node_modules", "prisma", "build", "index.js"), "migrate", "deploy"], {
-  env: { ...process.env, DATABASE_URL: `file:${dbFile}` },
-  stdio: "ignore",
-});
+// Apply the checked-in SQLite SQL directly. The Prisma schema engine's
+// migrate deploy currently fails on fresh Windows test databases.
+const testDb = new Database(dbFile);
+const migrationsDir = path.join(process.cwd(), "prisma", "migrations");
+for (const entry of fs.readdirSync(migrationsDir, { withFileTypes: true }).filter((item) => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+  testDb.exec(fs.readFileSync(path.join(migrationsDir, entry.name, "migration.sql"), "utf8"));
+}
+testDb.close();

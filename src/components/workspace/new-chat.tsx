@@ -22,7 +22,6 @@ const OPTIONS = [
   { label: "10 slides", add: "Use 10 slides." },
   { label: "Minimal", add: "Minimal, elegant style with lots of space." },
   { label: "Bold & neon", add: "Bold neon colours and energetic 3D scenes." },
-  { label: "हिन्दी", add: "Write the slides in Hindi." },
 ];
 
 /** Start a new 3D presentation from a prompt. */

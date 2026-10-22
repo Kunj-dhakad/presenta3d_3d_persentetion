@@ -109,17 +109,17 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="grid-rows-[auto_minmax(0,1fr)] w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Share & publish</DialogTitle>
           <DialogDescription>Publish your presentation as a web page, or create private share links.</DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="publish">
+        <Tabs defaultValue="publish" className="min-h-0">
           <TabsList className="w-full">
             <TabsTrigger value="publish"><Rocket /> Publish</TabsTrigger>
             <TabsTrigger value="links"><Link2 /> Share links</TabsTrigger>
           </TabsList>
-          <TabsContent value="publish" className="mt-3 grid gap-3">
+          <TabsContent value="publish" className="mt-3 grid max-h-[calc(100dvh-13rem)] gap-3 overflow-y-auto pr-1">
             {!info ? (
               <p className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Loading…</p>
             ) : (
@@ -159,11 +159,11 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
               </>
             )}
           </TabsContent>
-          <TabsContent value="links" className="mt-3 grid gap-3">
+          <TabsContent value="links" className="mt-3 grid max-h-[calc(100dvh-13rem)] gap-3 overflow-y-auto pr-1">
             <p className="text-xs text-muted-foreground">Anyone with a link can view the presentation (read-only). Links can expire and can be revoked at any time.</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Select value={expiry} onValueChange={setExpiry}>
-                <SelectTrigger className="w-40" aria-label="Link expiry"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-40" aria-label="Link expiry"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">Expires in 1 day</SelectItem>
                   <SelectItem value="7">Expires in 7 days</SelectItem>
@@ -182,13 +182,13 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
                 </div>
               </div>
             )}
-            <div className="rounded-lg border border-border">
+            <div className="min-w-0 rounded-lg border border-border">
               {links === null && <p className="p-3 text-sm text-muted-foreground">Loading…</p>}
               {links?.length === 0 && <p className="p-3 text-sm text-muted-foreground">No share links yet.</p>}
               {links?.map((l) => (
-                <div key={l.id} className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs last:border-0">
-                  <code className="text-muted-foreground">{l.tokenPrefix}…</code>
-                  <span className="flex-1 text-muted-foreground">
+                <div key={l.id} className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-xs last:border-0">
+                  <code className="shrink-0 text-muted-foreground">{l.tokenPrefix}…</code>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
                     created {timeAgo(l.createdAt)} · {l.revokedAt ? "revoked" : l.active ? (l.expiresAt ? `expires ${new Date(l.expiresAt).toLocaleDateString()}` : "no expiry") : "expired"}
                   </span>
                   {l.active && (

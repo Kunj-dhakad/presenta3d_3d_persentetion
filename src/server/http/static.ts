@@ -1,6 +1,7 @@
 import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { storage } from "@/server/storage/storage";
 
 const TYPES: Record<string, string> = {
   html: "text/html; charset=utf-8",
@@ -88,8 +89,12 @@ export async function serveFile(
   }
   if (!abs || !stat || !stat.isFile()) return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
   const body = await fs.readFile(/*turbopackIgnore: true*/ abs);
+  return fileResponse(abs, body, opts);
+}
+
+function fileResponse(file: string, body: Uint8Array, opts: { untrusted: boolean; immutable?: boolean }) {
   const headers = new Headers({
-    "Content-Type": contentTypeFor(abs),
+    "Content-Type": contentTypeFor(file),
     "X-Content-Type-Options": "nosniff",
     // Module scripts from an opaque-origin document are CORS requests; these files hold no user secrets.
     "Access-Control-Allow-Origin": "*",
@@ -102,4 +107,28 @@ export async function serveFile(
     headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=(), payment=()");
   }
   return new Response(new Uint8Array(body), { status: 200, headers });
+}
+
+/** Serve generated artifacts from local disk or the configured object store. */
+export async function serveStoredFile(
+  prefix: string,
+  segments: string[],
+  opts: { untrusted: boolean; immutable?: boolean; fallbackIndex?: boolean },
+): Promise<Response> {
+  if (segments.some((s) => !s || s === "." || s === ".." || s.includes("/") || s.includes("\\") || /[\u0000-\u001f\u007f]/.test(s))) {
+    return new Response("Bad path", { status: 400 });
+  }
+  const base = prefix.replace(/\/+$/, "");
+  let rel = segments.length ? segments.join("/") : "index.html";
+  let body = await storage().get(`${base}/${rel}`);
+  if (!body && !/\.[a-z0-9]+$/i.test(rel)) {
+    body = await storage().get(`${base}/${rel}/index.html`);
+    if (body) rel = `${rel}/index.html`;
+  }
+  if (!body && opts.fallbackIndex && !/\.[a-z0-9]+$/i.test(rel)) {
+    rel = "index.html";
+    body = await storage().get(`${base}/${rel}`);
+  }
+  if (!body) return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
+  return fileResponse(rel, body, opts);
 }

@@ -14,18 +14,51 @@ export interface StorageAdapter {
   put(key: string, data: Uint8Array, contentType: string): Promise<void>;
   get(key: string): Promise<Uint8Array | null>;
   delete(key: string): Promise<void>;
+  list(prefix: string): Promise<string[]>;
+  deletePrefix(prefix: string): Promise<void>;
 }
 
-const KEY_RE = /^[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{8,64}\.[a-z0-9]{1,8}$/;
+const KEY_RE = /^(?:[A-Za-z0-9_@+.-]+\/)*[A-Za-z0-9_@+.-]+$/;
+const MEDIA_KEY_RE = /^[A-Za-z0-9_@+.-]+\/[A-Za-z0-9_-]{16,}\.[A-Za-z0-9]{1,8}$/;
 export function assertStorageKey(key: string) {
-  if (!KEY_RE.test(key)) throw new Error("invalid storage key");
+  if (key.length > 1024 || !MEDIA_KEY_RE.test(key) || key.split("/").some((part) => part === "." || part === "..")) {
+    throw new Error("invalid storage key");
+  }
+}
+
+function assertArtifactKey(key: string) {
+  if (key.length > 1024 || !KEY_RE.test(key) || key.split("/").some((part) => part === "." || part === "..")) {
+    throw new Error("invalid storage key");
+  }
+}
+
+function normalizePrefix(prefix: string) {
+  const normalized = prefix.replace(/\/+$/, "");
+  assertArtifactKey(normalized);
+  return `${normalized}/`;
+}
+
+function isArtifactKey(key: string) {
+  return /^(?:previews|runtime|sites)\//.test(key);
+}
+
+async function walkLocal(dir: string, prefix: string, root: string): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+  const keys: string[] = [];
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) keys.push(...(await walkLocal(abs, prefix, root)));
+    else if (entry.isFile()) keys.push(`${prefix}${path.relative(root, abs).split(path.sep).join("/")}`);
+  }
+  return keys;
 }
 
 export class LocalStorageAdapter implements StorageAdapter {
   readonly driver = "local";
   private file(key: string) {
-    assertStorageKey(key);
-    return dataPath("storage", ...key.split("/"));
+    if (isArtifactKey(key)) assertArtifactKey(key);
+    else assertStorageKey(key);
+    return isArtifactKey(key) ? dataPath(...key.split("/")) : dataPath("storage", ...key.split("/"));
   }
   async put(key: string, data: Uint8Array) {
     const f = this.file(key);
@@ -41,6 +74,16 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
   async delete(key: string) {
     await fs.rm(this.file(key), { force: true });
+  }
+  async list(prefix: string) {
+    const normalized = normalizePrefix(prefix);
+    const root = isArtifactKey(normalized) ? dataPath(...normalized.slice(0, -1).split("/")) : dataPath("storage", ...normalized.slice(0, -1).split("/"));
+    return walkLocal(root, normalized, root);
+  }
+  async deletePrefix(prefix: string) {
+    const normalized = normalizePrefix(prefix);
+    const root = isArtifactKey(normalized) ? dataPath(...normalized.slice(0, -1).split("/")) : dataPath("storage", ...normalized.slice(0, -1).split("/"));
+    await fs.rm(root, { recursive: true, force: true });
   }
 }
 
@@ -91,14 +134,20 @@ export class S3StorageAdapter implements StorageAdapter {
     private cfg: { bucket: string; region: string; endpoint?: string; accessKeyId: string; secretAccessKey: string },
   ) {}
 
-  private url(key: string) {
-    assertStorageKey(key);
+  private bucketUrl() {
     const base = this.cfg.endpoint ? `${this.cfg.endpoint.replace(/\/$/, "")}/${this.cfg.bucket}` : `https://${this.cfg.bucket}.s3.${this.cfg.region}.amazonaws.com`;
-    return new URL(`${base}/${key}`);
+    return new URL(`${base}/`);
   }
 
-  private async request(method: string, key: string, body?: Uint8Array, contentType?: string) {
-    const url = this.url(key);
+  private url(key: string) {
+    if (isArtifactKey(key)) assertArtifactKey(key);
+    else assertStorageKey(key);
+    const url = this.bucketUrl();
+    url.pathname += key.split("/").map(encodeURIComponent).join("/");
+    return url;
+  }
+
+  private async request(method: string, url: URL, body?: Uint8Array, contentType?: string) {
     const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
     const payloadHash = body ? sha256hex(body) : sha256hex("");
     const headers: Record<string, string> = { host: url.host, "x-amz-content-sha256": payloadHash, "x-amz-date": amzDate };
@@ -110,19 +159,48 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   async put(key: string, data: Uint8Array, contentType: string) {
-    const r = await this.request("PUT", key, data, contentType);
+    const r = await this.request("PUT", this.url(key), data, contentType);
     if (!r.ok) throw new Error(`S3 put failed (${r.status})`);
   }
   async get(key: string) {
-    const r = await this.request("GET", key);
+    const r = await this.request("GET", this.url(key));
     if (r.status === 404) return null;
     if (!r.ok) throw new Error(`S3 get failed (${r.status})`);
     return new Uint8Array(await r.arrayBuffer());
   }
   async delete(key: string) {
-    const r = await this.request("DELETE", key);
+    const r = await this.request("DELETE", this.url(key));
     if (!r.ok && r.status !== 404) throw new Error(`S3 delete failed (${r.status})`);
   }
+
+  async list(prefix: string) {
+    const normalized = normalizePrefix(prefix);
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const url = this.bucketUrl();
+      url.searchParams.set("list-type", "2");
+      url.searchParams.set("prefix", normalized);
+      if (continuationToken) url.searchParams.set("continuation-token", continuationToken);
+      const r = await this.request("GET", url);
+      if (!r.ok) throw new Error(`S3 list failed (${r.status})`);
+      const xml = await r.text();
+      for (const match of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) keys.push(decodeXml(match[1]));
+      const nextToken = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
+      continuationToken = nextToken ? decodeXml(nextToken) : undefined;
+      if (xml.match(/<IsTruncated>([\s\S]*?)<\/IsTruncated>/)?.[1] !== "true") continuationToken = undefined;
+    } while (continuationToken);
+    return keys;
+  }
+
+  async deletePrefix(prefix: string) {
+    for (const key of await this.list(prefix)) await this.delete(key);
+  }
+}
+
+function decodeXml(value: string) {
+  return value.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 }
 
 let adapter: StorageAdapter | null = null;
@@ -130,10 +208,14 @@ export function storage(): StorageAdapter {
   if (adapter) return adapter;
   const e = env();
   if (e.STORAGE_DRIVER === "s3") {
-    if (!e.S3_BUCKET || !e.S3_REGION || !e.S3_ACCESS_KEY_ID || !e.S3_SECRET_ACCESS_KEY) {
-      throw new Error("STORAGE_DRIVER=s3 requires S3_BUCKET, S3_REGION, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY");
+    const bucket = e.KD_AWS_S3_BUCKET_NAME ?? e.S3_BUCKET;
+    const region = e.KD_AWS_REGION ?? e.S3_REGION;
+    const accessKeyId = e.KD_AWS_ACCESS_KEY_ID ?? e.S3_ACCESS_KEY_ID;
+    const secretAccessKey = e.KD_AWS_SECRET_ACCESS_KEY ?? e.S3_SECRET_ACCESS_KEY;
+    if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+      throw new Error("STORAGE_DRIVER=s3 requires KD_AWS_S3_BUCKET_NAME, KD_AWS_REGION, KD_AWS_ACCESS_KEY_ID and KD_AWS_SECRET_ACCESS_KEY (or their S3_* equivalents)");
     }
-    adapter = new S3StorageAdapter({ bucket: e.S3_BUCKET, region: e.S3_REGION, endpoint: e.S3_ENDPOINT, accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY });
+    adapter = new S3StorageAdapter({ bucket, region, endpoint: e.S3_ENDPOINT, accessKeyId, secretAccessKey });
   } else adapter = new LocalStorageAdapter();
   return adapter;
 }

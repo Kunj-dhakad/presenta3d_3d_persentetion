@@ -67,7 +67,7 @@ export function SettingsView({ user }: { user: { name: string; email: string } }
                 })}
               <Status ok={c.openai.pricingConfigured} label="Cost estimation" hint={c.openai.pricingConfigured ? "Estimated from OPENAI_PRICE_INPUT_PER_1M / OPENAI_PRICE_OUTPUT_PER_1M." : "Set OPENAI_PRICE_INPUT_PER_1M and OPENAI_PRICE_OUTPUT_PER_1M to estimate costs."} />
               <Status ok={c.publish.publicHosting} label={`Publishing · ${c.publish.provider}`} hint={c.publish.publicHosting ? "Deployments are public on Vercel." : "Local hosting under /sites. Not a public deployment. Configure PUBLISH_PROVIDER=vercel and VERCEL_TOKEN for public hosting."} />
-              <Status ok label={`Storage · ${c.storage}`} hint={c.storage === "local" ? "Files are stored under the server's data directory. Use STORAGE_DRIVER=s3 in production." : "S3-compatible object storage."} />
+              <Status ok label={`Storage · ${c.storage}`} hint={c.storage === "local" ? "Media, build previews and published sites are stored under the server's data directory. Set STORAGE_DRIVER=s3 to store them in S3." : "Media, build previews and published sites use the configured S3 bucket."} />
               <Status ok={Boolean(c.previewOrigin)} label="Separate preview origin" hint={c.previewOrigin ?? "Previews are served from this server with a CSP sandbox (opaque origin). Set PREVIEW_ORIGIN to serve them from a dedicated domain."} />
               <Status ok label={`Limits · ${c.limits.generationRatePerMin} generations/min · ${c.limits.agentConcurrency} parallel agents · ${c.limits.maxRepairAttempts} repair attempts`} />
             </div>

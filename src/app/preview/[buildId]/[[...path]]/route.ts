@@ -1,5 +1,4 @@
-import { serveFile } from "@/server/http/static";
-import { previewBuildDir } from "@/server/build/builder";
+import { serveStoredFile } from "@/server/http/static";
 
 /**
  * Serves generated project builds. Build ids are 144-bit random capability
@@ -7,11 +6,6 @@ import { previewBuildDir } from "@/server/build/builder";
  */
 export async function GET(_req: Request, ctx: RouteContext<"/preview/[buildId]/[[...path]]">) {
   const { buildId, path } = await ctx.params;
-  let root: string;
-  try {
-    root = previewBuildDir(buildId);
-  } catch {
-    return new Response("Not found", { status: 404 });
-  }
-  return serveFile(root, path ?? [], { untrusted: true });
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(buildId)) return new Response("Not found", { status: 404 });
+  return serveStoredFile(`previews/${buildId}`, path ?? [], { untrusted: true });
 }

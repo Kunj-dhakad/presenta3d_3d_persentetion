@@ -154,15 +154,14 @@ Data model (Prisma): `User, Session, Project, ProjectFile, ProjectVersion, Build
 
 ## Production deployment guide
 
-1. **Database: PostgreSQL**
+1. **Database: AWS RDS MySQL**
    ```bash
-   npm run db:use-postgres                       # derive prisma/postgres/schema.prisma
-   DATABASE_URL=postgresql://… npx prisma migrate deploy
-   DATABASE_URL=postgresql://… npx prisma generate
+   npm run db:deploy                             # uses MYSQL_* when MYSQL_HOST is set
+   npm run db:generate
    ```
-   `prisma.config.ts` picks the Postgres schema and migrations automatically from the URL scheme. The runtime uses `@prisma/adapter-pg`.
-2. **Required env**: `NODE_ENV=production`, `SESSION_SECRET` (≥ 32 random chars), `APP_ORIGIN`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`. Leave `AI_PROVIDER` unset (`mock` is refused in production) and `AUTH_MODE` unset (accounts).
-3. **Storage**: `STORAGE_DRIVER=s3` with `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, plus `S3_ENDPOINT` for R2/MinIO.
+   Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. SQLite remains the default when `MYSQL_HOST` is empty; PostgreSQL can still be selected with a PostgreSQL `DATABASE_URL`.
+2. **Required env**: `NODE_ENV=production`, `SESSION_SECRET` (≥ 32 random chars), `APP_ORIGIN`, `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Leave `AI_PROVIDER` unset (`mock` is refused in production) and `AUTH_MODE` unset (accounts).
+3. **Storage**: `STORAGE_DRIVER=s3` with `KD_AWS_S3_BUCKET_NAME`, `KD_AWS_REGION`, `KD_AWS_ACCESS_KEY_ID`, and `KD_AWS_SECRET_ACCESS_KEY` (legacy `S3_*` names are also supported). Media, build previews, shared runtimes, and published site artifacts are stored in the configured bucket; project records and source files remain in RDS. The bucket can stay private because the app serves artifacts through its routes.
 4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.strata-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
 5. **Build worker isolation**: the worker already runs as a separate, env-scrubbed, time-boxed process. For multi-tenant production, run it in a container or microVM with **no network**, a read-only root filesystem and CPU/memory limits (gVisor, Firecracker, or a Kubernetes Job), using the same stdin/stdout JSON contract as `runWorker`.
 6. **Public publishing**: `PUBLISH_PROVIDER=vercel` + `VERCEL_TOKEN` (and `VERCEL_TEAM_ID` if needed). The default `local` provider serves sites from this server under `/sites/<slug>` and is labelled as non-public.

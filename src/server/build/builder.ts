@@ -1,10 +1,12 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { db } from "@/server/db/client";
 import { dataPath } from "@/server/storage/paths";
+import { storage } from "@/server/storage/storage";
+import { contentTypeFor } from "@/server/http/static";
 import { runWorker, WorkerError } from "./worker-process";
 import type { BuildDiagnostic, BuildSummary } from "@/lib/build-types";
 import type { Framework } from "@/lib/schemas/project";
@@ -34,14 +36,35 @@ export function runtimeDir(hash: string) {
   return dataPath("runtime", hash);
 }
 
+async function walkFiles(dir: string, base = ""): Promise<{ path: string; abs: string }[]> {
+  const out: { path: string; abs: string }[] = [];
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${entry.name}` : entry.name;
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walkFiles(abs, rel)));
+    else if (entry.isFile()) out.push({ path: rel, abs });
+  }
+  return out;
+}
+
 export async function ensureRuntime(): Promise<{ hash: string; base: string }> {
   if (!runtimePromise) {
     runtimePromise = (async () => {
       const hash = runtimeHash();
-      const dir = runtimeDir(hash);
-      if (!existsSync(path.join(dir, "manifest.json"))) {
-        const r = await runWorker<{ ok: boolean; errors?: BuildDiagnostic[] }>({ mode: "runtime", outDir: dir }, { timeoutMs: 180_000, maxHeapMb: 2048 });
-        if (!r.ok) throw new Error(`preview runtime build failed: ${r.errors?.[0]?.message ?? "unknown error"}`);
+      const prefix = `runtime/${hash}/`;
+      if (!(await storage().get(`${prefix}manifest.json`))) {
+        const outDir = dataPath("work", `runtime-${hash}-${randomBytes(5).toString("hex")}`);
+        try {
+          const r = await runWorker<{ ok: boolean; errors?: BuildDiagnostic[] }>({ mode: "runtime", outDir }, { timeoutMs: 180_000, maxHeapMb: 2048 });
+          if (!r.ok) throw new Error(`preview runtime build failed: ${r.errors?.[0]?.message ?? "unknown error"}`);
+          for (const file of await walkFiles(outDir)) {
+            const key = `${prefix}${file.path}`;
+            await storage().put(key, await fs.readFile(file.abs), contentTypeFor(file.path));
+          }
+        } finally {
+          await fs.rm(outDir, { recursive: true, force: true }).catch(() => {});
+        }
+        if (!(await storage().get(`${prefix}manifest.json`))) throw new Error("preview runtime output was not stored");
       }
       return { hash, base: `/preview-runtime/${hash}` };
     })().catch((err) => {
@@ -87,15 +110,10 @@ export async function buildProject(input: {
   }
 
   if (result.ok) {
-    const dir = previewBuildDir(buildId);
     try {
-      await fs.mkdir(dir, { recursive: true });
       for (const f of result.files) {
         const rel = assertProjectPath(f.path);
-        const target = path.resolve(dir, ...rel.split("/"));
-        if (!target.startsWith(path.resolve(dir) + path.sep)) throw new Error("build output path escaped preview directory");
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, f.content, "utf8");
+        await storage().put(`previews/${buildId}/${rel}`, Buffer.from(f.content, "utf8"), contentTypeFor(rel));
       }
     } catch (err) {
       result = {
@@ -138,7 +156,7 @@ async function pruneBuilds(projectId: string, keep = 4) {
   for (const d of deps) if (d.buildId) keepIds.add(d.buildId);
   for (const b of builds) {
     if (keepIds.has(b.id)) continue;
-    await fs.rm(previewBuildDir(b.id), { recursive: true, force: true });
+    await storage().deletePrefix(`previews/${b.id}/`);
   }
   const stale = builds.slice(30).filter((b) => !keepIds.has(b.id)).map((b) => b.id);
   if (stale.length) await db.build.deleteMany({ where: { id: { in: stale } } });
@@ -146,5 +164,5 @@ async function pruneBuilds(projectId: string, keep = 4) {
 
 export async function removeProjectBuilds(projectId: string) {
   const builds = await db.build.findMany({ where: { projectId }, select: { id: true } });
-  for (const b of builds) await fs.rm(previewBuildDir(b.id), { recursive: true, force: true });
+  for (const b of builds) await storage().deletePrefix(`previews/${b.id}/`);
 }

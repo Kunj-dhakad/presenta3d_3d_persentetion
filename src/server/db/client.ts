@@ -6,10 +6,29 @@ import { env } from "@/server/env";
 
 /**
  * Single PrismaClient per process. The driver adapter is selected from the
- * DATABASE_URL scheme: `file:` → better-sqlite3 (local), `postgres://` → pg.
+ * database config: MYSQL_* → RDS MySQL, DATABASE_URL postgres → pg,
+ * otherwise file: → better-sqlite3 (local).
  */
 function createClient(): PrismaClient {
-  const url = env().DATABASE_URL;
+  const e = env();
+  if (e.MYSQL_HOST) {
+    const missing = ["MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"].filter((key) => !e[key as "MYSQL_DATABASE" | "MYSQL_USER" | "MYSQL_PASSWORD"]);
+    if (missing.length) throw new Error(`RDS MySQL configuration is missing: ${missing.join(", ")}`);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaMariaDb } = require("@prisma/adapter-mariadb") as typeof import("@prisma/adapter-mariadb");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaClient: MysqlClient } = require("../../generated/mysql-prisma/client") as typeof import("@/generated/mysql-prisma/client");
+    const adapter = new PrismaMariaDb({
+      host: e.MYSQL_HOST,
+      port: e.MYSQL_PORT,
+      user: e.MYSQL_USER!,
+      password: e.MYSQL_PASSWORD!,
+      database: e.MYSQL_DATABASE!,
+      connectionLimit: 5,
+    });
+    return new MysqlClient({ adapter }) as unknown as PrismaClient;
+  }
+  const url = e.DATABASE_URL;
   if (/^postgres(ql)?:\/\//.test(url)) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaPg } = require("@prisma/adapter-pg") as typeof import("@prisma/adapter-pg");

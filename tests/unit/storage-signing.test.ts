@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { signV4 } from "@/server/storage/storage";
+import { S3StorageAdapter, signV4, storage } from "@/server/storage/storage";
 
 describe("S3 SigV4 signing", () => {
   // Example "GET Object" request from the AWS Signature Version 4 documentation
@@ -23,5 +23,38 @@ describe("S3 SigV4 signing", () => {
     expect(auth).toBe(
       "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
     );
+  });
+
+  it("lists paginated artifact keys from S3", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: URL[] = [];
+    globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+      void init;
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      requests.push(url);
+      if (requests.length === 1) {
+        return new Response("<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>next&amp;token</NextContinuationToken><Contents><Key>previews/build/a.js</Key></Contents></ListBucketResult>");
+      }
+      return new Response("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>previews/build/b.js</Key></Contents></ListBucketResult>");
+    }) as typeof fetch;
+    try {
+      const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret" });
+      await expect(adapter.list("previews/build/")).resolves.toEqual(["previews/build/a.js", "previews/build/b.js"]);
+      expect(requests).toHaveLength(2);
+      expect(requests[0].pathname).toBe("/");
+      expect(requests[0].searchParams.get("prefix")).toBe("previews/build/");
+      expect(requests[1].searchParams.get("continuation-token")).toBe("next&token");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("stores and removes local artifact prefixes", async () => {
+    const adapter = storage();
+    const prefix = `previews/storage-test-${Date.now()}/`;
+    await adapter.put(`${prefix}index.html`, Buffer.from("hello"), "text/html");
+    await expect(adapter.list(prefix)).resolves.toEqual([`${prefix}index.html`]);
+    await adapter.deletePrefix(prefix);
+    await expect(adapter.list(prefix)).resolves.toEqual([]);
   });
 });
