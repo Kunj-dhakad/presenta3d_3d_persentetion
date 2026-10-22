@@ -10,7 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api, errorMessage, timeAgo } from "@/lib/api-client";
 
 type Deployment = { id: string; status: string; url: string | null; provider: string; isPublic: boolean; error: string | null; createdAt: string; updatedAt: string };
-type PublishInfo = { provider: { id: string; isPublic: boolean; ok: boolean; reason: string | null }; deployments: Deployment[] };
+type PublishInfo = { provider: { id: string; isPublic: boolean; storage?: string; ok: boolean; reason: string | null }; deployments: Deployment[] };
+
+/** Links for built-in hosting are stored as paths; show them on the domain the app is served from. */
+const absolute = (url: string | null) => (url && url.startsWith("/") ? `${window.location.origin}${url}` : url);
 type Link = { id: string; tokenPrefix: string; createdAt: string; expiresAt: string | null; revokedAt: string | null; active: boolean };
 
 function copy(text: string) {
@@ -126,13 +129,13 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
               <>
                 <div className="rounded-lg border border-border p-3 text-sm">
                   <div className="flex items-center gap-2 font-medium">
-                    {info.provider.isPublic ? <Globe className="size-4 text-success" /> : <Lock className="size-4 text-warning" />}
-                    {info.provider.id === "local" ? "Local hosting" : "Vercel"}
+                    {info.provider.id === "local" || info.provider.isPublic ? <Globe className="size-4 text-success" /> : <Lock className="size-4 text-warning" />}
+                    {info.provider.id === "local" ? (info.provider.storage === "s3" ? "Hosted by this app · stored in Amazon S3" : "Hosted by this app") : "Vercel"}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {info.provider.isPublic
-                      ? "Deployments go to a public URL on the configured hosting provider."
-                      : "Sites are served by this Strata server under /sites. This is not a public deployment: it is only reachable where this server is reachable. Configure PUBLISH_PROVIDER=vercel with VERCEL_TOKEN for public hosting."}
+                    {info.provider.id === "local"
+                      ? `Anyone with the link can view the presentation. It is served from this app's domain${info.provider.storage === "s3" ? " and its files are stored in your S3 bucket" : ""}.`
+                      : "Deployments go to a public URL on the configured hosting provider."}
                   </p>
                   {!info.provider.ok && <p className="mt-2 text-xs text-destructive">{info.provider.reason}</p>}
                 </div>
@@ -140,9 +143,9 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
                   <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
                     <p className="text-xs text-muted-foreground">Live · updated {timeAgo(live.updatedAt)}</p>
                     <div className="mt-1 flex items-center gap-2">
-                      <a href={live.url ?? "#"} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate font-mono text-xs text-brand hover:underline">{live.url}</a>
-                      <Button size="icon-xs" variant="ghost" onClick={() => live.url && copy(live.url)} aria-label="Copy URL"><Copy /></Button>
-                      <a href={live.url ?? "#"} target="_blank" rel="noopener noreferrer" aria-label="Open site"><ExternalLink className="size-3.5 text-muted-foreground" /></a>
+                      <a href={absolute(live.url) ?? "#"} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate font-mono text-xs text-brand hover:underline">{absolute(live.url)}</a>
+                      <Button size="icon-xs" variant="ghost" onClick={() => live.url && copy(absolute(live.url)!)} aria-label="Copy URL"><Copy /></Button>
+                      <a href={absolute(live.url) ?? "#"} target="_blank" rel="noopener noreferrer" aria-label="Open site"><ExternalLink className="size-3.5 text-muted-foreground" /></a>
                     </div>
                   </div>
                 )}

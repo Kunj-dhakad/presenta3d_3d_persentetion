@@ -27,6 +27,17 @@ export const SCENE_KIND_HINTS: Record<SceneKind, string> = {
   rings: "concentric rotating rings: process, cycles, layers, focus",
 };
 
+export const ENVIRONMENTS = ["grid", "space", "ocean", "aurora", "horizon", "studio"] as const;
+export const ENVIRONMENT_HINTS: Record<(typeof ENVIRONMENTS)[number], string> = {
+  grid: "neon grid floor under stars: tech, startups, futuristic products",
+  space: "deep space with nebulae, no floor: science, vision, astronomy, big ideas",
+  ocean: "rolling sea of glowing points: nature, climate, travel, calm or flowing topics",
+  aurora: "aurora curtains over a glossy floor: wellness, culture, creativity, elegant topics",
+  horizon: "retro striped sun behind a grid: entertainment, music, gaming, bold launches",
+  studio: "soft glossy stage with spotlight: corporate, finance, education, minimal decks",
+};
+export const TRANSITIONS = ["side", "dive"] as const;
+
 export const DeckSlideSchema = z.object({
   layout: z.enum(["hero", "left", "right", "center", "stats"]).describe("hero = big title slide; left/right = text on that side with the 3D scene on the other; center = text over the scene; stats = up to 4 big numbers."),
   kicker: z.string().describe("Short uppercase label above the title, e.g. 'CHAPTER 02'. Empty string for none."),
@@ -53,6 +64,8 @@ export const DeckSpecSchema = z.object({
     text: Hex,
     accent: Hex,
     font: z.enum(["sans", "serif", "display", "mono"]),
+    environment: z.enum(ENVIRONMENTS).describe("The 3D world the presentation travels through; pick what fits the topic."),
+    transition: z.enum(TRANSITIONS).describe("side = camera glides sideways between slides; dive = camera flies forward into depth."),
   }),
   slides: z.array(DeckSlideSchema),
 });
@@ -66,6 +79,11 @@ export type DeckValidation = { ok: true; deck: DeckSpec } | { ok: false; errors:
 
 /** Validate and normalize a deck (clamps numbers, trims lists and text). */
 export function validateDeck(input: unknown): DeckValidation {
+  // Decks created before environments/transitions existed keep their original look.
+  if (input && typeof input === "object" && (input as { theme?: unknown }).theme && typeof (input as { theme: unknown }).theme === "object") {
+    const theme = (input as { theme: Record<string, unknown> }).theme;
+    input = { ...input, theme: { environment: "grid", transition: "side", ...theme } };
+  }
   const parsed = DeckSpecSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, errors: parsed.error.issues.slice(0, 15).map((i) => `${i.path.join(".") || "deck"}: ${i.message}`) };
@@ -98,7 +116,7 @@ export function validateDeck(input: unknown): DeckValidation {
 export function sampleDeck(topic = "Strata"): DeckSpec {
   return {
     title: `${topic} — 3D presentation`,
-    theme: { background: "#05060a", text: "#f2f3f7", accent: "#8b9cff", font: "display" },
+    theme: { background: "#05060a", text: "#f2f3f7", accent: "#8b9cff", font: "display", environment: "grid", transition: "side" },
     slides: [
       { layout: "hero", kicker: "INTRODUCING", title: topic, subtitle: "Ideas that move in three dimensions.", bullets: [], stats: [], scene: { kind: "galaxy", primary: "#8b9cff", secondary: "#ff7ad9", speed: 1, density: 0.8, values: [] }, notes: "" },
       { layout: "left", kicker: "WHY NOW", title: "Attention is the new currency", subtitle: "Flat slides blend together. Spatial stories are remembered.", bullets: ["Immersive visuals hold attention", "Motion guides the narrative", "Works in any browser"], stats: [], scene: { kind: "crystal", primary: "#7fe7ff", secondary: "#8b9cff", speed: 0.8, density: 0.6, values: [] }, notes: "" },

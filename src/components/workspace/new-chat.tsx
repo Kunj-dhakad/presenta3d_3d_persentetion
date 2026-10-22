@@ -4,7 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Loader2, TriangleAlert, Presentation } from "lucide-react";
 import { toast } from "sonner";
-import { api, errorMessage } from "@/lib/api-client";
+import { api, ApiError, errorMessage } from "@/lib/api-client";
+import { createPresentation } from "@/lib/create-presentation";
 import { LogoMark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
@@ -51,19 +52,11 @@ export function NewChat() {
     }
     setBusy(true);
     try {
-      // Re-check configuration on submit: it may have changed since the page loaded (e.g. .env edited).
-      const status = await api<ConfigResponse>("/api/config");
-      const configured = status.config.aiProvider === "mock" || status.config.openai.configured;
-      setAi({ configured, mock: status.config.aiProvider === "mock" });
-      if (!configured) {
-        toast.error("AI is not configured. Set OPENAI_API_KEY and OPENAI_MODEL in .env and restart the server.");
-        return;
-      }
-      const r = await api<{ project: { id: string } }>("/api/projects", { method: "POST", json: { name: "Untitled presentation", category: "presentation", framework: "three", template: "blank" } });
-      router.push(`/chat/${r.project.id}?prompt=${encodeURIComponent(text)}`);
+      // One request creates the presentation and queues its generation; the workspace shows progress immediately.
+      router.push(await createPresentation(text));
     } catch (e) {
+      if (e instanceof ApiError && e.code === "AI_NOT_CONFIGURED") setAi({ configured: false, mock: false });
       toast.error(errorMessage(e));
-    } finally {
       setBusy(false);
     }
   }

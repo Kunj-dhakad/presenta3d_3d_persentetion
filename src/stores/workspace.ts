@@ -45,7 +45,9 @@ export type LiveJob = {
   understanding: string | null;
   tasks: Record<string, TaskEventPayload & { chars?: number }>;
   files: { path: string; kind: string; added: number; removed: number }[];
-  logs: { level: string; message: string }[];
+  logs: { level: string; message: string; t?: number }[];
+  /** Characters of model output received so far (live generation feedback). */
+  chars: number;
   builds: { status: string; errors: BuildDiagnostic[]; attempt: number }[];
   error: string | null;
   progress: number;
@@ -234,7 +236,7 @@ export const useWorkspace = create<State & Actions>((set, get) => ({
     }),
   clearRuntimeErrors: () => set({ runtimeErrors: [] }),
 
-  startJob: (jobId) => set({ job: { jobId, status: "queued", stages: {}, understanding: null, tasks: {}, files: [], logs: [], builds: [], error: null, progress: 0 } }),
+  startJob: (jobId) => set({ job: { jobId, status: "queued", stages: {}, understanding: null, tasks: {}, files: [], logs: [], chars: 0, builds: [], error: null, progress: 0 } }),
   applyJobEvent: (e) =>
     set((s) => {
       const j = s.job;
@@ -261,13 +263,14 @@ export const useWorkspace = create<State & Actions>((set, get) => ({
           job.tasks = { ...job.tasks, [e.task.id]: { ...job.tasks[e.task.id], ...e.task } };
           break;
         case "stream":
+          job.chars = e.chars;
           if (job.tasks[e.taskId]) job.tasks = { ...job.tasks, [e.taskId]: { ...job.tasks[e.taskId], chars: e.chars } };
           break;
         case "file":
           job.files = [...job.files.filter((f) => f.path !== e.path), { path: e.path, kind: e.kind, added: e.added, removed: e.removed }];
           break;
         case "log":
-          job.logs = [...job.logs, { level: e.level, message: e.message }].slice(-40);
+          job.logs = [...job.logs, { level: e.level, message: e.message, t: e.t }].slice(-60);
           break;
         case "build":
           job.builds = [...job.builds, { status: e.status, errors: e.errors, attempt: e.attempt }];

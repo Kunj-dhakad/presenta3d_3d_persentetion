@@ -19,7 +19,8 @@ function createClient(): PrismaClient {
       user: e.MYSQL_USER!,
       password: e.MYSQL_PASSWORD!,
       database: e.MYSQL_DATABASE!,
-      connectionLimit: 5,
+      // The workspace opens ~7 requests at once; a small pool makes them queue behind each other.
+      connectionLimit: 10,
     },
     { onConnectionError: (error) => console.error("[rds-mysql] connection error", error.code, error.errno) },
   );

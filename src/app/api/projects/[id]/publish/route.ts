@@ -1,8 +1,10 @@
 import { db } from "@/server/db/client";
 import { api } from "@/server/http/api";
 import { getOwnedProject } from "@/server/services/projects";
-import { deploymentProvider, publishProject, unpublishProject } from "@/server/publish/publish";
+import { deploymentProvider, publishProject, siteUrl, unpublishProject } from "@/server/publish/publish";
 import { audit } from "@/server/audit";
+import { storage } from "@/server/storage/storage";
+
 
 type P = { id: string };
 
@@ -11,8 +13,8 @@ export const GET = api<P>(async ({ user, params }) => {
   const provider = deploymentProvider();
   const deployments = await db.deployment.findMany({ where: { projectId: params.id }, orderBy: { createdAt: "desc" }, take: 20 });
   return {
-    provider: { id: provider.id, isPublic: provider.isPublic, ...provider.configured() },
-    deployments: deployments.map((d) => ({ id: d.id, status: d.status, url: d.url, provider: d.provider, isPublic: d.isPublic, error: d.error, createdAt: d.createdAt, updatedAt: d.updatedAt })),
+    provider: { id: provider.id, isPublic: provider.isPublic, storage: storage().driver, ...provider.configured() },
+    deployments: deployments.map((d) => ({ id: d.id, status: d.status, url: siteUrl(d), provider: d.provider, isPublic: d.isPublic, error: d.error, createdAt: d.createdAt, updatedAt: d.updatedAt })),
   };
 });
 
@@ -22,7 +24,7 @@ export const POST = api<P>(
     await getOwnedProject(user.id, params.id);
     const d = await publishProject(params.id);
     await audit(user.id, "project.publish", { type: "project", id: params.id }, { status: d.status, provider: d.provider }, ip);
-    return { deployment: { id: d.id, status: d.status, url: d.url, provider: d.provider, isPublic: d.isPublic, error: d.error } };
+    return { deployment: { id: d.id, status: d.status, url: siteUrl(d), provider: d.provider, isPublic: d.isPublic, error: d.error } };
   },
   { rateLimit: { bucket: "publish", perMinute: 6 } },
 );

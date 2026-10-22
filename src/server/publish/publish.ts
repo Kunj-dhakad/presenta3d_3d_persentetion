@@ -142,8 +142,9 @@ class LocalDeploymentProvider implements DeploymentProvider {
       await storage().deletePrefix(prefix).catch(() => {});
       throw error;
     }
-    const origin = env().APP_ORIGIN?.replace(/\/$/, "") ?? "";
-    return { url: `${origin}/sites/${slug}/`, externalId: version };
+    // Stored as a path; the client shows it on whatever domain the app is served from
+    // (an APP_ORIGIN copied from a local .env would otherwise point Amplify links at localhost).
+    return { url: `/sites/${slug}/`, externalId: version };
   }
   async undeploy({ slug, externalId }: { slug: string | null; externalId: string | null }) {
     if (!slug) return;
@@ -192,6 +193,11 @@ class VercelDeploymentProvider implements DeploymentProvider {
     const r = await fetch(`https://api.vercel.com/v13/deployments/${externalId}${this.q()}`, { method: "DELETE", headers: this.headers() });
     if (!r.ok && r.status !== 404) throw new Error(`Vercel undeploy failed (${r.status})`);
   }
+}
+
+/** Built-in hosting links are paths on this app (older rows stored an absolute, possibly localhost, URL). */
+export function siteUrl(d: { provider: string; slug: string | null; url: string | null }): string | null {
+  return d.provider === "local" && d.slug ? `/sites/${d.slug}/` : d.url;
 }
 
 export function deploymentProvider(): DeploymentProvider {

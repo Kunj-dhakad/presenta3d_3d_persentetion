@@ -142,10 +142,10 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-            {build.status === "building" ? (
+            {build.status === "building" || busy ? (
               <>
                 <Loader2 className="size-5 animate-spin text-brand" />
-                <p className="text-sm text-muted-foreground">Building preview…</p>
+                <p className="text-sm text-muted-foreground">{busy ? "Creating your presentation… it appears here when ready." : "Building preview…"}</p>
               </>
             ) : (
               <>

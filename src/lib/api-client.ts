@@ -1,6 +1,6 @@
 "use client";
 
-import type { JobEvent } from "./jobs";
+import type { JobEvent, JobStatus } from "./jobs";
 
 export class ApiError extends Error {
   constructor(
@@ -53,52 +53,65 @@ export function errorMessage(err: unknown): string {
 }
 
 /**
- * Follow a server-side job's NDJSON event stream. Resolves when the job ends.
- * Reconnects (replaying history) if the connection drops before the end event.
+ * Follow a server-side job until it ends, delivering each event once.
+ *
+ * Works on any host, including serverless ones that buffer streaming
+ * responses (AWS Amplify): `POST /run` executes a queued job inside that
+ * request, while short `GET /poll?after=N` requests fetch new events
+ * (from memory on the running instance, otherwise from the database).
  */
 export async function streamJob(jobId: string, onEvent: (e: JobEvent) => void, signal?: AbortSignal): Promise<void> {
-  let attempts = 0;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let running = false;
+  const kick = () => {
+    running = true;
+    // Long request: it lasts as long as the job. Its result is not needed; progress comes from polling.
+    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin", signal })
+      .catch(() => {})
+      .finally(() => {
+        running = false;
+      });
+  };
+  kick();
+
   let seen = 0;
+  let failures = 0;
+  let queuedSince = Date.now();
   for (;;) {
     if (signal?.aborted) return;
-    let ended = false;
+    let data: { events: JobEvent[]; total: number; status: string; error: string | null; done: boolean };
     try {
-      const res = await fetch(`/api/jobs/${jobId}/events`, { signal, credentials: "same-origin" });
-      if (!res.ok || !res.body) throw new ApiError(`Could not follow job (${res.status})`, res.status, "STREAM", null);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      let index = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) !== -1) {
-          const line = buf.slice(0, nl).trim();
-          buf = buf.slice(nl + 1);
-          if (!line) continue;
-          let e: JobEvent | { type: "heartbeat" };
-          try {
-            e = JSON.parse(line);
-          } catch {
-            continue;
-          }
-          if (e.type === "heartbeat") continue;
-          // On reconnect the server replays history; skip events already delivered.
-          if (index++ < seen) continue;
-          seen++;
-          onEvent(e as JobEvent);
-          if (e.type === "end") ended = true;
-        }
-      }
+      data = await api(`/api/jobs/${jobId}/poll?after=${seen}`, { signal });
+      failures = 0;
     } catch (err) {
       if (signal?.aborted) return;
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) throw err;
+      if (++failures > 8) throw new ApiError("Lost connection to the job", 0, "STREAM", null);
+      await sleep(Math.min(4000, 500 * failures));
+      continue;
     }
-    if (ended) return;
-    if (++attempts > 5) throw new ApiError("Lost connection to the job stream", 0, "STREAM", null);
-    await new Promise((r) => setTimeout(r, 800 * attempts));
+    // The server's list may be shorter than what we have seen if it was trimmed; never replay.
+    if (data.total < seen) seen = data.total;
+    for (const e of data.events) {
+      seen++;
+      onEvent(e);
+    }
+    if (data.done) {
+      const last = data.events.at(-1);
+      if (!(last?.type === "status" && last.status === data.status)) {
+        onEvent({ type: "status", status: data.status as JobStatus, message: data.error ?? undefined, t: Date.now() });
+      }
+      onEvent({ type: "end", t: Date.now() } as JobEvent);
+      return;
+    }
+    // If the run request was lost before it claimed the job, start it again.
+    if (data.status === "queued") {
+      if (!running && Date.now() - queuedSince > 4000) {
+        queuedSince = Date.now();
+        kick();
+      }
+    } else queuedSince = Date.now();
+    await sleep(700);
   }
 }
 

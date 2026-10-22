@@ -45,6 +45,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const streamAbort = useRef<AbortController | null>(null);
   const startedFromParam = useRef(false);
+  const followingJob = useRef<string | null>(null);
   const jobRunning = Boolean(job && (job.status === "running" || job.status === "queued"));
 
   const loadMessages = useCallback(async (cid: string) => {
@@ -62,6 +63,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
 
   const follow = useCallback(
     async (jobId: string) => {
+      if (followingJob.current === jobId) return;
+      followingJob.current = jobId;
       streamAbort.current?.abort();
       const ctrl = new AbortController();
       streamAbort.current = ctrl;
@@ -72,6 +75,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         if (!ctrl.signal.aborted) toast.error(errorMessage(e));
       }
       if (ctrl.signal.aborted) return;
+      followingJob.current = null;
       try {
         await loadProject();
         const cs = await api<{ conversations: Conversation[] }>(`/api/projects/${projectId}/conversations`);
@@ -109,7 +113,11 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     useWorkspace.getState().reset(projectId);
     let cancelled = false;
+    // New presentation (?job=): show progress at once, while the rest loads in parallel.
+    const newJob = params.get("job");
+    if (newJob) router.replace(`/chat/${projectId}`);
     (async () => {
+      if (newJob) void follow(newJob);
       try {
         const [, cs, cfg, jobs] = await Promise.all([
           loadProject(),
@@ -199,6 +207,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       onRevert={(m) => void revert(m)}
       emptyHint="Describe your presentation: topic, audience, number of slides and the mood. Then ask for changes like “make slide 2 about pricing”."
       variant="presentation"
+      loading={!loaded}
     />
   );
   const preview = <PreviewPane busy={jobRunning} onFixWithAI={() => void send("The presentation preview shows errors. Regenerate the deck so it renders correctly.")} />;

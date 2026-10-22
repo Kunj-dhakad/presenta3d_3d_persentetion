@@ -68,6 +68,7 @@ describe("chat panel", () => {
     tasks: { "gen-ui": { id: "gen-ui", role: "threeD", description: "Write main.js", status: "running", dependsOn: [], writes: ["main.js"], error: null, outputRefs: [], chars: 2400 } },
     files: [],
     logs: [],
+    chars: 0,
     builds: [],
     error: null,
     progress: 0.3,

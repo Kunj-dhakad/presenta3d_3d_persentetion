@@ -58,15 +58,16 @@ function scheduleFlush(h: Handle) {
   h.flushTimer = setTimeout(() => void flush(h), 800);
 }
 
-type JobInput = { userId: string; projectId?: string | null; kind: string; provider: string; model?: string | null; input: Prisma.InputJsonValue };
+type JobInput = { id?: string; userId: string; projectId?: string | null; kind: string; provider: string; model?: string | null; input: Prisma.InputJsonValue };
 
 /** A job that has not reported progress for this long, and is not running in this process, is treated as dead. */
 const STALE_MS = 2 * 60_000;
-const HEARTBEAT_MS = 20_000;
+const HEARTBEAT_MS = 10_000;
 
 function createJobRow(input: JobInput) {
   return db.generationJob.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       userId: input.userId,
       projectId: input.projectId ?? null,
       kind: input.kind,
@@ -94,8 +95,14 @@ function prepare<T>(jobId: string, work: (ctx: JobContext) => Promise<T>, opts: 
   const run = async () => {
     active.n++;
     // Keeps updatedAt fresh during long silent phases (model reasoning) so other instances do not consider the job dead.
+    // It also notices a cancel requested through another instance (status no longer "running").
     const heartbeat = setInterval(() => {
-      void db.generationJob.update({ where: { id: h.id }, data: { updatedAt: new Date() } }).catch(() => {});
+      void db.generationJob
+        .updateMany({ where: { id: h.id, status: "running" }, data: { updatedAt: new Date() } })
+        .then((r) => {
+          if (r.count === 0 && !h.done) h.controller.abort();
+        })
+        .catch(() => {});
     }, HEARTBEAT_MS);
     // A claimed job was already marked running by the claim itself.
     if (!opts.claimed) await db.generationJob.update({ where: { id: h.id }, data: { status: "running", startedAt: new Date() } }).catch(() => {});
@@ -179,11 +186,24 @@ export function subscribe(jobId: string, listener: Listener): (() => void) | nul
   return () => h.listeners.delete(listener);
 }
 
-export function cancelJob(jobId: string): boolean {
+export async function cancelJob(jobId: string): Promise<boolean> {
   const h = handles.get(jobId);
-  if (!h || h.done) return false;
-  h.controller.abort();
-  return true;
+  if (h && !h.done) {
+    h.controller.abort();
+    return true;
+  }
+  // Running on another instance: its heartbeat sees the status change and aborts.
+  const r = await db.generationJob.updateMany({
+    where: { id: jobId, status: { in: ["queued", "running"] } },
+    data: { status: "cancelled", error: "Cancelled", finishedAt: new Date() },
+  });
+  return r.count > 0;
+}
+
+/** Events of a job running (or recently finished) in this process, or null. */
+export function localJobEvents(jobId: string): { events: JobEvent[]; done: boolean } | null {
+  const h = handles.get(jobId);
+  return h ? { events: h.events, done: h.done } : null;
 }
 
 export function isJobLive(jobId: string): boolean {

@@ -34,6 +34,7 @@ export function ChatPanel({
   onRevert,
   emptyHint,
   variant = "code",
+  loading = false,
 }: {
   messages: ChatMessageRow[];
   job: LiveJob | null;
@@ -46,6 +47,8 @@ export function ChatPanel({
   emptyHint?: string;
   /** "presentation" hides file-level details (no code is shown to the user). */
   variant?: "code" | "presentation";
+  /** The conversation is still loading: show a spinner instead of the empty state. */
+  loading?: boolean;
 }) {
   const presentation = variant === "presentation";
   const SUGGESTIONS = presentation ? PRESENTATION_SUGGESTIONS : CODE_SUGGESTIONS;
@@ -67,7 +70,12 @@ export function ChatPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 thin-scroll">
-        {messages.length === 0 && !job && (
+        {loading && messages.length === 0 && !job && (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            <Loader2 className="mr-2 size-4 animate-spin" /> Loading conversation…
+          </div>
+        )}
+        {!loading && messages.length === 0 && !job && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <Sparkles className="size-5 text-brand" />
             <p className="text-sm font-medium">Start the conversation</p>

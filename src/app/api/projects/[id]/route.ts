@@ -5,7 +5,7 @@ import { deleteProject, getOwnedProject } from "@/server/services/projects";
 import { serializeProject } from "@/server/services/serialize";
 import { ProjectCategory } from "@/lib/schemas/project";
 import { audit } from "@/server/audit";
-import { unpublishProject } from "@/server/publish/publish";
+import { siteUrl, unpublishProject } from "@/server/publish/publish";
 import { previewUrlFor } from "@/server/build/urls";
 import { ensureDeckEngineCurrent } from "@/server/deck/upgrade";
 
@@ -33,7 +33,7 @@ export const GET = api<P>(async ({ user, params }) => {
           createdAt: lastBuild.createdAt,
         }
       : null,
-    deployment: deployment ? { id: deployment.id, status: deployment.status, url: deployment.url, provider: deployment.provider, isPublic: deployment.isPublic, error: deployment.error, updatedAt: deployment.updatedAt } : null,
+    deployment: deployment ? { id: deployment.id, status: deployment.status, url: siteUrl(deployment), provider: deployment.provider, isPublic: deployment.isPublic, error: deployment.error, updatedAt: deployment.updatedAt } : null,
   };
 });
 
