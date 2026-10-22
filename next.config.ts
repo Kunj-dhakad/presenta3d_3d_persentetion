@@ -17,7 +17,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "192.168.*.*", "10.*.*.*", "172.*.*.*"],
   serverExternalPackages: ["esbuild"],
   outputFileTracingIncludes: {
-    "/**": ["./preview-runner/**/*", "./src/server/scene-codegen/runtime.js.txt"],
+    "/**": [
+      "./preview-runner/**/*",
+      "./src/server/scene-codegen/runtime.js.txt",
+      "./src/server/deck/runtime.js.txt",
+    ],
     "/vendor/monaco/[...path]": ["./node_modules/monaco-editor/min/**/*"],
   },
   turbopack: {
