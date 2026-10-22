@@ -38,9 +38,9 @@ npm run dev                 # http://localhost:3000
 
 npm 11 blocks dependency install scripts by default. This repo's `package.json` → `allowScripts` already approves the four that need native builds (`esbuild`, `better-sqlite3`, `prisma`, `@prisma/engines`). If an install reports pending scripts, review them with `npm approve-scripts --allow-scripts-pending`.
 
-### No sign-in in local development
+### No sign-in by default
 
-Outside production Strata runs in **local single-user mode** (`AUTH_MODE=local`, the default): open the app and start building. There is no sign-up or login. Every request acts as one local user. To use real accounts locally, set `AUTH_MODE=accounts`. In production, accounts are always required (`AUTH_MODE=local` is refused).
+Strata runs in **local single-user mode** (`AUTH_MODE=local`, the default) in development and production: open the app and start building. There is no sign-up or login, and every visitor shares the same workspace. Set `AUTH_MODE=accounts` to enable email/password accounts and per-user workspaces.
 
 ### Connect OpenAI
 
@@ -160,8 +160,8 @@ Data model (Prisma): `User, Session, Project, ProjectFile, ProjectVersion, Build
    npm run db:generate
    ```
    Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. SQLite remains the default when `MYSQL_HOST` is empty; PostgreSQL can still be selected with a PostgreSQL `DATABASE_URL`.
-2. **Required env**: `NODE_ENV=production`, `SESSION_SECRET` (≥ 32 random chars), `APP_ORIGIN`, `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Leave `AI_PROVIDER` unset (`mock` is refused in production) and `AUTH_MODE` unset (accounts).
-3. **Storage**: `STORAGE_DRIVER=s3` with `KD_AWS_S3_BUCKET_NAME`, `KD_AWS_REGION`, `KD_AWS_ACCESS_KEY_ID`, and `KD_AWS_SECRET_ACCESS_KEY` (legacy `S3_*` names are also supported). Media, build previews, shared runtimes, and published site artifacts are stored in the configured bucket; project records and source files remain in RDS. The bucket can stay private because the app serves artifacts through its routes.
+2. **Required env**: `NODE_ENV=production`, `APP_ORIGIN`, `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. `AUTH_MODE` defaults to `local`; set it to `accounts` only when sign-in is wanted. `SESSION_SECRET` (≥ 32 random chars) is needed for accounts. Leave `AI_PROVIDER` unset (`mock` is refused in production).
+3. **Storage**: `STORAGE_DRIVER=s3` with `KD_AWS_S3_BUCKET_NAME`, `KD_AWS_REGION`, `KD_AWS_ACCESS_KEY_ID`, and `KD_AWS_SECRET_ACCESS_KEY` (legacy `S3_*` names are also supported). All S3 objects are grouped under the `3dpresentation/` key prefix. Media, build previews, shared runtimes, and published site artifacts are stored in the configured bucket; project records and source files remain in RDS. The bucket can stay private because the app serves artifacts through its routes.
 4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.strata-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
 5. **Build worker isolation**: the worker already runs as a separate, env-scrubbed, time-boxed process. For multi-tenant production, run it in a container or microVM with **no network**, a read-only root filesystem and CPU/memory limits (gVisor, Firecracker, or a Kubernetes Job), using the same stdin/stdout JSON contract as `runWorker`.
 6. **Public publishing**: `PUBLISH_PROVIDER=vercel` + `VERCEL_TOKEN` (and `VERCEL_TEAM_ID` if needed). The default `local` provider serves sites from this server under `/sites/<slug>` and is labelled as non-public.

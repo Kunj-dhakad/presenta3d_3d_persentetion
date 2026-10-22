@@ -33,17 +33,39 @@ describe("S3 SigV4 signing", () => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       requests.push(url);
       if (requests.length === 1) {
-        return new Response("<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>next&amp;token</NextContinuationToken><Contents><Key>previews/build/a.js</Key></Contents></ListBucketResult>");
+        return new Response("<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>next&amp;token</NextContinuationToken><Contents><Key>3dpresentation/previews/build/a.js</Key></Contents></ListBucketResult>");
       }
-      return new Response("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>previews/build/b.js</Key></Contents></ListBucketResult>");
+      return new Response("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>3dpresentation/previews/build/b.js</Key></Contents></ListBucketResult>");
     }) as typeof fetch;
     try {
       const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret" });
       await expect(adapter.list("previews/build/")).resolves.toEqual(["previews/build/a.js", "previews/build/b.js"]);
       expect(requests).toHaveLength(2);
       expect(requests[0].pathname).toBe("/");
-      expect(requests[0].searchParams.get("prefix")).toBe("previews/build/");
+      expect(requests[0].searchParams.get("prefix")).toBe("3dpresentation/previews/build/");
       expect(requests[1].searchParams.get("continuation-token")).toBe("next&token");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps media and artifact objects under the 3dpresentation prefix", async () => {
+    const originalFetch = globalThis.fetch;
+    const paths: string[] = [];
+    globalThis.fetch = (async (input: URL | RequestInfo) => {
+      paths.push(new URL(input instanceof Request ? input.url : String(input)).pathname);
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    try {
+      const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret" });
+      await adapter.put("owner/abcdefghijklmnop.png", Buffer.from("media"), "image/png");
+      await adapter.get("previews/build/index.html");
+      await adapter.delete("runtime/hash/manifest.json");
+      expect(paths).toEqual([
+        "/3dpresentation/owner/abcdefghijklmnop.png",
+        "/3dpresentation/previews/build/index.html",
+        "/3dpresentation/runtime/hash/manifest.json",
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }

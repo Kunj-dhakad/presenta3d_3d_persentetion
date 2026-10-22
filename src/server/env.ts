@@ -37,7 +37,7 @@ const schema = z.object({
   OPENAI_TIMEOUT_MS: intWithDefault(120_000, 5_000, 600_000),
   OPENAI_BASE_URL: optionalString,
   AI_PROVIDER: z.enum(["openai", "mock"]).default("openai"),
-  /** local = single local user, no sign-in (development only); accounts = email/password sign-in. */
+  /** local = shared single-user workspace without sign-in; accounts = email/password sign-in. */
   AUTH_MODE: z.enum(["local", "accounts"]).optional(),
   DATABASE_URL: z.string().default("file:./.data/strata.db"),
   MYSQL_HOST: optionalString,
@@ -84,9 +84,6 @@ export function env(): ServerEnv {
   if (parsed.data.NODE_ENV === "production" && parsed.data.AI_PROVIDER === "mock" && !process.env.STRATA_ALLOW_MOCK) {
     throw new Error("AI_PROVIDER=mock is a test-only setting and is refused in production.");
   }
-  if (parsed.data.NODE_ENV === "production" && parsed.data.AUTH_MODE === "local") {
-    throw new Error("AUTH_MODE=local disables sign-in and is refused in production. Use AUTH_MODE=accounts.");
-  }
   cached = parsed.data;
   return cached;
 }
@@ -107,11 +104,9 @@ export function sessionSecret(): string {
   return DEV_SESSION_SECRET;
 }
 
-/** Single-user local mode: default outside production, never allowed in production. */
+/** Single-user mode is the default everywhere; opt into accounts explicitly. */
 export function authMode(): "local" | "accounts" {
-  const e = env();
-  if (e.NODE_ENV === "production") return "accounts";
-  return e.AUTH_MODE ?? "local";
+  return env().AUTH_MODE ?? "local";
 }
 
 /** Non-secret summary of configuration that is safe to show in the UI. */

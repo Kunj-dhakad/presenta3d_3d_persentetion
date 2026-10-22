@@ -71,7 +71,7 @@ describe("secret handling", () => {
     expect(example).not.toMatch(/^NEXT_PUBLIC_/m);
   });
 
-  it("refuses unsafe settings in production", () => {
+  it("allows local single-user mode in production and requires explicit opt-in for accounts", () => {
     (process.env as Record<string, string>).NODE_ENV = "production";
     process.env.AI_PROVIDER = "mock";
     resetEnvCache();
@@ -79,8 +79,12 @@ describe("secret handling", () => {
     process.env.AI_PROVIDER = "openai";
     process.env.AUTH_MODE = "local";
     resetEnvCache();
-    expect(() => env()).toThrow(/refused in production/);
+    expect(() => env()).not.toThrow();
+    expect(authMode()).toBe("local");
     delete process.env.AUTH_MODE;
+    resetEnvCache();
+    expect(authMode()).toBe("local");
+    process.env.AUTH_MODE = "accounts";
     resetEnvCache();
     expect(authMode()).toBe("accounts");
     process.env.AI_PROVIDER = "mock";

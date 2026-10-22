@@ -130,6 +130,7 @@ export function signV4(input: {
 
 export class S3StorageAdapter implements StorageAdapter {
   readonly driver = "s3";
+  private readonly rootPrefix = "3dpresentation/";
   constructor(
     private cfg: { bucket: string; region: string; endpoint?: string; accessKeyId: string; secretAccessKey: string },
   ) {}
@@ -143,7 +144,7 @@ export class S3StorageAdapter implements StorageAdapter {
     if (isArtifactKey(key)) assertArtifactKey(key);
     else assertStorageKey(key);
     const url = this.bucketUrl();
-    url.pathname += key.split("/").map(encodeURIComponent).join("/");
+    url.pathname += `${this.rootPrefix}${key}`.split("/").map(encodeURIComponent).join("/");
     return url;
   }
 
@@ -175,17 +176,21 @@ export class S3StorageAdapter implements StorageAdapter {
 
   async list(prefix: string) {
     const normalized = normalizePrefix(prefix);
+    const objectPrefix = `${this.rootPrefix}${normalized}`;
     const keys: string[] = [];
     let continuationToken: string | undefined;
     do {
       const url = this.bucketUrl();
       url.searchParams.set("list-type", "2");
-      url.searchParams.set("prefix", normalized);
+      url.searchParams.set("prefix", objectPrefix);
       if (continuationToken) url.searchParams.set("continuation-token", continuationToken);
       const r = await this.request("GET", url);
       if (!r.ok) throw new Error(`S3 list failed (${r.status})`);
       const xml = await r.text();
-      for (const match of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) keys.push(decodeXml(match[1]));
+      for (const match of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) {
+        const key = decodeXml(match[1]);
+        if (key.startsWith(objectPrefix)) keys.push(key.slice(this.rootPrefix.length));
+      }
       const nextToken = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
       continuationToken = nextToken ? decodeXml(nextToken) : undefined;
       if (xml.match(/<IsTruncated>([\s\S]*?)<\/IsTruncated>/)?.[1] !== "true") continuationToken = undefined;
