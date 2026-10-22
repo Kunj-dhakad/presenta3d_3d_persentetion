@@ -56,3 +56,6 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# prebuilt preview runtime (npm run build)
+/preview-runtime-dist/

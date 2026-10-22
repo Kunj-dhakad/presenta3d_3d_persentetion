@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, createHmac } from "node:crypto";
 import { env } from "@/server/env";
-import { dataPath } from "./paths";
+import { dataPath, isServerless } from "./paths";
 
 /**
  * Object storage for binary assets. Keys are generated server-side
@@ -148,7 +148,22 @@ export class S3StorageAdapter implements StorageAdapter {
     return url;
   }
 
-  private async request(method: string, url: URL, body?: Uint8Array, contentType?: string) {
+  /** Signed request with retries for transient failures (network errors, 500/503 SlowDown). */
+  private async request(method: string, url: URL, body?: Uint8Array, contentType?: string): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await this.requestOnce(method, url, body, contentType);
+        if ((r.status === 500 || r.status === 503) && attempt < 2) {
+          await r.body?.cancel().catch(() => {});
+        } else return r;
+      } catch (err) {
+        if (attempt >= 2) throw new Error(`S3 ${method} failed: ${(err as Error).message}${(err as Error).cause ? ` (${String((err as { cause?: unknown }).cause)})` : ""}`);
+      }
+      await new Promise((r) => setTimeout(r, 250 * 3 ** attempt));
+    }
+  }
+
+  private async requestOnce(method: string, url: URL, body?: Uint8Array, contentType?: string) {
     const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
     const payloadHash = body ? sha256hex(body) : sha256hex("");
     const headers: Record<string, string> = { host: url.host, "x-amz-content-sha256": payloadHash, "x-amz-date": amzDate };
@@ -221,6 +236,12 @@ export function storage(): StorageAdapter {
       throw new Error("STORAGE_DRIVER=s3 requires KD_AWS_S3_BUCKET_NAME, KD_AWS_REGION, KD_AWS_ACCESS_KEY_ID and KD_AWS_SECRET_ACCESS_KEY (or their S3_* equivalents)");
     }
     adapter = new S3StorageAdapter({ bucket, region, endpoint: e.S3_ENDPOINT, accessKeyId, secretAccessKey });
-  } else adapter = new LocalStorageAdapter();
+  } else {
+    if (isServerless()) {
+      // Each serverless instance has its own /tmp: previews written by one instance are invisible to the others.
+      console.warn("[storage] STORAGE_DRIVER=local on a serverless host; set STORAGE_DRIVER=s3 so previews and published sites are shared across instances.");
+    }
+    adapter = new LocalStorageAdapter();
+  }
   return adapter;
 }

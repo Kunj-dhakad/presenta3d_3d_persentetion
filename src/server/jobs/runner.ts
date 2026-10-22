@@ -9,8 +9,13 @@ import type { JobEvent, JobEventBody } from "@/lib/jobs";
  * them: closing the browser does not cancel a job, and clients can re-attach
  * to its event stream. Events are persisted to GenerationJob.events.
  *
- * Single-process design: for multiple app instances, move execution to a
- * queue worker (e.g. BullMQ on Redis) behind this same interface.
+ * Serverless hosts (AWS Amplify compute, Lambda) freeze an instance as soon
+ * as its response is sent, so work started "in the background" never
+ * finishes there. Generation jobs therefore use `createDeferredJob`: the
+ * POST only records the job, and the first request for its event stream
+ * claims it (atomically, so exactly one instance runs it) and executes it
+ * while that streaming response is open. Other instances follow the job
+ * through its persisted events.
  */
 
 type Listener = (e: JobEvent) => void;
@@ -21,6 +26,7 @@ type Handle = {
   listeners: Set<Listener>;
   controller: AbortController;
   done: boolean;
+  progress: number;
   flushTimer: ReturnType<typeof setTimeout> | null;
 };
 
@@ -43,7 +49,7 @@ async function flush(h: Handle, extra: Prisma.GenerationJobUpdateInput = {}) {
     h.flushTimer = null;
   }
   await db.generationJob
-    .update({ where: { id: h.id }, data: { events: h.events.slice(-500) as unknown as Prisma.InputJsonValue, ...extra } })
+    .update({ where: { id: h.id }, data: { events: h.events.slice(-500) as unknown as Prisma.InputJsonValue, progress: h.progress, ...extra } })
     .catch(() => {});
 }
 
@@ -52,11 +58,14 @@ function scheduleFlush(h: Handle) {
   h.flushTimer = setTimeout(() => void flush(h), 800);
 }
 
-export async function startJob<T>(
-  input: { userId: string; projectId?: string | null; kind: string; provider: string; model?: string | null; input: Prisma.InputJsonValue },
-  work: (ctx: JobContext) => Promise<T>,
-): Promise<string> {
-  const job = await db.generationJob.create({
+type JobInput = { userId: string; projectId?: string | null; kind: string; provider: string; model?: string | null; input: Prisma.InputJsonValue };
+
+/** A job that has not reported progress for this long, and is not running in this process, is treated as dead. */
+const STALE_MS = 2 * 60_000;
+const HEARTBEAT_MS = 20_000;
+
+function createJobRow(input: JobInput) {
+  return db.generationJob.create({
     data: {
       userId: input.userId,
       projectId: input.projectId ?? null,
@@ -68,8 +77,12 @@ export async function startJob<T>(
       events: [],
     },
   });
-  const h: Handle = { id: job.id, events: [], listeners: new Set(), controller: new AbortController(), done: false, flushTimer: null };
-  handles.set(job.id, h);
+}
+
+/** Run `work` for an existing job row in this process. Returns the run function (not yet started). */
+function prepare<T>(jobId: string, work: (ctx: JobContext) => Promise<T>, opts: { claimed?: boolean } = {}) {
+  const h: Handle = { id: jobId, events: [], listeners: new Set(), controller: new AbortController(), done: false, progress: 0, flushTimer: null };
+  handles.set(jobId, h);
 
   const emit = (e: JobEventBody) => {
     const ev = { ...e, t: Date.now() } as JobEvent;
@@ -80,7 +93,12 @@ export async function startJob<T>(
 
   const run = async () => {
     active.n++;
-    await db.generationJob.update({ where: { id: h.id }, data: { status: "running", startedAt: new Date() } }).catch(() => {});
+    // Keeps updatedAt fresh during long silent phases (model reasoning) so other instances do not consider the job dead.
+    const heartbeat = setInterval(() => {
+      void db.generationJob.update({ where: { id: h.id }, data: { updatedAt: new Date() } }).catch(() => {});
+    }, HEARTBEAT_MS);
+    // A claimed job was already marked running by the claim itself.
+    if (!opts.claimed) await db.generationJob.update({ where: { id: h.id }, data: { status: "running", startedAt: new Date() } }).catch(() => {});
     emit({ type: "status", status: "running" });
     try {
       if (h.controller.signal.aborted) throw new DOMException("cancelled", "AbortError");
@@ -89,8 +107,8 @@ export async function startJob<T>(
         signal: h.controller.signal,
         emit,
         progress: (p) => {
-          emit({ type: "progress", progress: Math.max(0, Math.min(1, p)) });
-          void db.generationJob.update({ where: { id: h.id }, data: { progress: Math.max(0, Math.min(1, p)) } }).catch(() => {});
+          h.progress = Math.max(0, Math.min(1, p));
+          emit({ type: "progress", progress: h.progress }); // persisted with the next (batched) flush
         },
       });
       emit({ type: "status", status: "succeeded" });
@@ -101,6 +119,7 @@ export async function startJob<T>(
       emit({ type: "status", status: cancelled ? "cancelled" : "failed", message });
       await flush(h, { status: cancelled ? "cancelled" : "failed", error: message.slice(0, 2000), finishedAt: new Date() });
     } finally {
+      clearInterval(heartbeat);
       h.done = true;
       for (const l of h.listeners) l({ type: "end", t: Date.now() } as JobEvent);
       h.listeners.clear();
@@ -110,13 +129,41 @@ export async function startJob<T>(
       setTimeout(() => handles.delete(h.id), 5 * 60_000).unref?.();
     }
   };
+  return { h, emit, run };
+}
 
+/** Start a job that runs detached in this process (long-lived servers only). */
+export async function startJob<T>(input: JobInput, work: (ctx: JobContext) => Promise<T>): Promise<string> {
+  const job = await createJobRow(input);
+  const { emit, run } = prepare(job.id, work);
   if (active.n < MAX_ACTIVE_JOBS) void run();
   else {
     emit({ type: "log", level: "info", message: "Queued behind other jobs" });
     queue.push(() => void run());
   }
   return job.id;
+}
+
+/**
+ * Record a job without running it. It is executed by whichever request first
+ * opens its event stream (see `claimJob`), which keeps a serverless instance
+ * alive for the whole run.
+ */
+export async function createDeferredJob(input: JobInput): Promise<string> {
+  const job = await createJobRow(input);
+  return job.id;
+}
+
+/**
+ * Atomically claim a queued job and start running it in this process.
+ * Returns `{ done }` (settles when the job finishes), or null if another request/instance already claimed it.
+ */
+export async function claimJob<T>(jobId: string, work: (ctx: JobContext) => Promise<T>): Promise<{ done: Promise<void> } | null> {
+  if (handles.has(jobId)) return null;
+  const claimed = await db.generationJob.updateMany({ where: { id: jobId, status: "queued" }, data: { status: "running", startedAt: new Date() } });
+  if (claimed.count !== 1) return null;
+  const { run } = prepare(jobId, work, { claimed: true });
+  return { done: run() };
 }
 
 /** Subscribe to a job's events, replaying history first. Returns an unsubscribe function, or null if not in memory. */
@@ -144,14 +191,22 @@ export function isJobLive(jobId: string): boolean {
   return Boolean(h && !h.done);
 }
 
-/** Jobs left "running" in the database by a previous process can never finish; mark them failed. */
-export async function reconcileOrphanedJob(job: { id: string; status: string }) {
+/**
+ * A job that is unfinished in the database, not running in this process, and
+ * silent for STALE_MS was interrupted (server restart, serverless timeout or
+ * the instance was frozen); mark it failed. Jobs running on another instance
+ * keep updatedAt fresh through the heartbeat and are left alone.
+ */
+export async function reconcileOrphanedJob<J extends { id: string; status: string; updatedAt?: Date }>(job: J): Promise<J> {
   if ((job.status === "running" || job.status === "queued") && !handles.has(job.id)) {
-    await db.generationJob.update({
-      where: { id: job.id },
-      data: { status: "failed", error: "Interrupted: the server restarted while this job was running", finishedAt: new Date() },
+    const updatedAt = job.updatedAt ?? (await db.generationJob.findUnique({ where: { id: job.id }, select: { updatedAt: true } }))?.updatedAt;
+    if (updatedAt && Date.now() - updatedAt.getTime() < STALE_MS) return job;
+    const error = "Interrupted: the server stopped while this job was running. Please try again.";
+    const r = await db.generationJob.updateMany({
+      where: { id: job.id, status: job.status, updatedAt: updatedAt ?? undefined },
+      data: { status: "failed", error, finishedAt: new Date() },
     });
-    return { ...job, status: "failed" };
+    if (r.count) return { ...job, status: "failed", error };
   }
   return job;
 }
@@ -160,7 +215,7 @@ export async function activeProjectJob(projectId: string) {
   const running = await db.generationJob.findFirst({
     where: { projectId, status: { in: ["queued", "running"] } },
     orderBy: { createdAt: "desc" },
-    select: { id: true, status: true },
+    select: { id: true, status: true, updatedAt: true },
   });
   if (!running) return null;
   const r = await reconcileOrphanedJob(running);

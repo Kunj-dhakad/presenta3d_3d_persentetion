@@ -1,11 +1,13 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { db } from "@/server/db/client";
 import { env } from "@/server/env";
 import { dataPath } from "@/server/storage/paths";
 import { storage } from "@/server/storage/storage";
 import { contentTypeFor } from "@/server/http/static";
-import { ensureRuntime } from "@/server/build/builder";
+import { ensureRuntime, prebuiltRuntime } from "@/server/build/builder";
 import { HttpError } from "@/server/http/errors";
 import { ensureDeckEngineCurrent } from "@/server/deck/upgrade";
 
@@ -23,32 +25,97 @@ export interface DeploymentProvider {
   undeploy(dep: { slug: string | null; externalId: string | null }): Promise<void>;
 }
 
-/** Collect a build plus the runtime into a deployable file list, rewriting runtime URLs to `runtimePrefix`. */
-export async function bundleForPublish(buildId: string, runtimePrefix: string): Promise<{ path: string; data: Buffer }[]> {
-  const runtime = await ensureRuntime();
+/** Files of the vendor runtime, from the prebuilt copy shipped with the deployment or from storage. */
+async function runtimeFiles(hash: string): Promise<{ path: string; data: Buffer }[]> {
   const files: { path: string; data: Buffer }[] = [];
-  for (const key of await storage().list(`previews/${buildId}/`)) {
-    const filePath = key.slice(`previews/${buildId}/`.length);
-    let data = await storage().get(key);
-    if (!data) throw new Error(`build artifact is missing: ${filePath}`);
-    if (/\.html?$/.test(filePath)) {
-      const html = Buffer.from(data)
-        .toString("utf8")
-        .split(`${runtime.base}/`)
-        .join(runtimePrefix)
-        .replace(/<script data-strata-shim>[\s\S]*?<\/script>\n?/, "");
-      data = Buffer.from(html, "utf8");
+  const prebuilt = prebuiltRuntime();
+  if (prebuilt?.hash === hash) {
+    for (const filePath of await listFiles(prebuilt.dir)) {
+      files.push({ path: filePath, data: await fs.readFile(path.join(/*turbopackIgnore: true*/ prebuilt.dir, ...filePath.split("/"))) });
     }
-    files.push({ path: filePath, data: Buffer.from(data) });
+    return files;
   }
-  for (const key of await storage().list(`runtime/${runtime.hash}/`)) {
-    const filePath = key.slice(`runtime/${runtime.hash}/`.length);
-    if (filePath === "manifest.json") continue;
+  for (const key of await storage().list(`runtime/${hash}/`)) {
+    const filePath = key.slice(`runtime/${hash}/`.length);
     const data = await storage().get(key);
     if (!data) throw new Error(`preview runtime artifact is missing: ${filePath}`);
-    files.push({ path: `_runtime/${filePath}`, data: Buffer.from(data) });
+    files.push({ path: filePath, data: Buffer.from(data) });
   }
   return files;
+}
+
+const persisted = new Map<string, Promise<void>>();
+/**
+ * Make sure the runtime with this hash is kept in storage, where
+ * /preview-runtime/<hash>/ can still serve it after a redeploy ships a newer
+ * runtime. Uploaded once per hash (manifest last, so a partial upload retries).
+ */
+export function persistRuntime(hash: string): Promise<void> {
+  let p = persisted.get(hash);
+  if (!p) {
+    p = (async () => {
+      if (await storage().get(`runtime/${hash}/manifest.json`)) return;
+      const files = await runtimeFiles(hash);
+      const manifest = files.find((f) => f.path === "manifest.json");
+      if (!manifest) throw new Error("preview runtime manifest is missing");
+      await forEachLimit(files.filter((f) => f !== manifest), 8, (f) => storage().put(`runtime/${hash}/${f.path}`, f.data, contentTypeFor(f.path)));
+      await storage().put(`runtime/${hash}/manifest.json`, manifest.data, "application/json");
+    })().catch((err) => {
+      persisted.delete(hash);
+      throw err;
+    });
+    persisted.set(hash, p);
+  }
+  return p;
+}
+
+/**
+ * Collect a build into a deployable file list.
+ * - `runtimePrefix` given: the runtime is copied in under that prefix (self-contained bundle for external hosts).
+ * - `runtimePrefix` null: the site keeps loading the shared runtime from /preview-runtime/<hash>/ (built-in hosting);
+ *   only the presentation's own few files are uploaded, which keeps publishing fast.
+ */
+export async function bundleForPublish(buildId: string, runtimePrefix: string | null): Promise<{ path: string; data: Buffer }[]> {
+  const runtime = await ensureRuntime();
+  const keys = await storage().list(`previews/${buildId}/`);
+  const files: { path: string; data: Buffer }[] = await Promise.all(
+    keys.map(async (key) => {
+      const filePath = key.slice(`previews/${buildId}/`.length);
+      let data = await storage().get(key);
+      if (!data) throw new Error(`build artifact is missing: ${filePath}`);
+      if (/\.html?$/.test(filePath)) {
+        let html = Buffer.from(data).toString("utf8").replace(/<script data-strata-shim>[\s\S]*?<\/script>\n?/, "");
+        if (runtimePrefix !== null) html = html.split(`${runtime.base}/`).join(runtimePrefix);
+        data = Buffer.from(html, "utf8");
+      }
+      return { path: filePath, data: Buffer.from(data) };
+    }),
+  );
+  if (runtimePrefix === null) return files;
+  for (const f of await runtimeFiles(runtime.hash)) {
+    if (f.path !== "manifest.json") files.push({ path: `_runtime/${f.path}`, data: f.data });
+  }
+  return files;
+}
+
+async function listFiles(dir: string, base = ""): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...(await listFiles(path.join(/*turbopackIgnore: true*/ dir, entry.name), rel)));
+    else if (entry.isFile()) out.push(rel);
+  }
+  return out;
+}
+
+/** Run `fn` over `items` with bounded concurrency (object-store uploads are network round trips). */
+async function forEachLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) await fn(items[next++]);
+    }),
+  );
 }
 
 export function siteDir(slug: string) {
@@ -69,8 +136,8 @@ class LocalDeploymentProvider implements DeploymentProvider {
       for (const f of files) {
         const rel = f.path.split("/");
         if (rel.some((part) => !part || part === "." || part === ".." || part.includes("\\"))) throw new Error("publish path escaped site directory");
-        await storage().put(`${prefix}${f.path}`, f.data, contentTypeFor(f.path));
       }
+      await forEachLimit(files, 8, (f) => storage().put(`${prefix}${f.path}`, f.data, contentTypeFor(f.path)));
     } catch (error) {
       await storage().deletePrefix(prefix).catch(() => {});
       throw error;
@@ -150,8 +217,12 @@ export async function publishProject(projectId: string) {
   });
   let deployedExternalId: string | null = null;
   try {
-    const prefix = provider.id === "local" ? `/sites/${slug}/_runtime/` : "/_runtime/";
-    const files = await bundleForPublish(project.lastWorkingBuildId, prefix);
+    let files: { path: string; data: Buffer }[];
+    if (provider.id === "local") {
+      // Built-in hosting shares one stored copy of the runtime between all sites.
+      await persistRuntime((await ensureRuntime()).hash);
+      files = await bundleForPublish(project.lastWorkingBuildId, null);
+    } else files = await bundleForPublish(project.lastWorkingBuildId, "/_runtime/");
     const r = await provider.deploy({ slug, name: project.name, files });
     deployedExternalId = r.externalId;
     if (existing && existing.provider !== "local" && existing.externalId && existing.externalId !== r.externalId) {

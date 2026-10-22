@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/build-preview-runtime.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
@@ -21,7 +21,8 @@
     "postinstall": "prisma generate --schema prisma/mysql/schema.prisma && prisma generate --schema prisma/test/schema.prisma",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "fix:tailwind": "node scripts/canonicalize-tailwind.mjs --write",
-    "check:tailwind": "node scripts/canonicalize-tailwind.mjs"
+    "check:tailwind": "node scripts/canonicalize-tailwind.mjs",
+    "build:runtime": "node scripts/build-preview-runtime.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

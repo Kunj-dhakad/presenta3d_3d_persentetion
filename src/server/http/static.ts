@@ -109,6 +109,32 @@ function fileResponse(file: string, body: Uint8Array, opts: { untrusted: boolean
   return new Response(new Uint8Array(body), { status: 200, headers });
 }
 
+// Small per-instance cache for immutable artifacts (preview builds and the
+// vendor runtime never change once written), so repeat loads skip the S3 round trip.
+const MEMO_MAX_BYTES = 48 * 1024 * 1024;
+const memo = new Map<string, Uint8Array>();
+let memoBytes = 0;
+
+async function getStored(key: string, cacheable: boolean): Promise<Uint8Array | null> {
+  const hit = cacheable ? memo.get(key) : undefined;
+  if (hit) {
+    memo.delete(key);
+    memo.set(key, hit); // LRU: move to the end
+    return hit;
+  }
+  const body = await storage().get(key);
+  if (body && cacheable && body.byteLength < 8 * 1024 * 1024) {
+    memo.set(key, body);
+    memoBytes += body.byteLength;
+    for (const [k, v] of memo) {
+      if (memoBytes <= MEMO_MAX_BYTES) break;
+      memo.delete(k);
+      memoBytes -= v.byteLength;
+    }
+  }
+  return body;
+}
+
 /** Serve generated artifacts from local disk or the configured object store. */
 export async function serveStoredFile(
   prefix: string,
@@ -119,15 +145,16 @@ export async function serveStoredFile(
     return new Response("Bad path", { status: 400 });
   }
   const base = prefix.replace(/\/+$/, "");
+  const cacheable = Boolean(opts.immutable);
   let rel = segments.length ? segments.join("/") : "index.html";
-  let body = await storage().get(`${base}/${rel}`);
+  let body = await getStored(`${base}/${rel}`, cacheable);
   if (!body && !/\.[a-z0-9]+$/i.test(rel)) {
-    body = await storage().get(`${base}/${rel}/index.html`);
+    body = await getStored(`${base}/${rel}/index.html`, cacheable);
     if (body) rel = `${rel}/index.html`;
   }
   if (!body && opts.fallbackIndex && !/\.[a-z0-9]+$/i.test(rel)) {
     rel = "index.html";
-    body = await storage().get(`${base}/${rel}`);
+    body = await getStored(`${base}/${rel}`, cacheable);
   }
   if (!body) return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
   return fileResponse(rel, body, opts);

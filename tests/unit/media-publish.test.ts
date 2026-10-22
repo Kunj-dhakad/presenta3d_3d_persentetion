@@ -4,8 +4,8 @@ import { startMediaJob } from "@/server/services/media";
 import { mediaProviderStatus } from "@/server/media/providers";
 import { storage } from "@/server/storage/storage";
 import { createProject } from "@/server/services/projects";
-import { buildProject } from "@/server/build/builder";
-import { publishProject, unpublishProject } from "@/server/publish/publish";
+import { buildProject, ensureRuntime } from "@/server/build/builder";
+import { bundleForPublish, publishProject, unpublishProject } from "@/server/publish/publish";
 import { GET as previewGET } from "@/app/preview/[buildId]/[[...path]]/route";
 import { GET as sitesGET } from "@/app/sites/[slug]/[[...path]]/route";
 import { EXAMPLE_PROJECTS } from "@/server/examples";
@@ -68,7 +68,7 @@ describe("preview serving and publishing", () => {
     expect(badId.status).toBe(404);
   }, 120_000);
 
-  it("publishes a self-contained site locally, re-publishes, and unpublishes", async () => {
+  it("publishes a site locally on the shared runtime, re-publishes, and unpublishes", async () => {
     const u = await createUser();
     const ex = EXAMPLE_PROJECTS.find((e) => e.id === "saas-landing")!;
     const p = await createProject(u.id, { name: "Pub Test", category: ex.category, framework: ex.framework, files: ex.files() });
@@ -80,10 +80,17 @@ describe("preview serving and publishing", () => {
     const sitePrefix = `sites/${d.slug}/${d.externalId}`;
     const htmlBytes = await storage().get(`${sitePrefix}/index.html`);
     const html = Buffer.from(htmlBytes!).toString("utf8");
-    expect(html).toContain(`/sites/${d.slug}/_runtime/react.js`);
-    expect(html).not.toContain("/preview-runtime/");
+    // Built-in hosting loads the shared runtime, kept in storage so it outlives redeploys.
+    const { hash } = await ensureRuntime();
+    expect(html).toContain(`/preview-runtime/${hash}/react.js`);
     expect(html).not.toContain("data-strata-shim");
-    expect(await storage().get(`${sitePrefix}/_runtime/react.js`)).toBeTruthy();
+    expect(await storage().get(`${sitePrefix}/_runtime/react.js`)).toBeNull();
+    expect(await storage().get(`runtime/${hash}/react.js`)).toBeTruthy();
+    expect(await storage().get(`runtime/${hash}/manifest.json`)).toBeTruthy();
+    // A self-contained bundle (external hosts) still carries the runtime.
+    const bundle = await bundleForPublish(d.buildId!, "/_runtime/");
+    expect(bundle.some((f) => f.path === "_runtime/react.js")).toBe(true);
+    expect(Buffer.from(bundle.find((f) => f.path === "index.html")!.data).toString("utf8")).toContain("/_runtime/react.js");
     const res = await sitesGET(new Request("http://x/"), { params: Promise.resolve({ slug: d.slug!, path: ["pricing"] }) });
     expect(res.status).toBe(200); // SPA fallback to index.html
     expect(res.headers.get("content-security-policy")).toMatch(/^sandbox/);

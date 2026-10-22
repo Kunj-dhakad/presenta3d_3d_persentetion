@@ -47,6 +47,11 @@ export function mapOpenAIError(err: unknown): AIError {
   return new AIError("UPSTREAM", err instanceof Error ? err.message.slice(0, 300) : "Unknown OpenAI error");
 }
 
+/** Reasoning-capable OpenAI model families accept a `reasoning` parameter; others reject it. */
+export function supportsReasoning(model: string): boolean {
+  return /^(gpt-5|od)/i.test(model) && !/-chat/i.test(model);
+}
+
 export class OpenAITextProvider implements TextModelProvider {
   readonly name = "openai";
   readonly model: string;
@@ -80,6 +85,7 @@ export class OpenAITextProvider implements TextModelProvider {
           input: req.input,
           max_output_tokens: req.maxOutputTokens ?? 32_000,
           text: { format: zodTextFormat(req.schema, req.schemaName) },
+          ...(req.reasoningEffort && supportsReasoning(this.model) ? { reasoning: { effort: req.reasoningEffort } } : {}),
           store: false,
         },
         { signal: req.signal },

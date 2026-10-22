@@ -1,7 +1,7 @@
 import "server-only";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { db } from "@/server/db/client";
 import { dataPath } from "@/server/storage/paths";
@@ -13,27 +13,31 @@ import type { Framework } from "@/lib/schemas/project";
 import { assertProjectPath } from "@/lib/vfs/paths";
 import { filesDigest } from "@/server/vfs/digest";
 import { previewUrlFor } from "./urls";
+import { importMap } from "../../../preview-runner/registry.mjs";
+import { PREBUILT_RUNTIME_DIR, runtimeHash } from "../../../preview-runner/runtime-hash.mjs";
+import { validateDeck } from "@/lib/schemas/deck";
+import { deckToProjectFiles } from "@/server/deck/codegen";
 
 // ─── Preview runtime (allowlisted vendor packages) ───────────────────────
 
 let runtimePromise: Promise<{ hash: string; base: string }> | null = null;
 
-function runtimeHash(): string {
-  const h = createHash("sha256");
-  h.update(readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "preview-runner", "registry.mjs")));
-  for (const pkg of ["react", "react-dom", "three", "@react-three/fiber", "@react-three/drei", "gsap", "motion", "zustand", "lucide-react", "d3"]) {
-    try {
-      const pj = JSON.parse(readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "node_modules", pkg, "package.json"), "utf8")) as { version: string };
-      h.update(`${pkg}@${pj.version};`);
-    } catch {
-      h.update(`${pkg}@missing;`);
-    }
-  }
-  return h.digest("hex").slice(0, 16);
-}
+const appRoot = () => /*turbopackIgnore: true*/ process.cwd();
 
-export function runtimeDir(hash: string) {
-  return dataPath("runtime", hash);
+/**
+ * The runtime prebuilt by `npm run build` (scripts/build-preview-runtime.mjs)
+ * and shipped with the deployment. Serverless hosts have no writable app
+ * directory and no node_modules at runtime, so this is the production path.
+ */
+export function prebuiltRuntime(): { hash: string; dir: string } | null {
+  try {
+    const { hash } = JSON.parse(readFileSync(path.join(/*turbopackIgnore: true*/ appRoot(), PREBUILT_RUNTIME_DIR, "current.json"), "utf8")) as { hash: string };
+    if (!/^[a-f0-9]{16}$/.test(hash)) return null;
+    const dir = path.join(/*turbopackIgnore: true*/ appRoot(), PREBUILT_RUNTIME_DIR, hash);
+    return existsSync(path.join(/*turbopackIgnore: true*/ dir, "manifest.json")) ? { hash, dir } : null;
+  } catch {
+    return null;
+  }
 }
 
 async function walkFiles(dir: string, base = ""): Promise<{ path: string; abs: string }[]> {
@@ -50,7 +54,10 @@ async function walkFiles(dir: string, base = ""): Promise<{ path: string; abs: s
 export async function ensureRuntime(): Promise<{ hash: string; base: string }> {
   if (!runtimePromise) {
     runtimePromise = (async () => {
-      const hash = runtimeHash();
+      const prebuilt = prebuiltRuntime();
+      if (prebuilt) return { hash: prebuilt.hash, base: `/preview-runtime/${prebuilt.hash}` };
+      // Development fallback: bundle the runtime once and keep it in storage.
+      const hash = runtimeHash(appRoot());
       const prefix = `runtime/${hash}/`;
       if (!(await storage().get(`${prefix}manifest.json`))) {
         const outDir = dataPath("work", `runtime-${hash}-${randomBytes(5).toString("hex")}`);
@@ -73,6 +80,53 @@ export async function ensureRuntime(): Promise<{ hash: string; base: string }> {
     });
   }
   return runtimePromise;
+}
+
+// ─── Presentation builds (in-process) ────────────────────────────────────
+
+let shimCache: string | null = null;
+function shim() {
+  return (shimCache ??= readFileSync(path.join(/*turbopackIgnore: true*/ appRoot(), "preview-runner", "shim.js"), "utf8"));
+}
+
+/** Same head injection as preview-runner/build-worker.mjs. */
+function injectHead(html: string, runtimeBase: string) {
+  const injection =
+    `<meta charset="utf-8">\n` +
+    `<script type="importmap">${JSON.stringify(importMap(runtimeBase))}</script>\n` +
+    `<script data-strata-shim>${shim()}</script>\n`;
+  html = html.replace(/<script[^>]*type=["']importmap["'][^>]*>[\s\S]*?<\/script>/gi, "");
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}\n${injection}`);
+  return `<!doctype html>\n<html><head>\n${injection}</head><body>\n${html}\n</body></html>`;
+}
+
+/**
+ * True when the file set is exactly what the presentation engine generates
+ * from its deck.json. Such projects contain no model-written code, so they
+ * need no bundling or validation and are built in-process in a few ms
+ * (no esbuild child process, which serverless hosts cannot always spawn).
+ */
+export function isGeneratedDeck(files: { path: string; content: string }[]): boolean {
+  const deckFile = files.find((f) => f.path === "deck.json");
+  if (!deckFile) return false;
+  try {
+    const v = validateDeck(JSON.parse(deckFile.content));
+    if (!v.ok) return false;
+    const expected = deckToProjectFiles(v.deck);
+    const current = new Map(files.map((f) => [f.path, f.content]));
+    return (
+      expected.length === files.length &&
+      expected.every((f) => (f.path === "deck.json" ? current.has("deck.json") : current.get(f.path) === f.content))
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function buildDeckInProcess(files: { path: string; content: string }[], runtimeBase: string): Promise<WorkerResult> {
+  const t0 = Date.now();
+  const out = files.map((f) => (/\.html?$/.test(f.path) ? { path: f.path, content: injectHead(f.content, runtimeBase) } : f));
+  return { ok: true, errors: [], warnings: [], files: out, durationMs: Date.now() - t0 };
 }
 
 // ─── Project builds ──────────────────────────────────────────────────────
@@ -98,12 +152,16 @@ export async function buildProject(input: {
 }): Promise<BuildSummary> {
   const buildId = randomBytes(18).toString("base64url");
   const digest = filesDigest(input.files);
-  await db.build.create({ data: { id: buildId, projectId: input.projectId, status: "building", versionDigest: digest } });
+  // The build row is written while the build runs (each query is a network round trip).
+  const created = db.build.create({ data: { id: buildId, projectId: input.projectId, status: "building", versionDigest: digest } });
+  created.catch(() => {}); // awaited below
 
   let result: WorkerResult;
   try {
     const runtime = await ensureRuntime();
-    result = await runWorker<WorkerResult>({ mode: "project", framework: input.framework, files: input.files, runtimeBase: runtime.base }, { timeoutMs: 45_000 });
+    result = isGeneratedDeck(input.files)
+      ? await buildDeckInProcess(input.files, runtime.base)
+      : await runWorker<WorkerResult>({ mode: "project", framework: input.framework, files: input.files, runtimeBase: runtime.base }, { timeoutMs: 45_000 });
   } catch (err) {
     const message = err instanceof WorkerError || err instanceof Error ? err.message : "build failed";
     result = { ok: false, errors: [{ severity: "error", file: "", line: 0, column: 0, message, source: "worker" }], warnings: [], files: [], durationMs: 0 };
@@ -111,10 +169,13 @@ export async function buildProject(input: {
 
   if (result.ok) {
     try {
-      for (const f of result.files) {
-        const rel = assertProjectPath(f.path);
-        await storage().put(`previews/${buildId}/${rel}`, Buffer.from(f.content, "utf8"), contentTypeFor(rel));
-      }
+      // Upload in parallel: with S3 each put is a network round trip.
+      await Promise.all(
+        result.files.map((f) => {
+          const rel = assertProjectPath(f.path);
+          return storage().put(`previews/${buildId}/${rel}`, Buffer.from(f.content, "utf8"), contentTypeFor(rel));
+        }),
+      );
     } catch (err) {
       result = {
         ...result,
@@ -125,14 +186,17 @@ export async function buildProject(input: {
   }
 
   const status = result.ok ? "succeeded" : "failed";
-  await db.build.update({
-    where: { id: buildId },
-    data: { status, errors: result.errors, warnings: result.warnings, durationMs: result.durationMs },
-  });
-  await db.project.update({
-    where: { id: input.projectId },
-    data: { lastBuildId: buildId, lastBuildStatus: status, ...(result.ok ? { lastWorkingBuildId: buildId } : {}) },
-  });
+  await created;
+  await Promise.all([
+    db.build.update({
+      where: { id: buildId },
+      data: { status, errors: result.errors, warnings: result.warnings, durationMs: result.durationMs },
+    }),
+    db.project.update({
+      where: { id: input.projectId },
+      data: { lastBuildId: buildId, lastBuildStatus: status, ...(result.ok ? { lastWorkingBuildId: buildId } : {}) },
+    }),
+  ]);
   if (result.ok) void pruneBuilds(input.projectId).catch(() => {});
 
   return {

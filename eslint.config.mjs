@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Local runtime data, test fixtures, previews, bundled preview runtime and generated code
     ".data/**",
+    "preview-runtime-dist/**",
     "src/generated/**",
     "test-results/**",
     "playwright-report/**",

@@ -12,6 +12,8 @@ export type StructuredRequest<T extends z.ZodType> = {
   system: string;
   input: string;
   maxOutputTokens?: number;
+  /** Reasoning effort for reasoning models (ignored by models without reasoning). Lower is faster. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
   signal?: AbortSignal;
   /** Called as output streams in, with the number of characters received so far. */
   onProgress?: (receivedChars: number) => void;

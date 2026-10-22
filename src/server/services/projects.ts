@@ -40,8 +40,8 @@ export async function getFiles(projectId: string): Promise<FileSet> {
   return rows;
 }
 
-/** Replace the project's file set atomically. */
-export async function writeFileSet(projectId: string, files: FileSet) {
+/** Replace the project's file set atomically, optionally updating project fields in the same transaction. */
+export async function writeFileSet(projectId: string, files: FileSet, projectData: Prisma.ProjectUpdateInput = {}) {
   const valid = validateFileSet(files);
   const rows = valid.map((f) => ({ projectId, path: f.path, content: f.content, size: byteLength(f.content) }));
 
@@ -52,7 +52,7 @@ export async function writeFileSet(projectId: string, files: FileSet) {
     async (tx) => {
       await tx.projectFile.deleteMany({ where: { projectId } });
       if (rows.length) await tx.projectFile.createMany({ data: rows });
-      await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } });
+      await tx.project.update({ where: { id: projectId }, data: { ...projectData, updatedAt: new Date() } });
     },
     { maxWait: 5_000, timeout: 15_000 },
   );
@@ -83,7 +83,8 @@ export async function snapshot(projectId: string, kind: VersionKind, opts: { lab
     },
     select: { id: true },
   });
-  await pruneAutoVersions(projectId);
+  // Housekeeping is not on the critical path.
+  void pruneAutoVersions(projectId).catch(() => {});
   return { id: v.id, created: true };
 }
 

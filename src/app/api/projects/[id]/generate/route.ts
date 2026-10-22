@@ -4,11 +4,11 @@ import { api, HttpError, readJson } from "@/server/http/api";
 import { getOwnedProject } from "@/server/services/projects";
 import { getTextProvider } from "@/server/ai/provider";
 import { AIError } from "@/server/ai/types";
-import { activeProjectJob, startJob } from "@/server/jobs/runner";
-// Presentation mode: chat generates 3D presentations (DeckSpec → presentation engine).
-// The general code-generation pipeline (`runProjectPipeline` in @/server/pipeline/generate)
-// is kept in the codebase but not wired to the UI in this simplified product.
-import { runDeckPipeline } from "@/server/deck/pipeline";
+import { activeProjectJob, createDeferredJob } from "@/server/jobs/runner";
+import type { DeckJobInput } from "@/server/jobs/deferred";
+// Presentation mode: chat generates 3D presentations (DeckSpec → presentation engine,
+// run by @/server/jobs/deferred). The general code-generation pipeline
+// (`runProjectPipeline` in @/server/pipeline/generate) is kept but not wired to the UI.
 import { env } from "@/server/env";
 
 const Body = z.object({
@@ -54,31 +54,17 @@ export const POST = api<{ id: string }>(
     const fileCount = await db.projectFile.count({ where: { projectId: project.id } });
     const kind = body.mode === "repair" ? "project-repair" : fileCount ? "project-edit" : "project-generate";
     const conversationId = conversation.id;
-    const startedAt = new Date();
-    const jobId = await startJob(
-      { userId: user.id, projectId: project.id, kind, provider: provider.name, model: provider.model, input: { prompt: body.prompt.slice(0, 2000), mode: body.mode, conversationId } },
-      (ctx) =>
-        runDeckPipeline(ctx, provider, {
-          userId: user.id,
-          projectId: project.id,
-          conversationId,
-          prompt: body.prompt,
-          mode: body.mode,
-          runtimeErrors: body.runtimeErrors,
-        }).catch(async (err) => {
-          // Record the failure in the conversation so it is visible after reload.
-          const message = err instanceof Error ? err.message : "Generation failed";
-          const pre = await db.projectVersion.findFirst({
-            where: { projectId: project.id, kind: "pre-ai", createdAt: { gte: startedAt } },
-            orderBy: { createdAt: "desc" },
-            select: { id: true },
-          });
-          await db.chatMessage
-            .create({ data: { conversationId, role: "assistant", content: `Generation failed: ${message}`, meta: { jobId: ctx.jobId, error: true, preVersionId: pre?.id ?? null } } })
-            .catch(() => {});
-          throw err;
-        }),
-    );
+    // The job runs when the client opens /api/jobs/[id]/events (see createDeferredJob),
+    // so it stays alive on serverless hosts that freeze after the response.
+    const input: DeckJobInput = {
+      runner: "deck",
+      prompt: body.prompt,
+      mode: body.mode,
+      conversationId,
+      runtimeErrors: body.runtimeErrors,
+      startedAt: new Date().toISOString(),
+    };
+    const jobId = await createDeferredJob({ userId: user.id, projectId: project.id, kind, provider: provider.name, model: provider.model, input });
     await db.chatMessage.update({ where: { id: userMessage.id }, data: { meta: { mode: body.mode, jobId } } });
     return { jobId, conversationId, userMessageId: userMessage.id };
   },

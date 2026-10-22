@@ -51,11 +51,15 @@ async function conversation(conversationId: string) {
  * the deterministic engine turns it into a runnable project.
  */
 export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvider, input: PipelineInput): Promise<PipelineResult> {
-  const project = await db.project.findUniqueOrThrow({ where: { id: input.projectId } });
-  const files = toFileMap(await getFiles(input.projectId));
+  // Independent reads run in parallel: each one is a network round trip to the database.
+  const [project, fileList, history] = await Promise.all([
+    db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
+    getFiles(input.projectId),
+    conversation(input.conversationId),
+  ]);
+  const files = toFileMap(fileList);
   const existing = currentDeck(files);
-  const history = await conversation(input.conversationId);
-  const pre = files.size ? await snapshot(input.projectId, "pre-ai", { summary: `Before: ${input.prompt.slice(0, 100)}` }) : null;
+  const pre = files.size ? await snapshot(input.projectId, "pre-ai", { summary: `Before: ${input.prompt.slice(0, 100)}`, files: fileList }) : null;
 
   ctx.emit({ type: "stage", stage: "understand", state: "start" });
   ctx.emit({ type: "understanding", text: existing ? `Updating your presentation: ${input.prompt.slice(0, 160)}` : `Designing a 3D presentation: ${input.prompt.slice(0, 160)}` });
@@ -80,6 +84,8 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
           .filter(Boolean)
           .join("\n\n"),
         maxOutputTokens: 16_000,
+        // Writing slide copy needs little deliberation; low effort roughly halves generation time.
+        reasoningEffort: "low",
         signal: ctx.signal,
         userId: input.userId,
         jobId: ctx.jobId,
@@ -118,15 +124,12 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     changed.push(c);
     ctx.emit({ type: "file", ...c });
   }
-  await writeFileSet(input.projectId, nextFiles);
-  await db.project.update({
-    where: { id: input.projectId },
-    data: {
-      name: project.name === "Untitled project" || project.name === "Untitled presentation" ? deck.title.slice(0, 120) : project.name,
-      description: deck.slides[0]?.subtitle.slice(0, 500) ?? "",
-      category: "presentation",
-      framework: "three",
-    },
+  // The project's metadata is updated inside the same transaction as its files.
+  await writeFileSet(input.projectId, nextFiles, {
+    name: project.name === "Untitled project" || project.name === "Untitled presentation" ? deck.title.slice(0, 120) : project.name,
+    description: deck.slides[0]?.subtitle.slice(0, 500) ?? "",
+    category: "presentation",
+    framework: "three",
   });
 
   ctx.emit({ type: "stage", stage: "build", state: "start" });
@@ -135,21 +138,23 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
   ctx.emit({ type: "stage", stage: "build", state: build.status === "succeeded" ? "done" : "failed", detail: build.status === "succeeded" ? `${build.durationMs} ms` : formatDiagnostic(build.errors[0]) });
 
   ctx.emit({ type: "stage", stage: "finalize", state: "start" });
-  const post = changed.length ? await snapshot(input.projectId, "ai", { summary: `${deck.title} (${deck.slides.length} slides)` }) : null;
+  const post = changed.length ? await snapshot(input.projectId, "ai", { summary: `${deck.title} (${deck.slides.length} slides)`, files: nextFiles }) : null;
   if (post && build.status === "succeeded") await markWorkingVersion(input.projectId, post.id);
   const buildStatus = build.status === "succeeded" ? ("succeeded" as const) : ("failed" as const);
   const summary = existing
     ? `Updated “${deck.title}” — ${deck.slides.length} slides.`
     : `Created “${deck.title}” — ${deck.slides.length} slides with 3D scenes. Use the arrow keys or click to move through it.`;
-  const message = await db.chatMessage.create({
-    data: {
-      conversationId: input.conversationId,
-      role: "assistant",
-      content: buildStatus === "failed" ? `${summary} The preview could not be built: ${formatDiagnostic(build.errors[0])}` : summary,
-      meta: { jobId: ctx.jobId, changedFiles: changed, preVersionId: pre?.id ?? null, postVersionId: post?.id ?? null, buildStatus, buildId: build.buildId, slides: deck.slides.length } as Prisma.InputJsonValue,
-    },
-  });
-  await db.conversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } });
+  const [message] = await Promise.all([
+    db.chatMessage.create({
+      data: {
+        conversationId: input.conversationId,
+        role: "assistant",
+        content: buildStatus === "failed" ? `${summary} The preview could not be built: ${formatDiagnostic(build.errors[0])}` : summary,
+        meta: { jobId: ctx.jobId, changedFiles: changed, preVersionId: pre?.id ?? null, postVersionId: post?.id ?? null, buildStatus, buildId: build.buildId, slides: deck.slides.length } as Prisma.InputJsonValue,
+      },
+    }),
+    db.conversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } }),
+  ]);
   const result: PipelineResult = {
     summary,
     changedFiles: changed.map((c) => c.path),
