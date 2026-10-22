@@ -1,12 +1,9 @@
-// Strata database schema.
-// This file targets SQLite for local development. `npm run db:use-postgres`
-// derives prisma/postgres/schema.prisma from it for production PostgreSQL.
-// Enumerated values are stored as strings and validated with Zod in
-// src/server/domain/enums.ts so both providers behave identically.
+// Isolated SQLite fixture schema used only by Vitest.
+// The application runtime uses the canonical RDS MySQL schema in prisma/mysql.
 
 generator client {
   provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  output   = "../../src/generated/test-prisma"
 }
 
 datasource db {

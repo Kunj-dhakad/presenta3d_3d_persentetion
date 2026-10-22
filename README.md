@@ -31,12 +31,14 @@ Requirements: **Node.js 22.12+ (tested on 24.18 LTS)** and npm 11.
 ```bash
 npm install                 # also runs `prisma generate`
 cp .env.example .env        # then edit .env (see below)
-npm run db:deploy           # create the SQLite database
+npm run db:deploy           # apply the MySQL schema to configured AWS RDS
 npm run db:seed             # optional: example projects, scenes and a canvas
 npm run dev                 # http://localhost:3000
 ```
 
-npm 11 blocks dependency install scripts by default. This repo's `package.json` → `allowScripts` already approves the four that need native builds (`esbuild`, `better-sqlite3`, `prisma`, `@prisma/engines`). If an install reports pending scripts, review them with `npm approve-scripts --allow-scripts-pending`.
+npm 11 blocks dependency install scripts by default. This repo's `package.json` → `allowScripts` already approves the native build scripts used by the app and isolated unit-test fixture (`esbuild`, `better-sqlite3`, `prisma`, `@prisma/engines`). If an install reports pending scripts, review them with `npm approve-scripts --allow-scripts-pending`.
+
+The application requires the RDS MySQL variables in `.env` for local development and deployment. Escape literal `$` characters as `\$` in `.env` values; Next.js expands `$NAME` references when it loads env files. SQLite is isolated to the Vitest test fixture; the application server has no SQLite or PostgreSQL fallback.
 
 ### No sign-in by default
 
@@ -73,11 +75,10 @@ Without a key the app still works for everything except AI generation, and it sa
 | `npm run typecheck` | Route type generation + `tsc --noEmit` |
 | `npm run lint` | ESLint (Next.js + React Compiler rules) |
 | `npm test` | Unit/integration tests (Vitest, offline, isolated temp DB per file) |
-| `npm run test:e2e` | Playwright acceptance tests against the **production build** (`npm run build` first) |
+| `npm run test:e2e` | Playwright acceptance tests against the **production build** (`npm run build` first); requires a separate disposable RDS DB in `E2E_MYSQL_DATABASE` |
 | `npm run test:openai` | Optional live tests against your real OpenAI key (skipped without one; costs a few cents) |
 | `npm run check:schemas` | Verifies every AI response schema converts to a strict JSON schema |
 | `npm run db:migrate` / `db:deploy` / `db:seed` | Prisma migrations and seed data |
-| `npm run db:use-postgres` | Regenerates `prisma/postgres/schema.prisma` from the SQLite schema |
 | `npm run verify` | typecheck → lint → tests → build |
 
 ---
@@ -133,7 +134,7 @@ src/
     services/             projects, versions, canvas, share links, media jobs
     auth/  http/  env.ts  sessions, API wrapper (CSRF, auth, rate limits, size limits), config
 preview-runner/           isolated build worker, runtime allowlist, preview shim
-prisma/                   SQLite schema + migrations; postgres/ derived schema + migrations; seed
+prisma/                   RDS MySQL schema + migrations; isolated SQLite test fixture; seed
 tests/unit  tests/e2e  tests/integration
 ```
 
@@ -156,7 +157,7 @@ Data model (Prisma): `User, Session, Project, ProjectFile, ProjectVersion, Build
 
 ### AWS Amplify Hosting
 
-This repository includes `amplify.yml`. Add the production values under Amplify Console → **Hosting → Environment variables**; the build spec forwards the app's server-side settings into Next.js so the SSR runtime can read them. At minimum, configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `APP_ORIGIN`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `STORAGE_DRIVER=s3`, `KD_AWS_S3_BUCKET_NAME`, and `KD_AWS_REGION`. Add the `KD_AWS_ACCESS_KEY_ID` and `KD_AWS_SECRET_ACCESS_KEY` values if using the current S3 credential setup. Redeploy after adding or changing variables. Production now stops with a clear configuration error if neither RDS MySQL nor PostgreSQL is configured; it will not silently create an ephemeral SQLite database.
+This repository includes `amplify.yml`. Add the production values under Amplify Console → **Hosting → Environment variables**; the build spec forwards the app's server-side settings into Next.js so the SSR runtime can read them. At minimum, configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `APP_ORIGIN`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `STORAGE_DRIVER=s3`, `KD_AWS_S3_BUCKET_NAME`, and `KD_AWS_REGION`. Add the `KD_AWS_ACCESS_KEY_ID` and `KD_AWS_SECRET_ACCESS_KEY` values if using the current S3 credential setup. Redeploy after adding or changing variables. The app requires RDS MySQL and cannot fall back to SQLite or PostgreSQL.
 
 AWS warns that secrets written into `.env.production` may be readable to people with access to deployment artifacts, and recommends IAM roles for AWS resource access. Restrict artifact access and plan to replace static S3 keys with an execution role where supported. Also check Amplify's current Next.js SSR support before deploying: AWS currently documents support for Next.js 12 through 15, while this project is on Next.js 16.
 
@@ -165,7 +166,7 @@ AWS warns that secrets written into `.env.production` may be readable to people 
    npm run db:deploy                             # uses MYSQL_* when MYSQL_HOST is set
    npm run db:generate
    ```
-   Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. SQLite is for local development only; PostgreSQL can still be selected with a PostgreSQL `DATABASE_URL`.
+   Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. The application has no SQLite/PostgreSQL runtime adapter.
 2. **Required env**: `NODE_ENV=production`, `APP_ORIGIN`, `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. `AUTH_MODE` defaults to `local`; set it to `accounts` only when sign-in is wanted. `SESSION_SECRET` (≥ 32 random chars) is needed for accounts. Leave `AI_PROVIDER` unset (`mock` is refused in production).
 3. **Storage**: `STORAGE_DRIVER=s3` with `KD_AWS_S3_BUCKET_NAME`, `KD_AWS_REGION`, `KD_AWS_ACCESS_KEY_ID`, and `KD_AWS_SECRET_ACCESS_KEY` (legacy `S3_*` names are also supported). All S3 objects are grouped under the `3dpresentation/` key prefix. Media, build previews, shared runtimes, and published site artifacts are stored in the configured bucket; project records and source files remain in RDS. The bucket can stay private because the app serves artifacts through its routes.
 4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.strata-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
@@ -185,7 +186,7 @@ AWS warns that secrets written into `.env.production` may be readable to people 
 | React / React DOM | 19.3.0 |
 | TypeScript | 5.9.3 (strict) |
 | Tailwind CSS | 4.3.3 · shadcn/ui CLI 4.22.1 (Radix, "nova") · lucide-react 1.61.0 |
-| Prisma | 7.10.1 (stable; 8.x was RC only) with better-sqlite3 12.11.1 / pg 8.23.1 adapters |
+| Prisma | 7.10.1 (stable; 8.x was RC only) with Prisma MariaDB adapter; SQLite adapter is test-only |
 | OpenAI SDK | 7.39.0 (Responses API, `zodTextFormat`) · Zod 4.6.7 |
 | three / R3F / drei | 0.186.1 / 9.8.2 / 10.7.9 · gsap 3.15.0 · motion 14.5.0 |
 | Monaco | monaco-editor 0.57.0 (self-hosted) · @monaco-editor/react 4.7.0 |

@@ -6,7 +6,7 @@ import { serializeProject } from "@/server/services/serialize";
 import { Framework, ProjectCategory } from "@/lib/schemas/project";
 import { EXAMPLE_PROJECTS, starterFiles } from "@/server/examples";
 import { audit } from "@/server/audit";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 
 export const GET = api(async ({ req, user }) => {
   const url = new URL(req.url);

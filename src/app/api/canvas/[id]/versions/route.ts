@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/server/db/client";
 import { api, readJson } from "@/server/http/api";
 import { getOwnedCanvas, snapshotCanvas } from "@/server/services/canvas";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 
 type P = { id: string };
 

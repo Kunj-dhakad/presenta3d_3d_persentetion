@@ -1,5 +1,5 @@
 import "server-only";
-import type { Project } from "@/generated/prisma/client";
+import type { Project } from "@/generated/mysql-prisma/client";
 import { previewUrlFor } from "@/server/build/urls";
 
 export function serializeProject(p: Project & { _count?: { files: number } }) {

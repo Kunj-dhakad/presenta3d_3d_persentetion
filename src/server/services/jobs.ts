@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/server/db/client";
 import { notFound } from "@/server/http/errors";
 import { reconcileOrphanedJob } from "@/server/jobs/runner";
-import type { GenerationJob } from "@/generated/prisma/client";
+import type { GenerationJob } from "@/generated/mysql-prisma/client";
 
 export async function getOwnedJob(userId: string, id: string) {
   const job = await db.generationJob.findFirst({ where: { id, userId } });

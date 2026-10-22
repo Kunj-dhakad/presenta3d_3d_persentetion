@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@/server/db/client": path.resolve(import.meta.dirname, "tests/support/db-client.ts"),
       "@": path.resolve(import.meta.dirname, "src"),
       // `server-only` throws outside the react-server condition; tests import server modules directly.
       "server-only": path.resolve(import.meta.dirname, "tests/support/empty.ts"),

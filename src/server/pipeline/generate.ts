@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db/client";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 import { env } from "@/server/env";
 import type { JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";

@@ -39,7 +39,6 @@ const schema = z.object({
   AI_PROVIDER: z.enum(["openai", "mock"]).default("openai"),
   /** local = shared single-user workspace without sign-in; accounts = email/password sign-in. */
   AUTH_MODE: z.enum(["local", "accounts"]).optional(),
-  DATABASE_URL: z.string().default("file:./.data/strata.db"),
   MYSQL_HOST: optionalString,
   MYSQL_PORT: intWithDefault(3306, 1, 65535),
   MYSQL_DATABASE: optionalString,

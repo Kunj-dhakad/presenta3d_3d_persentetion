@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db/client";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 import type { JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import { DeckSpecSchema, SCENE_KINDS, SCENE_KIND_HINTS, validateDeck, type DeckSpec } from "@/lib/schemas/deck";

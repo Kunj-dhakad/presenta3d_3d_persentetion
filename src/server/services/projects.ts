@@ -5,7 +5,7 @@ import { filesDigest } from "@/server/vfs/digest";
 import { VFS_LIMITS, assertProjectPath, byteLength } from "@/lib/vfs/paths";
 import type { ProjectCategory, Framework } from "@/lib/schemas/project";
 import { removeProjectBuilds } from "@/server/build/builder";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 
 export type FileSet = { path: string; content: string }[];
 
@@ -43,18 +43,19 @@ export async function getFiles(projectId: string): Promise<FileSet> {
 /** Replace the project's file set atomically. */
 export async function writeFileSet(projectId: string, files: FileSet) {
   const valid = validateFileSet(files);
-  const keep = valid.map((f) => f.path);
-  await db.$transaction([
-    db.projectFile.deleteMany({ where: { projectId, path: { notIn: keep } } }),
-    ...valid.map((f) =>
-      db.projectFile.upsert({
-        where: { projectId_path: { projectId, path: f.path } },
-        create: { projectId, path: f.path, content: f.content, size: byteLength(f.content) },
-        update: { content: f.content, size: byteLength(f.content) },
-      }),
-    ),
-    db.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } }),
-  ]);
+  const rows = valid.map((f) => ({ projectId, path: f.path, content: f.content, size: byteLength(f.content) }));
+
+  // Replacing files with one upsert per file can create hundreds of sequential
+  // statements. On a remote RDS connection that can outlive Prisma's 5s default
+  // transaction timeout. Keep the replacement atomic, but use a bulk insert.
+  await db.$transaction(
+    async (tx) => {
+      await tx.projectFile.deleteMany({ where: { projectId } });
+      if (rows.length) await tx.projectFile.createMany({ data: rows });
+      await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } });
+    },
+    { maxWait: 5_000, timeout: 15_000 },
+  );
 }
 
 export type VersionKind = "auto" | "checkpoint" | "pre-ai" | "ai" | "restore" | "import";

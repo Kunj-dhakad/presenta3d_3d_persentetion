@@ -12,7 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Runtime data (sqlite, previews, bundled preview runtime) and generated code
+    // Local runtime data, test fixtures, previews, bundled preview runtime and generated code
     ".data/**",
     "src/generated/**",
     "test-results/**",

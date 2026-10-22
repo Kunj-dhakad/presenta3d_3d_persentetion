@@ -89,7 +89,7 @@ _Last updated: 2026-10-21. Verified on Windows 11, Node 24.18.0, npm 11.16.0, Ne
 
 **Settings.** Integration status without secrets; usage table with tokens, latency, request IDs and estimated cost.
 
-**Data.** Prisma 7 schema covering every required model plus Session, Build, CanvasVersion, Deployment and AuditLog. SQLite migrations; PostgreSQL schema and migration derived from it (offline-generated SQL); idempotent seed.
+**Data.** Prisma 7 RDS MySQL schema covering every model plus Session, Build, CanvasVersion, Deployment and AuditLog; isolated SQLite unit-test fixtures; idempotent seed.
 
 ---
 

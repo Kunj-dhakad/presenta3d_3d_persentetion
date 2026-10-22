@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db/client";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 
 /** Append-only audit log for sensitive actions. Never pass secrets or file contents in `meta`. */
 export async function audit(

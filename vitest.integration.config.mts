@@ -1,10 +1,10 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
 
-/** Live OpenAI integration tests. They use your real OPENAI_API_KEY / OPENAI_MODEL and cost a little money. */
 export default defineConfig({
   resolve: {
     alias: {
+      "@/server/db/client": path.resolve(import.meta.dirname, "tests/support/db-client.ts"),
       "@": path.resolve(import.meta.dirname, "src"),
       "server-only": path.resolve(import.meta.dirname, "tests/support/empty.ts"),
     },

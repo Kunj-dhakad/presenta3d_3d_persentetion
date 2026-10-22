@@ -1,5 +1,4 @@
-// Strata database schema.
-// GENERATED from prisma/schema.prisma by scripts/derive-mysql-schema.mjs. Do not edit.
+// Canonical application schema for AWS RDS MySQL.
 
 generator client {
   provider = "prisma-client"

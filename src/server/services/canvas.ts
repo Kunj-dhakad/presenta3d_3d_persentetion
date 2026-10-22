@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db/client";
 import { notFound } from "@/server/http/errors";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 
 export async function getOwnedCanvas(userId: string, id: string) {
   const c = await db.canvasDocument.findFirst({ where: { id, ownerId: userId } });

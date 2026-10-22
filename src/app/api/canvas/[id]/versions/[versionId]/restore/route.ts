@@ -1,7 +1,7 @@
 import { db } from "@/server/db/client";
 import { api, notFound } from "@/server/http/api";
 import { getOwnedCanvas, snapshotCanvas } from "@/server/services/canvas";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/mysql-prisma/client";
 
 /** Restore a canvas version. The current document is kept as a named version first. */
 export const POST = api<{ id: string; versionId: string }>(async ({ user, params }) => {
