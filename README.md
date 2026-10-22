@@ -154,12 +154,18 @@ Data model (Prisma): `User, Session, Project, ProjectFile, ProjectVersion, Build
 
 ## Production deployment guide
 
+### AWS Amplify Hosting
+
+This repository includes `amplify.yml`. Add the production values under Amplify Console → **Hosting → Environment variables**; the build spec forwards the app's server-side settings into Next.js so the SSR runtime can read them. At minimum, configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `APP_ORIGIN`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `STORAGE_DRIVER=s3`, `KD_AWS_S3_BUCKET_NAME`, and `KD_AWS_REGION`. Add the `KD_AWS_ACCESS_KEY_ID` and `KD_AWS_SECRET_ACCESS_KEY` values if using the current S3 credential setup. Redeploy after adding or changing variables. Production now stops with a clear configuration error if neither RDS MySQL nor PostgreSQL is configured; it will not silently create an ephemeral SQLite database.
+
+AWS warns that secrets written into `.env.production` may be readable to people with access to deployment artifacts, and recommends IAM roles for AWS resource access. Restrict artifact access and plan to replace static S3 keys with an execution role where supported. Also check Amplify's current Next.js SSR support before deploying: AWS currently documents support for Next.js 12 through 15, while this project is on Next.js 16.
+
 1. **Database: AWS RDS MySQL**
    ```bash
    npm run db:deploy                             # uses MYSQL_* when MYSQL_HOST is set
    npm run db:generate
    ```
-   Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. SQLite remains the default when `MYSQL_HOST` is empty; PostgreSQL can still be selected with a PostgreSQL `DATABASE_URL`.
+   Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. SQLite is for local development only; PostgreSQL can still be selected with a PostgreSQL `DATABASE_URL`.
 2. **Required env**: `NODE_ENV=production`, `APP_ORIGIN`, `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. `AUTH_MODE` defaults to `local`; set it to `accounts` only when sign-in is wanted. `SESSION_SECRET` (≥ 32 random chars) is needed for accounts. Leave `AI_PROVIDER` unset (`mock` is refused in production).
 3. **Storage**: `STORAGE_DRIVER=s3` with `KD_AWS_S3_BUCKET_NAME`, `KD_AWS_REGION`, `KD_AWS_ACCESS_KEY_ID`, and `KD_AWS_SECRET_ACCESS_KEY` (legacy `S3_*` names are also supported). All S3 objects are grouped under the `3dpresentation/` key prefix. Media, build previews, shared runtimes, and published site artifacts are stored in the configured bucket; project records and source files remain in RDS. The bucket can stay private because the app serves artifacts through its routes.
 4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.strata-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
