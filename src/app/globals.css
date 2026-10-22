@@ -1,26 +1,183 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/*
+ * Strata is dark-first. The `.dark` palette is the product palette; `:root`
+ * keeps a light palette for third-party surfaces that opt out.
+ */
+:root {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.17 0.005 270);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.17 0.005 270);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.17 0.005 270);
+  --primary: oklch(0.2 0.005 270);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.96 0.003 270);
+  --secondary-foreground: oklch(0.2 0.005 270);
+  --muted: oklch(0.96 0.003 270);
+  --muted-foreground: oklch(0.52 0.01 270);
+  --accent: oklch(0.95 0.004 270);
+  --accent-foreground: oklch(0.2 0.005 270);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.91 0.004 270);
+  --input: oklch(0.91 0.004 270);
+  --ring: oklch(0.62 0.13 275);
+  --brand: oklch(0.62 0.15 275);
+  --brand-foreground: oklch(0.99 0 0);
+  --success: oklch(0.62 0.14 160);
+  --warning: oklch(0.72 0.14 75);
+  --surface: oklch(0.97 0.003 270);
+  --surface-2: oklch(0.94 0.004 270);
+  --chart-1: oklch(0.62 0.15 275);
+  --chart-2: oklch(0.7 0.12 190);
+  --chart-3: oklch(0.72 0.14 75);
+  --chart-4: oklch(0.65 0.18 330);
+  --chart-5: oklch(0.6 0.14 160);
+  --radius: 0.6rem;
+  --sidebar: oklch(0.97 0.003 270);
+  --sidebar-foreground: oklch(0.17 0.005 270);
+  --sidebar-primary: oklch(0.2 0.005 270);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.94 0.004 270);
+  --sidebar-accent-foreground: oklch(0.2 0.005 270);
+  --sidebar-border: oklch(0.91 0.004 270);
+  --sidebar-ring: oklch(0.62 0.13 275);
+}
+
+.dark {
+  --background: oklch(0.145 0.004 270);
+  --foreground: oklch(0.95 0.003 270);
+  --card: oklch(0.175 0.005 270);
+  --card-foreground: oklch(0.95 0.003 270);
+  --popover: oklch(0.19 0.005 270);
+  --popover-foreground: oklch(0.95 0.003 270);
+  --primary: oklch(0.95 0.003 270);
+  --primary-foreground: oklch(0.17 0.005 270);
+  --secondary: oklch(0.23 0.006 270);
+  --secondary-foreground: oklch(0.95 0.003 270);
+  --muted: oklch(0.22 0.005 270);
+  --muted-foreground: oklch(0.66 0.012 270);
+  --accent: oklch(0.24 0.007 270);
+  --accent-foreground: oklch(0.96 0.003 270);
+  --destructive: oklch(0.68 0.19 22);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 11%);
+  --ring: oklch(0.7 0.12 275);
+  --brand: oklch(0.74 0.12 275);
+  --brand-foreground: oklch(0.16 0.01 275);
+  --success: oklch(0.75 0.13 160);
+  --warning: oklch(0.8 0.13 80);
+  --surface: oklch(0.165 0.005 270);
+  --surface-2: oklch(0.195 0.006 270);
+  --chart-1: oklch(0.74 0.12 275);
+  --chart-2: oklch(0.76 0.1 190);
+  --chart-3: oklch(0.8 0.13 80);
+  --chart-4: oklch(0.72 0.15 330);
+  --chart-5: oklch(0.75 0.13 160);
+  --sidebar: oklch(0.155 0.004 270);
+  --sidebar-foreground: oklch(0.95 0.003 270);
+  --sidebar-primary: oklch(0.74 0.12 275);
+  --sidebar-primary-foreground: oklch(0.16 0.01 275);
+  --sidebar-accent: oklch(0.22 0.006 270);
+  --sidebar-accent-foreground: oklch(0.96 0.003 270);
+  --sidebar-border: oklch(1 0 0 / 7%);
+  --sidebar-ring: oklch(0.7 0.12 275);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--brand) 35%, transparent);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* Subtle glass panel used for floating toolbars and overlays. */
+  .glass {
+    background: color-mix(in oklch, var(--popover) 78%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid var(--border);
+  }
+  /* Quiet scrollbars across editor panes. */
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(1 0 0 / 12%) transparent;
+  }
+  .grid-dots {
+    background-image: radial-gradient(oklch(1 0 0 / 7%) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground;
+  }
 }

@@ -1,36 +1,191 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Strata
 
-## Getting Started
+> **Current product mode: 3D presentations.** The UI is intentionally reduced to one flow:
+> **describe a topic in chat → get a cinematic 3D presentation → present it full page → publish a link.**
+>
+> * The AI writes a validated `DeckSpec` (slides, copy, theme, and one of 11 animated 3D scenes per slide). It does not write code.
+>   A fixed, tested three.js + GSAP engine renders it (`src/server/deck/`), so every generated presentation runs.
+> * Chat follow-ups edit the deck ("make slide 3 a stats slide", "warmer colours"); every change can be undone.
+> * **Present** (`/present/<id>`) shows the deck full page: arrow keys/click/swipe, `F` fullscreen, `N` speaker notes.
+>   **Publish** serves it at `/sites/<slug>/` (or Vercel when configured).
+> * Hidden from navigation, but still in the codebase: the code editor workspace, Studio, Canvas, Assets and Settings.
+>   Re-enable them in `src/components/shell/nav-items.ts`. The general code-generation pipeline
+>   (`src/server/pipeline/generate.ts`) is kept but not wired to the UI.
+>
+> Open the dev server at `http://localhost:3000`. Opening it via a LAN IP is allowed through `allowedDevOrigins` in `next.config.ts`.
+>
+> The sections below describe the full platform.
 
-First, run the development server:
+Strata is an AI creative platform. Describe an idea in plain language and it generates **runnable, editable projects**: websites, React/TypeScript apps, interactive three.js scenes, browser games and data visualizations. Every project has a live sandboxed preview, a Monaco code editor, version history, chat-driven edits, and publishing.
+
+It also includes a **3D Studio** (visual scene editor with AI scene generation), a **Canvas** (infinite design board with parallel AI frame generation), a **creative asset studio** (image / video / speech / sound / 3D model / material generation through real provider adapters) and an **asset library**.
+
+> Strata is an original implementation inspired by the publicly documented functionality of tools like Omma. It contains no code from, and claims no access to, any other product.
+
+---
+
+## Quick start (local)
+
+Requirements: **Node.js 22.12+ (tested on 24.18 LTS)** and npm 11.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install                 # also runs `prisma generate`
+cp .env.example .env        # then edit .env (see below)
+npm run db:deploy           # create the SQLite database
+npm run db:seed             # optional: example projects, scenes and a canvas
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+npm 11 blocks dependency install scripts by default. This repo's `package.json` → `allowScripts` already approves the four that need native builds (`esbuild`, `better-sqlite3`, `prisma`, `@prisma/engines`). If an install reports pending scripts, review them with `npm approve-scripts --allow-scripts-pending`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### No sign-in in local development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Outside production Strata runs in **local single-user mode** (`AUTH_MODE=local`, the default): open the app and start building. There is no sign-up or login. Every request acts as one local user. To use real accounts locally, set `AUTH_MODE=accounts`. In production, accounts are always required (`AUTH_MODE=local` is refused).
 
-## Learn More
+### Connect OpenAI
 
-To learn more about Next.js, take a look at the following resources:
+Set these in `.env` (server-side only; never prefix them with `NEXT_PUBLIC_`):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.4            # any Responses-API model your key can use
+# optional media generation
+OPENAI_IMAGE_MODEL=gpt-image-1
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_VIDEO_MODEL=sora-2
+# optional cost estimation (USD per 1M tokens)
+OPENAI_PRICE_INPUT_PER_1M=
+OPENAI_PRICE_OUTPUT_PER_1M=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Restart the dev server after changing `.env`. **Settings** shows which integrations are configured (never the keys themselves) and per-request usage: tokens, latency, request IDs and estimated cost.
 
-## Deploy on Vercel
+Without a key the app still works for everything except AI generation, and it says so in the UI instead of failing silently.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Development server (Turbopack) |
+| `npm run build` / `npm start` | Production build / server |
+| `npm run typecheck` | Route type generation + `tsc --noEmit` |
+| `npm run lint` | ESLint (Next.js + React Compiler rules) |
+| `npm test` | Unit/integration tests (Vitest, offline, isolated temp DB per file) |
+| `npm run test:e2e` | Playwright acceptance tests against the **production build** (`npm run build` first) |
+| `npm run test:openai` | Optional live tests against your real OpenAI key (skipped without one; costs a few cents) |
+| `npm run check:schemas` | Verifies every AI response schema converts to a strict JSON schema |
+| `npm run db:migrate` / `db:deploy` / `db:seed` | Prisma migrations and seed data |
+| `npm run db:use-postgres` | Regenerates `prisma/postgres/schema.prisma` from the SQLite schema |
+| `npm run verify` | typecheck → lint → tests → build |
+
+---
+
+## How generation works
+
+```
+prompt ─▶ planner (structured ProjectSpec) ─▶ normalize (paths, entry files, allowed packages)
+       ─▶ task graph (one agent task per file group; entry group depends on the rest)
+       ─▶ agents write files in parallel (bounded concurrency, file locks)
+       ─▶ deterministic merge + reviewer ─▶ validated write to the virtual filesystem
+       ─▶ isolated build worker (esbuild) ─▶ on failure: targeted repair agent (≤ MAX_REPAIR_ATTEMPTS)
+       ─▶ checkpoint (pre-change + post-change versions) ─▶ sandboxed preview
+```
+
+* **Structured outputs.** Every model call uses the OpenAI Responses API with a strict JSON schema (Zod). Results are validated again server-side before anything is applied. Code changes use a file-operation contract: `create | replace | patch | delete`, search/replace patches, explanation, dependencies and validation notes.
+* **Edits are targeted.** Follow-up messages run an edit planner over the file tree and relevant sources, then apply exact search/replace patches. They do not regenerate the project.
+* **Honest progress.** The UI renders real server events (stages, agent tasks, streamed character counts, file changes, build results, repairs) over an NDJSON stream. Jobs run server-side and survive the browser closing.
+* **Recovery.** Truncated output triggers per-file regeneration; missing files are requested again; invalid hunks are skipped with a note; build failures go to the repair agent. The last working build and version are never lost: the preview keeps showing them, and every AI change can be reviewed as a diff, kept, partially reverted per file, or rejected.
+
+### The preview sandbox
+
+Generated code is untrusted. It is never executed in the app's server process or origin.
+
+1. **Build isolation.** A separate Node process (`preview-runner/build-worker.mjs`) runs with a scrubbed environment (no API keys, database URL or session secret), a heap cap, a hard timeout and bounded output. It receives sources on stdin and only parses and bundles them; it never runs them.
+2. **No `npm install`.** Bare imports resolve to an **allowlisted preview runtime**: react, react-dom, three (+ selected addons), @react-three/fiber, drei, gsap, motion/framer-motion, zustand, lucide-react and d3. These are bundled once from this app's own lockfile-pinned `node_modules`. Anything else is a build error that the repair agent fixes.
+3. **Opaque origin.** Previews are served with `Content-Security-Policy: sandbox allow-scripts …` (no `allow-same-origin`), so even when opened in a new tab they have an opaque origin: no access to the app's cookies, storage or credentialed APIs. `connect-src 'self'` blocks exfiltration requests to other hosts. The iframe adds the same sandbox, and mutating API calls reject `Origin: null`.
+4. **Diagnostics without trust.** A tiny injected shim posts runtime errors to the parent. The parent accepts messages only from its own iframe window, and the shim never receives commands.
+
+---
+
+## Architecture
+
+```
+src/
+  app/                    Next.js App Router
+    (app)/                authenticated workspace: chat, studio, canvas, projects, assets, settings
+    api/                  Route Handlers (all wrapped by server/http/api.ts)
+    preview/ preview-runtime/ sites/ vendor/monaco/   static servers (sandboxed / self-hosted)
+    share/[token]         public read-only share page
+  components/             UI (shadcn/ui + Radix, Tailwind v4, motion, Monaco, react-three-fiber)
+  stores/                 Zustand stores: workspace, scene editor, canvas editor
+  lib/                    shared, framework-free code: Zod schemas, VFS path rules + patch engine, templates
+  server/                 server-only code
+    ai/                   provider interface, OpenAI Responses provider, offline test provider, usage
+    pipeline/             planner/generator/editor/repair prompts, spec normalization, reviewer, pipeline
+    orchestrator/         DAG task runner (concurrency, file locks, cancellation, merge)
+    build/                build worker process manager, preview runtime, builds
+    jobs/                 server-side job runner + event persistence
+    media/                media provider adapters (OpenAI images/TTS/video, Meshy, ElevenLabs)
+    publish/              deployment providers (local, Vercel)
+    storage/              object storage (local disk, S3-compatible with SigV4)
+    services/             projects, versions, canvas, share links, media jobs
+    auth/  http/  env.ts  sessions, API wrapper (CSRF, auth, rate limits, size limits), config
+preview-runner/           isolated build worker, runtime allowlist, preview shim
+prisma/                   SQLite schema + migrations; postgres/ derived schema + migrations; seed
+tests/unit  tests/e2e  tests/integration
+```
+
+Data model (Prisma): `User, Session, Project, ProjectFile, ProjectVersion, Build, Conversation, ChatMessage, GenerationJob, Asset, CanvasDocument, CanvasVersion, ShareLink, Deployment, UsageRecord, AuditLog`.
+
+---
+
+## Security model (summary)
+
+* Secrets live only in server env vars, read by `server/env.ts` (`import "server-only"`). A test scans every `"use client"` file for server imports or secret env reads, and an e2e test checks that a sentinel key never appears in any response.
+* All input is validated with Zod. Request bodies have hard size limits. Project paths go through `validateProjectPath`: no traversal, absolute paths, backslashes, reserved names or unknown file types.
+* Accounts: scrypt password hashes, random 256-bit session tokens stored as HMACs, HttpOnly SameSite cookies, CSRF origin checks on every mutation, per-user rate limits (generation, builds, uploads, auth). Every resource is ownership-checked server-side and returns 404 for other users' resources.
+* Uploads: MIME allowlist, magic-byte sniffing, 25 MB cap, server-generated storage keys. Media is served with `nosniff` and a CSP sandbox.
+* Share links: random tokens, only SHA-256 hashes stored, optional expiry, instant revoke.
+* Audit log for sign-in, project create/delete/archive/restore, publishing, sharing, uploads and job cancellation.
+
+---
+
+## Production deployment guide
+
+1. **Database: PostgreSQL**
+   ```bash
+   npm run db:use-postgres                       # derive prisma/postgres/schema.prisma
+   DATABASE_URL=postgresql://… npx prisma migrate deploy
+   DATABASE_URL=postgresql://… npx prisma generate
+   ```
+   `prisma.config.ts` picks the Postgres schema and migrations automatically from the URL scheme. The runtime uses `@prisma/adapter-pg`.
+2. **Required env**: `NODE_ENV=production`, `SESSION_SECRET` (≥ 32 random chars), `APP_ORIGIN`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`. Leave `AI_PROVIDER` unset (`mock` is refused in production) and `AUTH_MODE` unset (accounts).
+3. **Storage**: `STORAGE_DRIVER=s3` with `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, plus `S3_ENDPOINT` for R2/MinIO.
+4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.strata-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
+5. **Build worker isolation**: the worker already runs as a separate, env-scrubbed, time-boxed process. For multi-tenant production, run it in a container or microVM with **no network**, a read-only root filesystem and CPU/memory limits (gVisor, Firecracker, or a Kubernetes Job), using the same stdin/stdout JSON contract as `runWorker`.
+6. **Public publishing**: `PUBLISH_PROVIDER=vercel` + `VERCEL_TOKEN` (and `VERCEL_TEAM_ID` if needed). The default `local` provider serves sites from this server under `/sites/<slug>` and is labelled as non-public.
+7. **Run**: `npm ci && npm run build && npm start` behind TLS. `outputFileTracingIncludes` in `next.config.ts` ships the worker, the scene runtime template and Monaco assets.
+8. **Scaling**: jobs, rate limits and build/preview files are single-instance. For several instances, move jobs to a queue (e.g. BullMQ on Redis) behind `server/jobs/runner.ts`, swap the in-memory rate limiter for Redis, and put previews and sites on shared object storage or a CDN.
+
+---
+
+## Versions (verified, exact)
+
+| | |
+| --- | --- |
+| Node.js | 24.18.0 LTS (engines `>=22.12`) · npm 11.16.0 |
+| Next.js | **16.4.2** (latest stable at build time; App Router, Turbopack, Cache Components, Partial Prefetching) |
+| React / React DOM | 19.3.0 |
+| TypeScript | 5.9.3 (strict) |
+| Tailwind CSS | 4.3.3 · shadcn/ui CLI 4.22.1 (Radix, "nova") · lucide-react 1.61.0 |
+| Prisma | 7.10.1 (stable; 8.x was RC only) with better-sqlite3 12.11.1 / pg 8.23.1 adapters |
+| OpenAI SDK | 7.39.0 (Responses API, `zodTextFormat`) · Zod 4.6.7 |
+| three / R3F / drei | 0.186.1 / 9.8.2 / 10.7.9 · gsap 3.15.0 · motion 14.5.0 |
+| Monaco | monaco-editor 0.57.0 (self-hosted) · @monaco-editor/react 4.7.0 |
+| esbuild | 0.28.2 |
+| Zustand | 5.0.15 |
+| Vitest / Playwright | 5.0.5 / 1.64.1 |
+
+See `IMPLEMENTATION_STATUS.md` for the feature list, limitations and test results.

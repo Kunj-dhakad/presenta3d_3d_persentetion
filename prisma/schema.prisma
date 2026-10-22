@@ -1,0 +1,309 @@
+// Strata database schema.
+// This file targets SQLite for local development. `npm run db:use-postgres`
+// derives prisma/postgres/schema.prisma from it for production PostgreSQL.
+// Enumerated values are stored as strings and validated with Zod in
+// src/server/domain/enums.ts so both providers behave identically.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String           @id @default(cuid())
+  email         String           @unique
+  name          String
+  passwordHash  String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  sessions      Session[]
+  projects      Project[]
+  conversations Conversation[]
+  jobs          GenerationJob[]
+  assets        Asset[]
+  canvases      CanvasDocument[]
+  shareLinks    ShareLink[]
+  usage         UsageRecord[]
+  auditLogs     AuditLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Project {
+  id                   String           @id @default(cuid())
+  ownerId              String
+  name                 String
+  description          String           @default("")
+  /// website | react-app | dashboard | scene3d | game | ui-design | data-viz | creative-asset | presentation
+  category             String           @default("website")
+  /// react-ts | react-js | vanilla | three
+  framework            String           @default("vanilla")
+  /// active | archived
+  status               String           @default("active")
+  /// Validated ProjectSpec produced by the planner (JSON)
+  spec                 Json?
+  /// Validated SceneSpec for 3D Studio documents (JSON)
+  sceneSpec            Json?
+  isTemplate           Boolean          @default(false)
+  lastBuildId          String?
+  lastBuildStatus      String?
+  lastWorkingBuildId   String?
+  lastWorkingVersionId String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  owner                User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  files                ProjectFile[]
+  versions             ProjectVersion[]
+  conversations        Conversation[]
+  jobs                 GenerationJob[]
+  builds               Build[]
+  shareLinks           ShareLink[]
+  deployments          Deployment[]
+
+  @@index([ownerId, updatedAt])
+  @@index([ownerId, status])
+  @@index([ownerId, category])
+}
+
+model ProjectFile {
+  id        String   @id @default(cuid())
+  projectId String
+  path      String
+  content   String
+  size      Int
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, path])
+  @@index([projectId])
+}
+
+model ProjectVersion {
+  id        String   @id @default(cuid())
+  projectId String
+  /// auto | checkpoint | pre-ai | ai | restore | import
+  kind      String
+  label     String?
+  summary   String?
+  /// Array<{ path: string; content: string }>
+  files     Json
+  fileCount Int
+  /// sha256 over sorted files, used to skip redundant snapshots
+  digest    String
+  isWorking Boolean  @default(false)
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([projectId, digest])
+}
+
+model Build {
+  id         String   @id @default(cuid())
+  projectId  String
+  /// building | succeeded | failed
+  status     String
+  versionDigest String
+  /// Array<BuildDiagnostic>
+  errors     Json?
+  warnings   Json?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model Conversation {
+  id        String        @id @default(cuid())
+  userId    String
+  projectId String?
+  title     String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+  @@index([projectId])
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  /// user | assistant | system
+  role           String
+  content        String
+  /// { jobId?, changedFiles?, preVersionId?, postVersionId?, buildStatus? }
+  meta           Json?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model GenerationJob {
+  id         String    @id @default(cuid())
+  userId     String
+  projectId  String?
+  /// project-generate | project-edit | project-repair | scene | canvas | image | video | audio | sfx | model3d | material
+  kind       String
+  /// queued | running | succeeded | failed | cancelled
+  status     String    @default("queued")
+  provider   String
+  model      String?
+  input      Json
+  output     Json?
+  /// Array<JobEvent> (append-only progress log)
+  events     Json?
+  error      String?
+  progress   Float     @default(0)
+  externalId String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  startedAt  DateTime?
+  finishedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+model Asset {
+  id         String   @id @default(cuid())
+  ownerId    String
+  jobId      String?
+  name       String
+  /// image | video | audio | model3d | material | other
+  type       String
+  mimeType   String
+  size       Int
+  storageKey String   @unique
+  /// upload | generated
+  source     String
+  prompt     String?
+  provider   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@index([ownerId, type])
+}
+
+model CanvasDocument {
+  id        String          @id @default(cuid())
+  ownerId   String
+  name      String
+  data      Json
+  revision  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  owner     User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  versions  CanvasVersion[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model CanvasVersion {
+  id        String         @id @default(cuid())
+  canvasId  String
+  label     String?
+  data      Json
+  revision  Int
+  createdAt DateTime       @default(now())
+  canvas    CanvasDocument @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+
+  @@index([canvasId, createdAt])
+}
+
+model ShareLink {
+  id          String    @id @default(cuid())
+  projectId   String
+  createdById String
+  tokenHash   String    @unique
+  tokenPrefix String
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Deployment {
+  id         String   @id @default(cuid())
+  projectId  String
+  provider   String
+  /// building | ready | failed | unpublished
+  status     String
+  url        String?
+  slug       String?
+  buildId    String?
+  externalId String?
+  error      String?
+  isPublic   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([slug])
+}
+
+model UsageRecord {
+  id               String   @id @default(cuid())
+  userId           String
+  jobId            String?
+  provider         String
+  model            String
+  operation        String
+  requestId        String?
+  inputTokens      Int?
+  outputTokens     Int?
+  totalTokens      Int?
+  latencyMs        Int
+  estimatedCostUsd Float?
+  success          Boolean
+  errorCode        String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([jobId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  targetType String?
+  targetId   String?
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}

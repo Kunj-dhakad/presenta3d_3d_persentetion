@@ -1,0 +1,648 @@
+// Strata 3D presentation engine. Reads deck.json and renders each slide as an
+// animated three.js scene with an HTML text overlay.
+// Keys: → / Space next · ← previous · Home/End · F fullscreen · N speaker notes.
+import * as THREE from "three";
+import gsap from "gsap";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const deck = await fetch("./deck.json").then((r) => r.json());
+const slides = deck.slides;
+document.title = deck.title;
+
+// ─── Theme ──────────────────────────────────────────────────────────────
+const root = document.documentElement;
+root.style.setProperty("--bg", deck.theme.background);
+root.style.setProperty("--text", deck.theme.text);
+root.style.setProperty("--accent", deck.theme.accent);
+document.body.dataset.font = deck.theme.font;
+
+// ─── Renderer, camera, post-processing ──────────────────────────────────
+const canvas = document.getElementById("gl");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(deck.theme.background);
+scene.fog = new THREE.FogExp2(deck.theme.background, 0.035);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+camera.position.set(0, 0, 11);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(4, 6, 8);
+scene.add(key);
+const accentLight = new THREE.PointLight(deck.theme.accent, 40, 30);
+accentLight.position.set(-5, 2, 4);
+scene.add(accentLight);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.75, 0.6, 0.15);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// Subtle permanent backdrop of distant stars.
+{
+  const n = 1500;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = 40 + Math.random() * 40;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph)], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.5, depthWrite: false })));
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const col = (hex) => new THREE.Color(hex);
+const glowPoints = (positions, colors, size) => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  if (colors) g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return new THREE.Points(g, new THREE.PointsMaterial({ size, vertexColors: Boolean(colors), transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+};
+const standard = (hex, emissiveHex, extra = {}) =>
+  new THREE.MeshStandardMaterial({ color: col(hex), emissive: col(emissiveHex), emissiveIntensity: 0.35, metalness: 0.6, roughness: 0.25, transparent: true, ...extra });
+
+// ─── Scene builders: each returns { group, update(t), enter?(tl) } ───────
+const builders = {
+  galaxy(s, r) {
+    const group = new THREE.Group();
+    const n = Math.round(2500 + 5000 * s.density);
+    const pos = new Float32Array(n * 3);
+    const colors = new Float32Array(n * 3);
+    const a = col(s.primary), b = col(s.secondary), c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const radius = Math.pow(r(), 0.6) * 5.5;
+      const arm = (i % 3) * ((Math.PI * 2) / 3);
+      const spin = radius * 0.9;
+      const sx = (r() - 0.5) * 0.5 * (1 + radius * 0.15);
+      const sy = (r() - 0.5) * 0.25;
+      const sz = (r() - 0.5) * 0.5 * (1 + radius * 0.15);
+      pos.set([Math.cos(arm + spin) * radius + sx, sy, Math.sin(arm + spin) * radius + sz], i * 3);
+      c.copy(a).lerp(b, radius / 5.5);
+      colors.set([c.r, c.g, c.b], i * 3);
+    }
+    const pts = glowPoints(pos, colors, 0.045);
+    group.add(pts);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.35, 32, 32), new THREE.MeshBasicMaterial({ color: col(s.primary), transparent: true }));
+    group.add(core);
+    group.rotation.x = 0.55;
+    return { group, update: (t) => (pts.rotation.y = t * 0.08 * s.speed) };
+  },
+
+  globe(s, r) {
+    const group = new THREE.Group();
+    const R = 2.4;
+    const wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(R, 28, 18)), new THREE.LineBasicMaterial({ color: col(s.primary), transparent: true, opacity: 0.22 }));
+    group.add(wire);
+    const n = Math.round(600 + 1400 * s.density);
+    const pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const y = 1 - (i / (n - 1)) * 2;
+      const rr = Math.sqrt(1 - y * y);
+      const th = i * 2.399963;
+      pos.set([Math.cos(th) * rr * R, y * R, Math.sin(th) * rr * R], i * 3);
+    }
+    const dots = glowPoints(pos, null, 0.035);
+    dots.material.color = col(s.primary);
+    group.add(dots);
+    const atmo = new THREE.Mesh(new THREE.SphereGeometry(R * 1.12, 48, 48), new THREE.MeshBasicMaterial({ color: col(s.secondary), transparent: true, opacity: 0.08, side: THREE.BackSide }));
+    group.add(atmo);
+    const arcs = new THREE.Group();
+    const randOnSphere = () => {
+      const u = r() * 2 - 1, th = r() * Math.PI * 2, k = Math.sqrt(1 - u * u);
+      return new THREE.Vector3(k * Math.cos(th), u, k * Math.sin(th)).multiplyScalar(R);
+    };
+    for (let i = 0; i < Math.round(6 + 10 * s.density); i++) {
+      const p1 = randOnSphere(), p2 = randOnSphere();
+      const mid = p1.clone().add(p2).multiplyScalar(0.5).normalize().multiplyScalar(R * (1.25 + r() * 0.35));
+      const curve = new THREE.QuadraticBezierCurve3(p1, mid, p2);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(48)), new THREE.LineBasicMaterial({ color: col(s.secondary), transparent: true, opacity: 0.85 }));
+      arcs.add(line);
+    }
+    group.add(arcs);
+    group.rotation.z = 0.25;
+    return { group, update: (t) => (group.rotation.y = t * 0.15 * s.speed) };
+  },
+
+  orbits(s, r) {
+    const group = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.9, 48, 48), standard(s.primary, s.primary, { emissiveIntensity: 0.9 }));
+    group.add(core);
+    const sats = [];
+    const count = Math.round(3 + 3 * s.density);
+    for (let i = 0; i < count; i++) {
+      const radius = 1.8 + i * 0.65;
+      const tilt = new THREE.Group();
+      tilt.rotation.set(r() * 0.9 - 0.45, 0, r() * 0.9 - 0.45);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.008, 8, 160), new THREE.MeshBasicMaterial({ color: col(s.secondary), transparent: true, opacity: 0.45 }));
+      ring.rotation.x = Math.PI / 2;
+      tilt.add(ring);
+      const sat = new THREE.Mesh(new THREE.SphereGeometry(0.12 + r() * 0.12, 24, 24), standard(i % 2 ? s.secondary : s.primary, s.secondary, { emissiveIntensity: 0.8 }));
+      tilt.add(sat);
+      group.add(tilt);
+      sats.push({ sat, radius, speed: (0.6 + r() * 0.6) / (1 + i * 0.3), phase: r() * Math.PI * 2 });
+    }
+    return {
+      group,
+      update: (t) => {
+        core.rotation.y = t * 0.3;
+        for (const o of sats) {
+          const a = o.phase + t * o.speed * s.speed;
+          o.sat.position.set(Math.cos(a) * o.radius, 0, Math.sin(a) * o.radius);
+        }
+      },
+    };
+  },
+
+  particles(s, r) {
+    const group = new THREE.Group();
+    const n = Math.round(1500 + 3500 * s.density);
+    const base = new Float32Array(n * 3);
+    const colors = new Float32Array(n * 3);
+    const a = col(s.primary), b = col(s.secondary), c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      base.set([(r() - 0.5) * 16, (r() - 0.5) * 9, (r() - 0.5) * 8], i * 3);
+      c.copy(a).lerp(b, r());
+      colors.set([c.r, c.g, c.b], i * 3);
+    }
+    const pts = glowPoints(base.slice(), colors, 0.05);
+    group.add(pts);
+    const p = pts.geometry.attributes.position;
+    return {
+      group,
+      update: (t) => {
+        for (let i = 0; i < n; i++) {
+          const x = base[i * 3], y = base[i * 3 + 1];
+          p.array[i * 3 + 1] = y + Math.sin(t * 0.6 * s.speed + x * 0.5) * 0.35;
+          p.array[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * 0.4 * s.speed + y * 0.6) * 0.35;
+        }
+        p.needsUpdate = true;
+        group.rotation.y = Math.sin(t * 0.1) * 0.2;
+      },
+    };
+  },
+
+  crystal(s) {
+    const group = new THREE.Group();
+    const outer = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 0), new THREE.MeshPhysicalMaterial({ color: col(s.primary), emissive: col(s.secondary), emissiveIntensity: 0.15, metalness: 0.2, roughness: 0.08, clearcoat: 1, flatShading: true, transparent: true, opacity: 0.92 }));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(outer.geometry), new THREE.LineBasicMaterial({ color: col(s.secondary), transparent: true, opacity: 0.9 }));
+    outer.add(edges);
+    const inner = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 0), standard(s.secondary, s.secondary, { emissiveIntensity: 1.4, flatShading: true }));
+    group.add(outer, inner);
+    const shards = [];
+    for (let i = 0; i < Math.round(6 + 10 * s.density); i++) {
+      const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.12 + Math.random() * 0.15), standard(s.primary, s.secondary, { flatShading: true }));
+      group.add(m);
+      shards.push({ m, r: 3 + Math.random() * 1.5, a: Math.random() * Math.PI * 2, y: (Math.random() - 0.5) * 3, sp: 0.2 + Math.random() * 0.4 });
+    }
+    return {
+      group,
+      update: (t) => {
+        outer.rotation.set(t * 0.2 * s.speed, t * 0.3 * s.speed, 0);
+        inner.rotation.set(-t * 0.5 * s.speed, -t * 0.4 * s.speed, 0);
+        for (const sh of shards) sh.m.position.set(Math.cos(sh.a + t * sh.sp * s.speed) * sh.r, sh.y + Math.sin(t + sh.a) * 0.2, Math.sin(sh.a + t * sh.sp * s.speed) * sh.r);
+      },
+    };
+  },
+
+  knot(s) {
+    const group = new THREE.Group();
+    const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.6, 0.42, 240, 36), standard(s.primary, s.secondary, { metalness: 0.85, roughness: 0.18, emissiveIntensity: 0.25 }));
+    const wire = new THREE.Mesh(new THREE.TorusKnotGeometry(1.6, 0.44, 120, 12), new THREE.MeshBasicMaterial({ color: col(s.secondary), wireframe: true, transparent: true, opacity: 0.12 + 0.2 * s.density }));
+    group.add(knot, wire);
+    return { group, update: (t) => { knot.rotation.set(t * 0.2 * s.speed, t * 0.35 * s.speed, 0); wire.rotation.copy(knot.rotation); } };
+  },
+
+  helix(s) {
+    const group = new THREE.Group();
+    const steps = Math.round(30 + 40 * s.density);
+    const rung = new THREE.LineBasicMaterial({ color: col(s.secondary), transparent: true, opacity: 0.5 });
+    const g = new THREE.SphereGeometry(0.11, 16, 16);
+    const mA = standard(s.primary, s.primary, { emissiveIntensity: 0.9 });
+    const mB = standard(s.secondary, s.secondary, { emissiveIntensity: 0.9 });
+    for (let i = 0; i < steps; i++) {
+      const y = (i / steps - 0.5) * 8;
+      const a = i * 0.42;
+      const p1 = new THREE.Vector3(Math.cos(a) * 1.3, y, Math.sin(a) * 1.3);
+      const p2 = new THREE.Vector3(Math.cos(a + Math.PI) * 1.3, y, Math.sin(a + Math.PI) * 1.3);
+      const s1 = new THREE.Mesh(g, mA), s2 = new THREE.Mesh(g, mB);
+      s1.position.copy(p1);
+      s2.position.copy(p2);
+      group.add(s1, s2);
+      if (i % 2 === 0) group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), rung));
+    }
+    group.rotation.z = 0.35;
+    return { group, update: (t) => (group.rotation.y = t * 0.4 * s.speed) };
+  },
+
+  bars(s) {
+    const group = new THREE.Group();
+    const values = s.values.length ? s.values : [3, 5, 4, 7, 9];
+    const max = Math.max(...values, 1);
+    const n = values.length;
+    const a = col(s.primary), b = col(s.secondary);
+    const bars = [];
+    values.forEach((v, i) => {
+      const h = Math.max(0.15, (v / max) * 4);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.62, h, 0.62), standard("#ffffff", "#000000", { color: a.clone().lerp(b, n > 1 ? i / (n - 1) : 0), emissive: a.clone().lerp(b, n > 1 ? i / (n - 1) : 0), emissiveIntensity: 0.35 }));
+      m.geometry.translate(0, h / 2, 0);
+      m.position.set((i - (n - 1) / 2) * 0.95, -2, 0);
+      group.add(m);
+      bars.push(m);
+    });
+    const grid = new THREE.GridHelper(Math.max(8, n * 1.2), 16, s.secondary, s.primary);
+    grid.position.y = -2;
+    grid.material.transparent = true;
+    grid.material.opacity = 0.25;
+    group.add(grid);
+    group.rotation.set(0.25, -0.5, 0);
+    return {
+      group,
+      enter: (tl) => bars.forEach((m, i) => tl.from(m.scale, { y: 0.001, duration: 0.9, ease: "power3.out" }, 0.25 + i * 0.07)),
+      update: (t) => (group.rotation.y = -0.5 + Math.sin(t * 0.25 * s.speed) * 0.25),
+    };
+  },
+
+  cubes(s, r) {
+    const group = new THREE.Group();
+    const size = Math.round(6 + 6 * s.density);
+    const g = new THREE.BoxGeometry(0.42, 0.42, 0.42);
+    const cubes = [];
+    const a = col(s.primary), b = col(s.secondary);
+    for (let x = 0; x < size; x++)
+      for (let z = 0; z < size; z++) {
+        const m = new THREE.Mesh(g, standard("#ffffff", "#000000", { color: a.clone().lerp(b, r()), emissive: a.clone().lerp(b, r()), emissiveIntensity: 0.2 }));
+        m.position.set((x - (size - 1) / 2) * 0.55, 0, (z - (size - 1) / 2) * 0.55);
+        group.add(m);
+        cubes.push({ m, d: Math.hypot(x - (size - 1) / 2, z - (size - 1) / 2) });
+      }
+    group.rotation.set(0.7, 0.7, 0);
+    return { group, update: (t) => cubes.forEach((c) => (c.m.position.y = Math.sin(t * 1.6 * s.speed - c.d * 0.6) * 0.45)) };
+  },
+
+  waves(s) {
+    const group = new THREE.Group();
+    const seg = Math.round(50 + 70 * s.density);
+    const geo = new THREE.PlaneGeometry(16, 10, seg, Math.round(seg * 0.6));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col(s.primary), wireframe: true, transparent: true, opacity: 0.45 }));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: col(s.secondary), size: 0.045, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    group.add(mesh, pts);
+    group.rotation.x = -1.1;
+    group.position.y = -1.2;
+    const p = geo.attributes.position;
+    const base = p.array.slice();
+    return {
+      group,
+      update: (t) => {
+        for (let i = 0; i < p.count; i++) {
+          const x = base[i * 3], y = base[i * 3 + 1];
+          p.array[i * 3 + 2] = Math.sin(x * 0.6 + t * 1.2 * s.speed) * 0.5 + Math.cos(y * 0.7 + t * 0.9 * s.speed) * 0.4;
+        }
+        p.needsUpdate = true;
+      },
+    };
+  },
+
+  rings(s) {
+    const group = new THREE.Group();
+    const n = Math.round(4 + 5 * s.density);
+    const rings = [];
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(0.8 + i * 0.42, 0.035, 16, 200), standard(i % 2 ? s.secondary : s.primary, i % 2 ? s.secondary : s.primary, { emissiveIntensity: 0.9 }));
+      group.add(m);
+      rings.push({ m, sp: 0.3 + i * 0.08, ax: i % 3 });
+    }
+    return {
+      group,
+      update: (t) =>
+        rings.forEach((r, i) => {
+          r.m.rotation.x = t * r.sp * s.speed * (r.ax === 0 ? 1 : 0.4) + i * 0.3;
+          r.m.rotation.y = t * r.sp * s.speed * (r.ax === 1 ? 1 : 0.3);
+        }),
+    };
+  },
+};
+
+function buildScene(slide, index) {
+  const make = builders[slide.scene.kind] ?? builders.particles;
+  const built = make(slide.scene, rng(index * 7919 + 17));
+  // Remember each material's base opacity so the group can fade as a whole.
+  built.group.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) {
+      m.transparent = true;
+      m.userData.baseOpacity ??= m.opacity;
+    }
+  });
+  return built;
+}
+
+function setOpacity(group, f) {
+  group.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) m.opacity = (m.userData.baseOpacity ?? 1) * f;
+  });
+}
+
+function dispose(group) {
+  group.traverse((o) => {
+    o.geometry?.dispose?.();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) m.dispose?.();
+  });
+}
+
+// ─── World layout: every slide is a "station" along the X axis ──────────
+// Changing slides moves the camera sideways through one continuous world.
+const SPACING = 18;
+const stations = slides.map((s, i) => ({ x: i * SPACING, built: null, entered: false }));
+const narrow = () => window.innerWidth < 760;
+function sceneOffset(layout) {
+  if (narrow()) return { x: 0, y: layout === "hero" || layout === "center" ? 0.2 : 1.4, z: layout === "center" || layout === "stats" ? -2 : -1 };
+  if (layout === "left") return { x: 3, y: 0.2, z: 0 };
+  if (layout === "right") return { x: -3, y: 0.2, z: 0 };
+  if (layout === "stats") return { x: 0, y: 0.6, z: -3 };
+  if (layout === "center") return { x: 0, y: 0.3, z: -2.5 };
+  return { x: 0, y: 0.3, z: -0.5 };
+}
+
+// Glowing ground grid running through the whole world.
+{
+  const length = stations.length * SPACING + 120;
+  const grid = new THREE.GridHelper(length, Math.round(length / 1.4), deck.theme.accent, deck.theme.accent);
+  grid.position.set(((stations.length - 1) * SPACING) / 2, -2.8, 0);
+  grid.material.transparent = true;
+  grid.material.opacity = 0.16;
+  grid.material.depthWrite = false;
+  scene.add(grid);
+  const floorGlow = new THREE.Mesh(
+    new THREE.PlaneGeometry(length, 60),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(deck.theme.accent), transparent: true, opacity: 0.04, depthWrite: false }),
+  );
+  floorGlow.rotation.x = -Math.PI / 2;
+  floorGlow.position.set(grid.position.x, -2.82, 0);
+  scene.add(floorGlow);
+}
+
+function ensureBuilt(i) {
+  if (i < 0 || i >= stations.length) return;
+  const st = stations[i];
+  if (st.built) return;
+  const built = buildScene(slides[i], i);
+  const wrapper = new THREE.Group();
+  wrapper.add(built.group);
+  const off = sceneOffset(slides[i].layout);
+  wrapper.position.set(st.x + off.x, off.y, off.z);
+  scene.add(wrapper);
+  st.built = { ...built, wrapper };
+}
+// Keep only nearby stations alive (memory and GPU friendly for long decks).
+function prune(center) {
+  stations.forEach((st, i) => {
+    if (st.built && Math.abs(i - center) > 2) {
+      scene.remove(st.built.wrapper);
+      dispose(st.built.wrapper);
+      st.built = null;
+      st.entered = false;
+    }
+  });
+}
+
+// ─── HUD and slide text ─────────────────────────────────────────────────
+const slideEl = document.getElementById("slide");
+const dotsEl = document.getElementById("dots");
+const counterEl = document.getElementById("counter");
+const chipTitleEl = document.getElementById("chip-title");
+const progressEl = document.getElementById("progress");
+const notesEl = document.getElementById("notes");
+const hintEl = document.getElementById("hint");
+const pad = (n) => String(n).padStart(2, "0");
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text; // text only: deck content is never parsed as HTML
+  return e;
+}
+
+let textTween = null;
+function renderSlide(slide, delay) {
+  textTween?.kill();
+  const old = slideEl.firstElementChild;
+  if (old) gsap.to(old, { opacity: 0, x: -40, duration: 0.35, ease: "power2.in", onComplete: () => old.remove() });
+  const box = el("div", "content");
+  if (slide.kicker) box.append(el("p", "kicker", slide.kicker));
+  box.append(el(slide.layout === "hero" ? "h1" : "h2", "title", slide.title));
+  if (slide.subtitle) box.append(el("p", "subtitle", slide.subtitle));
+  if (slide.bullets.length) {
+    const ul = el("ul", "bullets");
+    for (const b of slide.bullets) ul.append(el("li", "", b));
+    box.append(ul);
+  }
+  if (slide.layout === "stats" && slide.stats.length) {
+    const grid = el("div", "stats");
+    for (const s of slide.stats) {
+      const card = el("div", "stat");
+      card.append(el("strong", "", s.value), el("span", "", s.label));
+      grid.append(card);
+    }
+    box.append(grid);
+  }
+  slideEl.className = `slide layout-${slide.layout}`;
+  slideEl.append(box);
+  notesEl.textContent = slide.notes || "No speaker notes for this slide.";
+  gsap.set(box.children, { opacity: 0, x: 60 });
+  textTween = gsap.to(box.children, { opacity: 1, x: 0, duration: 0.8, stagger: 0.07, ease: "power3.out", delay });
+}
+
+slides.forEach((_, i) => {
+  const d = el("button", "dot");
+  d.setAttribute("aria-label", `Go to slide ${i + 1}`);
+  d.addEventListener("click", (e) => {
+    e.stopPropagation();
+    go(i);
+  });
+  dotsEl.append(d);
+});
+
+// ─── Camera travel ──────────────────────────────────────────────────────
+const rig = { x: 0, y: 0.6, z: 11, lookX: 0 };
+let index = -1;
+let lastNav = 0;
+
+function arrive(i) {
+  const st = stations[i];
+  if (!st.built || st.entered) return;
+  st.entered = true;
+  if (st.built.enter) {
+    const tl = gsap.timeline();
+    st.built.enter(tl);
+  }
+}
+
+function go(next, instant = false) {
+  next = Math.max(0, Math.min(slides.length - 1, next));
+  if (next === index) return;
+  // Allow quick consecutive presses: a new target simply re-aims the camera.
+  const now = performance.now();
+  if (now - lastNav < 250 && !instant) return;
+  lastNav = now;
+  for (let i = next - 1; i <= next + 1; i++) ensureBuilt(i);
+  const distance = index < 0 ? 0 : Math.abs(next - index);
+  index = next;
+  const slide = slides[next];
+  const targetX = stations[next].x;
+  const baseZ = window.innerWidth < 760 ? 14 : 11;
+  if (instant || distance === 0) {
+    Object.assign(rig, { x: targetX, lookX: targetX, z: baseZ });
+    arrive(next);
+    renderSlide(slide, 0.1);
+  } else {
+    const duration = Math.min(2.4, 1.3 + 0.25 * (distance - 1));
+    gsap.to(rig, { x: targetX, lookX: targetX, duration, ease: "power2.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
+    // Pull back slightly mid-flight for a sense of travel, then settle.
+    gsap.timeline({ overwrite: "auto" })
+      .to(rig, { z: baseZ + 3.5, y: 1.4, duration: duration * 0.45, ease: "power2.out" })
+      .to(rig, { z: baseZ, y: 0.6, duration: duration * 0.55, ease: "power2.inOut" });
+    renderSlide(slide, duration * 0.55);
+  }
+  accentLight.color = new THREE.Color(slide.scene.secondary);
+  [...dotsEl.children].forEach((d, i) => d.classList.toggle("active", i <= index));
+  counterEl.textContent = `${pad(index + 1)} / ${pad(slides.length)}`;
+  chipTitleEl.textContent = slide.title;
+  progressEl.style.transform = `scaleX(${(index + 1) / slides.length})`;
+  history.replaceState(null, "", `#${index + 1}`);
+}
+
+const next = () => go(index + 1);
+const prev = () => go(index - 1);
+document.getElementById("next").addEventListener("click", (e) => { e.stopPropagation(); next(); });
+document.getElementById("prev").addEventListener("click", (e) => { e.stopPropagation(); prev(); });
+document.getElementById("fs").addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else document.documentElement.requestFullscreen?.().catch(() => {});
+}
+
+window.addEventListener("keydown", (e) => {
+  if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(slides.length - 1);
+  else if (e.key.toLowerCase() === "f") toggleFullscreen();
+  else if (e.key.toLowerCase() === "n") document.body.classList.toggle("show-notes");
+});
+document.getElementById("stage").addEventListener("click", (e) => {
+  if (e.target.closest("button, a")) return;
+  (e.clientX < window.innerWidth * 0.25 ? prev : next)();
+});
+let touchX = null;
+window.addEventListener("touchstart", (e) => (touchX = e.touches[0].clientX), { passive: true });
+window.addEventListener("touchend", (e) => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+  touchX = null;
+});
+
+// Mouse wheel / trackpad: one slide per gesture (accumulate, then lock until the
+// gesture's events stop, so trackpad inertia does not skip several slides).
+let wheelAcc = 0;
+let wheelLockUntil = 0;
+window.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const now = performance.now();
+    if (now < wheelLockUntil) {
+      wheelLockUntil = Math.max(wheelLockUntil, now + 300);
+      return;
+    }
+    wheelAcc += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    if (Math.abs(wheelAcc) >= 40) {
+      (wheelAcc > 0 ? next : prev)();
+      wheelAcc = 0;
+      wheelLockUntil = now + 700;
+    }
+  },
+  { passive: false },
+);
+
+// Navigation commands from the page hosting this deck (it forwards keys when the
+// frame does not have focus). Only the direct parent is accepted, and only these actions.
+window.addEventListener("message", (e) => {
+  if (e.source !== window.parent || !e.data || e.data.type !== "strata-deck") return;
+  const action = e.data.action;
+  if (action === "next") next();
+  else if (action === "prev") prev();
+  else if (action === "first") go(0);
+  else if (action === "last") go(slides.length - 1);
+});
+
+window.addEventListener("hashchange", () => {
+  const n = parseInt(location.hash.slice(1), 10);
+  if (Number.isFinite(n)) go(n - 1);
+});
+
+// The "← → or scroll to travel" hint fades after a few seconds.
+setTimeout(() => hintEl?.classList.add("hidden"), 5000);
+
+// ─── Render loop ────────────────────────────────────────────────────────
+const mouse = { x: 0, y: 0 };
+window.addEventListener("pointermove", (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = (e.clientY / window.innerHeight) * 2 - 1;
+});
+const parallax = { x: 0, y: 0 };
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  composer.setSize(w, h);
+  bloom.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  rig.z = w < 760 ? 14 : 11;
+  stations.forEach((st, i) => {
+    if (!st.built) return;
+    const off = sceneOffset(slides[i].layout);
+    st.built.wrapper.position.set(st.x + off.x, off.y, off.z);
+  });
+}
+window.addEventListener("resize", resize);
+resize();
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  for (const st of stations) st.built?.update?.(t);
+  parallax.x += (mouse.x * 0.6 - parallax.x) * 0.04;
+  parallax.y += (-mouse.y * 0.4 - parallax.y) * 0.04;
+  camera.position.set(rig.x + parallax.x, rig.y + parallax.y, rig.z);
+  camera.lookAt(rig.lookX, 0.2, 0);
+  composer.render();
+});
+
+const start = parseInt(location.hash.slice(1), 10);
+go(Number.isFinite(start) ? start - 1 : 0, true);
