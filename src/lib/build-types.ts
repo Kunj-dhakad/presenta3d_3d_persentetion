@@ -18,9 +18,14 @@ export type BuildSummary = {
   previewUrl: string | null;
 };
 
+/** Problems reported by the preview shim. */
+export type PreviewIssue = Extract<PreviewMessage, { message: string }>;
+
 /** Messages posted by the preview shim (preview-runner/shim.js). */
 export type PreviewMessage =
   | { source: "deck3d-preview"; type: "ready"; loadMs: number }
+  /** Posted by presentations when the current slide changes (1-based). */
+  | { source: "deck3d-preview"; type: "slide"; index: number }
   | {
       source: "deck3d-preview";
       type: "runtime-error" | "console-error" | "resource-error" | "csp-violation";

@@ -43,6 +43,10 @@ describe("3D presentation generation", () => {
     const first = await run(u.id, p.id, "Ocean conservation for a school assembly");
     expect(first.job.status).toBe("succeeded");
     expect(first.result.buildStatus).toBe("succeeded");
+    // The presentation is shown as soon as its text is ready, then rebuilt with the custom scenes.
+    const events = first.job.events as { type: string; status?: string }[];
+    expect(events.filter((e) => e.type === "build" && e.status === "succeeded")).toHaveLength(2);
+    expect((await getFiles(p.id)).some((f) => f.path === "scenes/slide-1.js")).toBe(true);
     const project = await db.project.findUniqueOrThrow({ where: { id: p.id } });
     expect(project.name).toContain("Ocean conservation");
     expect(project.category).toBe("presentation");

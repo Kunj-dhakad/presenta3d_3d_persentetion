@@ -40,6 +40,7 @@ export class MockTextProvider implements TextModelProvider {
     await new Promise((r) => setTimeout(r, 30));
     const raw = respond(req.schemaName, req.input);
     req.onProgress?.(JSON.stringify(raw).length);
+    req.onText?.(JSON.stringify(raw));
     const parsed = req.schema.safeParse(raw);
     const usage: Usage = { provider: this.name, model: this.model, requestId: `mock_${Date.now().toString(36)}`, inputTokens: Math.ceil(req.input.length / 4), outputTokens: Math.ceil(JSON.stringify(raw).length / 4), totalTokens: null, latencyMs: Date.now() - started, estimatedCostUsd: null };
     usage.totalTokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);

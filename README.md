@@ -20,7 +20,7 @@
 
 It also includes a **3D Studio** (visual scene editor with AI scene generation), a **Canvas** (infinite design board with parallel AI frame generation), a **creative asset studio** (image / video / speech / sound / 3D model / material generation through real provider adapters) and an **asset library**.
 
-> 3D Presentation is an original implementation inspired by the publicly documented functionality of tools like Omma. It contains no code from, and claims no access to, any other product.
+> 3D Presentation is an original implementation inspired by the publicly documented functionality of tools like . It contains no code from, and claims no access to, any other product.
 
 ---
 

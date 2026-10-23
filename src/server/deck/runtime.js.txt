@@ -1034,6 +1034,12 @@ function go(next, instant = false) {
   chipTitleEl.textContent = slide.title;
   progressEl.style.transform = `scaleX(${(index + 1) / slides.length})`;
   history.replaceState(null, "", `#${index + 1}`);
+  // Tell the hosting page which slide is shown (the editor reopens a rebuilt preview on it).
+  try {
+    if (window.parent !== window) window.parent.postMessage({ source: "deck3d-preview", type: "slide", index: index + 1 }, "*");
+  } catch {
+    /* no parent */
+  }
 }
 
 const next = () => go(index + 1);

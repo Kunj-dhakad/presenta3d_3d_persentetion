@@ -26,6 +26,8 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
   const frameRef = useRef<HTMLIFrameElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
+  // The slide being viewed, so a rebuilt presentation (e.g. when its custom 3D scenes arrive) reopens on it.
+  const [slide, setSlide] = useState(1);
 
   // Messages from the sandboxed preview: accept only those from our iframe's window.
   useEffect(() => {
@@ -34,6 +36,7 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
       const d = e.data as PreviewMessage;
       if (!d || d.source !== "deck3d-preview") return;
       if (d.type === "ready") setLoading(false);
+      else if (d.type === "slide") setSlide(Number.isInteger(d.index) && d.index > 0 ? d.index : 1);
       else pushRuntimeError(d);
     };
     window.addEventListener("message", onMessage);
@@ -50,15 +53,17 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
 
   const src = build.previewUrl ? `${build.previewUrl}?v=${nonce}` : null;
   const [prevSrc, setPrevSrc] = useState(src);
+  const [frameSrc, setFrameSrc] = useState(src);
   if (prevSrc !== src) {
     setPrevSrc(src);
     setLoading(Boolean(src));
+    setFrameSrc(src && slide > 1 ? `${src}#${slide}` : src);
   }
 
   const vp = VIEWPORTS[viewport];
   const scale = vp.w && vp.h && box.w && box.h ? Math.min(1, (box.w - 32) / vp.w, (box.h - 32) / vp.h) : 1;
   const errors = build.status === "failed" ? build.errors : [];
-  const runtime = runtimeErrors.flatMap((e) => (e.type === "ready" ? [] : [e]));
+  const runtime = runtimeErrors;
   const issueCount = errors.length + runtime.length;
   const issueTexts = [...errors.map(formatDiagnostic), ...runtime.map((r) => `${r.type}: ${r.message}${r.file ? ` (${r.file}:${r.line})` : ""}`)];
 
@@ -125,7 +130,7 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
             <iframe
               key={src}
               ref={frameRef}
-              src={src}
+              src={frameSrc ?? src}
               title="Project preview"
               // No allow-same-origin: the document gets an opaque origin (the server also sends a CSP sandbox).
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-pointer-lock allow-downloads"

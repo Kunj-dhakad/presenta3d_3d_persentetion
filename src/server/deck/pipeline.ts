@@ -12,7 +12,7 @@ import { buildProject } from "@/server/build/builder";
 import { formatDiagnostic } from "@/lib/build-types";
 import { storage } from "@/server/storage/storage";
 import { deckToProjectFiles } from "./codegen";
-import { addSceneCode } from "./scene-code";
+import { SceneWriter, asSceneSlide, completedSlides, deckForPrompt, reuseScenes, withScenes } from "./scene-code";
 import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 
 export const DECK_SYSTEM = `You are the presentation designer of 3D Presentation. You create cinematic 3D presentations.
@@ -115,6 +115,31 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
   ctx.emit({ type: "stage", stage: "generate", state: "start", detail: existing ? "Editing slides" : "Writing slides" });
   ctx.progress(0.1);
 
+  // Custom 3D scenes are written in the background, starting as soon as each
+  // slide's text is known, so they overlap with the rest of the deck being written.
+  const writer = new SceneWriter(provider, {
+    userId: input.userId,
+    jobId: ctx.jobId,
+    signal: ctx.signal,
+    log: (m, level = "info") => (level === "info" ? log(m) : ctx.emit({ type: "log", level, message: m })),
+  });
+  let scanned = 0;
+  const onText = existing
+    ? undefined // edits reuse unchanged scenes; changed slides are known only once the edit is complete
+    : (text: string) => {
+        if (text.length - scanned < 120) return; // scan in steps, not on every token
+        scanned = text.length;
+        const { head, slides } = completedSlides(text);
+        if (!head) return;
+        slides.forEach((raw, i) => {
+          if (writer.has(i)) return;
+          const slide = asSceneSlide(raw);
+          if (!slide) return;
+          if (writer.started === 0) log(`Designing custom 3D scenes with ${provider.model} while the slides are written`);
+          writer.start(head, slide, i);
+        });
+      };
+
   const brief = designBrief();
   const ask = async (extra: string) =>
     (
@@ -125,7 +150,8 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
         system: existing ? `${DECK_SYSTEM}\n\n${DECK_EDIT_RULES}` : DECK_SYSTEM,
         input: [
           history ? `Conversation so far:\n${history}` : "",
-          existing ? `Current deck (JSON):\n${JSON.stringify(existing)}` : "",
+          // Scene code is left out: it is large and the model does not need it to edit slides.
+          existing ? `Current deck (JSON):\n${JSON.stringify(deckForPrompt(existing))}` : "",
           `User request:\n${input.prompt}`,
           existing ? "" : brief,
           extra,
@@ -139,10 +165,11 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
         userId: input.userId,
         jobId: ctx.jobId,
         onProgress: (chars) => ctx.emit({ type: "stream", taskId: "deck", chars }),
+        onText,
       })
     ).data;
 
-  log(`Asking ${provider.name} · ${provider.model} to ${existing ? "edit the slides" : "write the story, slides and 3D scenes"}`);
+  log(`Asking ${provider.name} · ${provider.model} to ${existing ? "edit the slides" : "write the story and slides"}`);
   let raw: unknown;
   try {
     raw = await ask("");
@@ -161,25 +188,62 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     ctx.emit({ type: "stage", stage: "repair", state: "done" });
   }
   // No two slides may look alike, whatever the model chose.
-  let deck = diversifyDeck(v.deck);
+  const reused = reuseScenes(diversifyDeck(v.deck), existing);
+  let deck = reused.deck;
   log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${deck.theme.transition} transition · ${deck.theme.font} font`);
   ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
   ctx.progress(0.4);
 
-  // A custom 3D scene for every slide, designed for its content (catalog scenes are the fallback).
-  ctx.emit({ type: "stage", stage: "review", state: "start", detail: "one per slide" });
-  deck = await addSceneCode(deck, existing, provider, {
-    userId: input.userId,
-    jobId: ctx.jobId,
-    signal: ctx.signal,
-    log: (m, level = "info") => (level === "info" ? log(m) : ctx.emit({ type: "log", level, message: m })),
-  });
-  const custom = deck.slides.filter((s) => s.scene.code).length;
-  ctx.emit({ type: "stage", stage: "review", state: "done", detail: `${custom}/${deck.slides.length} custom` });
-  ctx.progress(0.75);
+  // Scenes for slides not started while streaming (and changed slides of an edit).
+  const info = { title: deck.title, theme: deck.theme, slideCount: deck.slides.length };
+  if (reused.missing.some((i) => !writer.has(i)) && writer.started === 0) log(`Designing ${reused.missing.length} custom 3D scene${reused.missing.length > 1 ? "s" : ""} with ${provider.model}`);
+  for (const i of reused.missing) writer.start(info, deck.slides[i], i);
+  const scenesPending = writer.started > 0;
 
-  // Write the project (deck.json + engine) and report changed files.
-  const nextFiles = deckToProjectFiles(deck);
+  const meta = {
+    name: project.name === "Untitled project" || project.name === "Untitled presentation" ? deck.title.slice(0, 120) : project.name,
+    description: deck.slides[0]?.subtitle.slice(0, 500) ?? "",
+    category: "presentation",
+    framework: "three",
+  };
+  const saveAndBuild = async (d: DeckSpec, first: boolean) => {
+    const out = deckToProjectFiles(d);
+    await writeFileSet(input.projectId, out, first ? meta : {});
+    ctx.emit({ type: "stage", stage: "build", state: "start" });
+    const b = await buildProject({ projectId: input.projectId, framework: "three", files: out });
+    ctx.emit({ type: "build", status: b.status === "succeeded" ? "succeeded" : "failed", buildId: b.buildId, previewUrl: b.previewUrl, errors: b.errors, warnings: b.warnings, attempt: 0 });
+    ctx.emit({ type: "stage", stage: "build", state: b.status === "succeeded" ? "done" : "failed", detail: b.status === "succeeded" ? "ready" : formatDiagnostic(b.errors[0]) });
+    return { files: out, build: b };
+  };
+
+  // 1) Show the presentation right away (scenes still being written use their catalog scene).
+  log(`Building the 3D presentation and uploading it to ${storage().driver === "s3" ? "S3" : "local storage"}`);
+  let { files: nextFiles, build } = await saveAndBuild(deck, true);
+  log(build.status === "succeeded" ? (scenesPending ? "Preview is ready — custom 3D scenes are added as they finish" : "Preview is ready") : `Preview build failed: ${formatDiagnostic(build.errors[0])}`);
+  ctx.progress(0.55);
+
+  // 2) Swap in the custom scenes once they are written.
+  if (scenesPending) {
+    ctx.emit({ type: "stage", stage: "review", state: "start", detail: "one per slide" });
+    const codes = await writer.results();
+    ctx.emit({ type: "stage", stage: "review", state: "done", detail: `${codes.size + deck.slides.length - reused.missing.length}/${deck.slides.length} custom` });
+    if (codes.size) {
+      const withCustom = withScenes(deck, codes);
+      log("Adding the custom 3D scenes to the presentation");
+      try {
+        ({ files: nextFiles, build } = await saveAndBuild(withCustom, false));
+      } catch (err) {
+        if (ctx.signal.aborted) throw err;
+        // A transient database error: try once more, the scenes are already written.
+        ctx.emit({ type: "log", level: "warn", message: `Saving the scenes failed (${(err as Error).message.split("\n").find(Boolean)?.slice(0, 120)}); retrying` });
+        ({ files: nextFiles, build } = await saveAndBuild(withCustom, false));
+      }
+      deck = withCustom;
+    }
+  }
+  ctx.progress(0.9);
+
+  // Changed files relative to before this request.
   const changed: { path: string; kind: "created" | "modified" | "deleted"; added: number; removed: number }[] = [];
   for (const f of nextFiles) {
     const before = files.get(f.path) ?? null;
@@ -188,21 +252,6 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     changed.push(c);
     ctx.emit({ type: "file", ...c });
   }
-  log("Saving the deck to the database");
-  // The project's metadata is updated inside the same transaction as its files.
-  await writeFileSet(input.projectId, nextFiles, {
-    name: project.name === "Untitled project" || project.name === "Untitled presentation" ? deck.title.slice(0, 120) : project.name,
-    description: deck.slides[0]?.subtitle.slice(0, 500) ?? "",
-    category: "presentation",
-    framework: "three",
-  });
-
-  ctx.emit({ type: "stage", stage: "build", state: "start" });
-  log(`Building the 3D presentation and uploading it to ${storage().driver === "s3" ? "S3" : "local storage"}`);
-  const build = await buildProject({ projectId: input.projectId, framework: "three", files: nextFiles });
-  log(build.status === "succeeded" ? "Preview is ready" : `Preview build failed: ${formatDiagnostic(build.errors[0])}`);
-  ctx.emit({ type: "build", status: build.status === "succeeded" ? "succeeded" : "failed", buildId: build.buildId, previewUrl: build.previewUrl, errors: build.errors, warnings: build.warnings, attempt: 0 });
-  ctx.emit({ type: "stage", stage: "build", state: build.status === "succeeded" ? "done" : "failed", detail: build.status === "succeeded" ? "ready" : formatDiagnostic(build.errors[0]) });
 
   ctx.emit({ type: "stage", stage: "finalize", state: "start" });
   log("Saving a version and the chat reply");

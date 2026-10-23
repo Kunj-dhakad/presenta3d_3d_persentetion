@@ -55,7 +55,8 @@ export async function writeFileSet(projectId: string, files: FileSet, projectDat
       if (rows.length) await tx.projectFile.createMany({ data: rows });
       await tx.project.update({ where: { id: projectId }, data: { ...projectData, updatedAt: new Date() } });
     },
-    { maxWait: 5_000, timeout: 15_000 },
+    // Generous limits: on a distant database every statement is a slow round trip.
+    { maxWait: 15_000, timeout: 60_000 },
   );
 }
 

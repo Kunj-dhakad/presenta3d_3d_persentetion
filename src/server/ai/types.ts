@@ -17,6 +17,8 @@ export type StructuredRequest<T extends z.ZodType> = {
   signal?: AbortSignal;
   /** Called as output streams in, with the number of characters received so far. */
   onProgress?: (receivedChars: number) => void;
+  /** Called as output streams in, with all output text received so far (partial JSON). */
+  onText?: (textSoFar: string) => void;
   /** Usage attribution. */
   userId: string;
   jobId?: string;

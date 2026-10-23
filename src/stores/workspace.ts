@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { BuildDiagnostic, BuildSummary, PreviewMessage } from "@/lib/build-types";
+import type { BuildDiagnostic, BuildSummary, PreviewIssue } from "@/lib/build-types";
 import type { JobEvent, PipelineStage, TaskEventPayload } from "@/lib/jobs";
 import { api } from "@/lib/api-client";
 
@@ -75,7 +75,7 @@ type State = {
   revealLine: { path: string; line: number; nonce: number } | null;
   build: BuildState;
   previewNonce: number;
-  runtimeErrors: (PreviewMessage & { at: number })[];
+  runtimeErrors: (PreviewIssue & { at: number })[];
   job: LiveJob | null;
   saving: boolean;
   saveError: string | null;
@@ -99,7 +99,7 @@ type Actions = {
   runBuild: () => Promise<BuildSummary | null>;
   setBuildFromServer: (b: BuildSummary | null, lastWorkingUrl: string | null) => void;
   refreshPreview: () => void;
-  pushRuntimeError: (m: PreviewMessage) => void;
+  pushRuntimeError: (m: PreviewIssue) => void;
   clearRuntimeErrors: () => void;
   startJob: (jobId: string) => void;
   applyJobEvent: (e: JobEvent) => void;
@@ -229,9 +229,8 @@ export const useWorkspace = create<State & Actions>((set, get) => ({
   refreshPreview: () => set((s) => ({ previewNonce: s.previewNonce + 1, runtimeErrors: [] })),
   pushRuntimeError: (m) =>
     set((s) => {
-      if (m.type === "ready") return {};
       const key = `${m.type}:${m.message}`;
-      if (s.runtimeErrors.some((e) => e.type !== "ready" && `${e.type}:${e.message}` === key)) return {};
+      if (s.runtimeErrors.some((e) => `${e.type}:${e.message}` === key)) return {};
       return { runtimeErrors: [...s.runtimeErrors, { ...m, at: Date.now() }].slice(-30) };
     }),
   clearRuntimeErrors: () => set({ runtimeErrors: [] }),

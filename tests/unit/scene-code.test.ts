@@ -50,3 +50,25 @@ describe("model-written slide scenes", () => {
     expect(logs[0]).toMatch(/Designing 1 custom 3D scene/);
   });
 });
+
+describe("faster generation", () => {
+  it("extracts complete slides from a deck that is still streaming", async () => {
+    const { completedSlides } = await import("@/server/deck/scene-code");
+    const deck = sampleDeck("Stream");
+    const json = JSON.stringify({ title: deck.title, theme: deck.theme, slides: deck.slides.map((s) => ({ ...s, title: `${s.title} {"tricky": [x]}` })) });
+    const cut = json.indexOf(deck.slides[2].kicker); // part-way through slide 3
+    const partial = completedSlides(json.slice(0, cut));
+    expect(partial.head?.title).toBe(deck.title);
+    expect(partial.slides).toHaveLength(2);
+    expect((partial.slides[1] as { title: string }).title).toContain('{"tricky": [x]}');
+    expect(completedSlides(json).slides).toHaveLength(4);
+    expect(completedSlides('{"title":"x","th').head).toBeNull();
+  });
+
+  it("leaves scene code out of the deck sent to the model for edits", async () => {
+    const { deckForPrompt } = await import("@/server/deck/scene-code");
+    const deck = await addSceneCode(sampleDeck("Edit"), null, new MockTextProvider(), { userId: "u", jobId: "j", signal: new AbortController().signal, log: () => {} });
+    expect(JSON.stringify(deck)).toContain("THREE.Group");
+    expect(JSON.stringify(deckForPrompt(deck))).not.toContain("THREE.Group");
+  });
+});

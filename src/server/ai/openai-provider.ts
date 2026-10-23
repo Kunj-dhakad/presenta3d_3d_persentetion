@@ -92,10 +92,15 @@ export class OpenAITextProvider implements TextModelProvider {
       );
       let chars = 0;
       let lastEmit = 0;
+      let text = "";
       for await (const event of stream) {
         if (event.type === "response.created") usage.requestId = event.response.id;
         else if (event.type === "response.output_text.delta") {
           chars += event.delta.length;
+          if (req.onText) {
+            text += event.delta;
+            req.onText(text);
+          }
           if (req.onProgress && chars - lastEmit > 400) {
             lastEmit = chars;
             req.onProgress(chars);

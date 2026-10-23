@@ -95,11 +95,21 @@ const update = (t) => {
 const enter = (tl) => { group.scale.setScalar(0.01); tl.to(group.scale, { x: 1, y: 1, z: 1, duration: 1.4, ease: "expo.out" }); };
 return { group, update, enter };`;
 
-type Slide = DeckSpec["slides"][number];
+/** What a scene prompt needs from a slide: the stored slide and the model's streamed slide both fit. */
+export type SceneSlide = {
+  layout: string;
+  kicker: string;
+  title: string;
+  subtitle: string;
+  bullets: string[];
+  stats: { value: string; label: string }[];
+  scene: { preset?: string; kind?: string; primary: string; secondary: string; speed: number; density: number };
+};
+export type SceneDeckInfo = { title: string; theme: { environment: string; accent: string; background: string }; slideCount?: number };
 
-function scenePrompt(deck: DeckSpec, slide: Slide, index: number) {
+function scenePrompt(deck: SceneDeckInfo, slide: SceneSlide, index: number) {
   return [
-    `Presentation: "${deck.title}" (${deck.slides.length} slides). World: ${deck.theme.environment}.`,
+    `Presentation: "${deck.title}"${deck.slideCount ? ` (${deck.slideCount} slides)` : ""}. World: ${deck.theme.environment}.`,
     `Colours: primary ${slide.scene.primary}, secondary ${slide.scene.secondary}, accent ${deck.theme.accent}, background ${deck.theme.background}. speed ${slide.scene.speed}, density ${slide.scene.density}.`,
     `Slide ${index + 1} (layout "${slide.layout}"${slide.layout === "left" ? ", the text is on the left; the scene is shown on the right half of the screen" : slide.layout === "right" ? ", the text is on the right; the scene is shown on the left half of the screen" : ", the text is centred over the scene: keep the middle third dim and calm (place the main objects around it, behind it, or low) so the text stays readable"}):`,
     slide.kicker ? `Kicker: ${slide.kicker}` : "",
@@ -107,82 +117,208 @@ function scenePrompt(deck: DeckSpec, slide: Slide, index: number) {
     slide.subtitle ? `Subtitle: ${slide.subtitle}` : "",
     slide.bullets.length ? `Points: ${slide.bullets.join(" | ")}` : "",
     slide.stats.length ? `Numbers: ${slide.stats.map((s) => `${s.value} ${s.label}`).join(" | ")}` : "",
-    `Mood hint (a catalog scene that fits): ${slide.scene.preset ?? slide.scene.kind}.`,
+    `Mood hint (a catalog scene that fits): ${slide.scene.preset ?? slide.scene.kind ?? "any"}.`,
     "Design a 3D scene that a viewer immediately connects with THIS slide's subject, and that looks different from the other slides.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
+type WriterOptions = { userId: string; jobId: string; signal: AbortSignal; log: (message: string, level?: "info" | "warn") => void; concurrency?: number };
+
+/**
+ * Writes slide scenes in the background. `start()` can be called as soon as a
+ * slide's text is known (even while the rest of the deck is still streaming);
+ * up to `concurrency` scenes are written at once. `results()` waits for all
+ * started scenes. A slide whose scene fails simply has no code (its catalog
+ * scene is used).
+ */
+export class SceneWriter {
+  private tasks = new Map<number, Promise<string | null>>();
+  private running = 0;
+  private waiting: (() => void)[] = [];
+  private done = 0;
+
+  constructor(
+    private provider: TextModelProvider,
+    private opts: WriterOptions,
+  ) {}
+
+  get started() {
+    return this.tasks.size;
+  }
+
+  has(index: number) {
+    return this.tasks.has(index);
+  }
+
+  start(deck: SceneDeckInfo, slide: SceneSlide, index: number) {
+    if (this.tasks.has(index) || this.opts.signal.aborted) return;
+    const task = this.run(deck, slide, index).catch((err) => {
+      if (!this.opts.signal.aborted) this.opts.log(`Slide ${index + 1}: custom scene failed (${(err as Error).message.slice(0, 160)}); using the catalog scene instead`, "warn");
+      return null;
+    });
+    this.tasks.set(index, task);
+  }
+
+  async results(): Promise<Map<number, string>> {
+    const out = new Map<number, string>();
+    await Promise.all([...this.tasks].map(async ([i, t]) => {
+      const code = await t;
+      if (code) out.set(i, code);
+    }));
+    return out;
+  }
+
+  private async slot() {
+    if (this.running >= (this.opts.concurrency ?? 8)) await new Promise<void>((r) => this.waiting.push(r));
+    this.running++;
+  }
+
+  private release() {
+    this.running--;
+    this.waiting.shift()?.();
+  }
+
+  private async run(deck: SceneDeckInfo, slide: SceneSlide, index: number): Promise<string | null> {
+    await this.slot();
+    try {
+      let extra = "";
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await this.provider.structured({
+          operation: "deck.scene",
+          schema: SceneCodeSchema,
+          schemaName: "scene_code",
+          system: SCENE_CODE_SYSTEM,
+          input: scenePrompt(deck, slide, index) + extra,
+          maxOutputTokens: 8_000,
+          reasoningEffort: "low",
+          // A scene that takes too long is skipped (its catalog scene is used) rather than holding up the deck.
+          signal: AbortSignal.any([this.opts.signal, AbortSignal.timeout(SCENE_TIMEOUT_MS)]),
+          userId: this.opts.userId,
+          jobId: this.opts.jobId,
+        });
+        const code = res.data.code.replace(/^```(?:js|javascript)?\s*|```\s*$/g, "").trim();
+        const v = validateSceneCode(code);
+        if (v.ok) {
+          this.done++;
+          this.opts.log(`Scene ready — slide ${index + 1}: ${res.data.summary.slice(0, 120)}`);
+          return code;
+        }
+        extra = `\n\nYour previous code was rejected: ${v.error}. Write it again following the rules.`;
+      }
+      this.opts.log(`Slide ${index + 1}: custom scene was rejected twice; using the catalog scene instead`, "warn");
+      return null;
+    } finally {
+      this.release();
+    }
+  }
+}
+
+/**
+ * From the partial JSON of a deck that is still streaming, return the deck
+ * header (title, theme) and every slide object that is already complete.
+ * Never throws; returns what can be parsed so far.
+ */
+export function completedSlides(text: string): { head: SceneDeckInfo | null; slides: unknown[] } {
+  const m = /"slides"\s*:\s*\[/.exec(text);
+  if (!m) return { head: null, slides: [] };
+  let head: SceneDeckInfo | null = null;
+  try {
+    const parsed = JSON.parse(`${text.slice(0, m.index)}"slides":[]}`) as { title?: unknown; theme?: Record<string, unknown> };
+    if (typeof parsed.title === "string" && parsed.theme) {
+      head = { title: parsed.title, theme: { environment: String(parsed.theme.environment ?? ""), accent: String(parsed.theme.accent ?? ""), background: String(parsed.theme.background ?? "") } };
+    }
+  } catch {
+    /* header not complete yet */
+  }
+  const slides: unknown[] = [];
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let begin = -1;
+  for (let i = m.index + m[0].length; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "{") {
+      if (depth === 0) begin = i;
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0 && begin >= 0) {
+        try {
+          slides.push(JSON.parse(text.slice(begin, i + 1)));
+        } catch {
+          /* ignore */
+        }
+        begin = -1;
+      }
+    } else if (c === "]" && depth === 0) break;
+  }
+  return { head, slides };
+}
+
+/** A streamed slide is usable for a scene prompt once it has these fields. */
+export function asSceneSlide(raw: unknown): SceneSlide | null {
+  const s = raw as Partial<SceneSlide> | null;
+  if (!s || typeof s.title !== "string" || typeof s.layout !== "string" || !s.scene || typeof s.scene.primary !== "string") return null;
+  return {
+    layout: s.layout,
+    kicker: typeof s.kicker === "string" ? s.kicker : "",
+    title: s.title,
+    subtitle: typeof s.subtitle === "string" ? s.subtitle : "",
+    bullets: Array.isArray(s.bullets) ? s.bullets.filter((b): b is string => typeof b === "string") : [],
+    stats: Array.isArray(s.stats) ? s.stats : [],
+    scene: { preset: s.scene.preset, primary: s.scene.primary, secondary: String(s.scene.secondary ?? s.scene.primary), speed: Number(s.scene.speed ?? 1), density: Number(s.scene.density ?? 0.6) },
+  };
+}
+
+type Slide = DeckSpec["slides"][number];
 const fingerprint = (s: Slide) => JSON.stringify([s.title, s.subtitle, s.layout, s.scene.preset, s.scene.primary, s.scene.secondary]);
+
+/** Copy scenes from `previous` onto slides whose content and look did not change (edits). Returns the indexes still without a scene. */
+export function reuseScenes(deck: DeckSpec, previous: DeckSpec | null): { deck: DeckSpec; missing: number[] } {
+  const reuse = new Map<string, string>();
+  for (const s of previous?.slides ?? []) if (s.scene.code) reuse.set(fingerprint(s), s.scene.code);
+  const missing: number[] = [];
+  const slides = deck.slides.map((s, i) => {
+    const kept = reuse.get(fingerprint(s));
+    const scene = { ...s.scene };
+    if (kept) scene.code = kept;
+    else {
+      delete scene.code;
+      missing.push(i);
+    }
+    return { ...s, scene };
+  });
+  return { deck: { ...deck, slides }, missing };
+}
+
+/** The deck as context for the model when editing: scene code is left out (it is large and not needed). */
+export function deckForPrompt(deck: DeckSpec): DeckSpec {
+  return { ...deck, slides: deck.slides.map((s) => ({ ...s, scene: { ...s.scene, code: undefined, compose: undefined } })) };
+}
 
 /**
  * Write a 3D scene for every slide (in parallel). Scenes from `previous` are
  * reused for slides whose content and look did not change in an edit.
  */
-export async function addSceneCode(
-  deck: DeckSpec,
-  previous: DeckSpec | null,
-  provider: TextModelProvider,
-  opts: { userId: string; jobId: string; signal: AbortSignal; log: (message: string, level?: "info" | "warn") => void; concurrency?: number },
-): Promise<DeckSpec> {
-  const reuse = new Map<string, string>();
-  for (const s of previous?.slides ?? []) if (s.scene.code) reuse.set(fingerprint(s), s.scene.code);
-  const slides = deck.slides.map((s) => ({ ...s, scene: { ...s.scene } }));
-  const todo: number[] = [];
-  slides.forEach((s, i) => {
-    const kept = reuse.get(fingerprint(s));
-    if (kept) s.scene.code = kept;
-    else {
-      delete s.scene.code;
-      todo.push(i);
-    }
-  });
-  if (!todo.length) return { ...deck, slides };
+export async function addSceneCode(deck: DeckSpec, previous: DeckSpec | null, provider: TextModelProvider, opts: WriterOptions): Promise<DeckSpec> {
+  const { deck: reused, missing } = reuseScenes(deck, previous);
+  if (!missing.length) return reused;
+  opts.log(`Designing ${missing.length} custom 3D scene${missing.length > 1 ? "s" : ""} with ${provider.model}`);
+  const writer = new SceneWriter(provider, opts);
+  const info: SceneDeckInfo = { title: deck.title, theme: deck.theme, slideCount: deck.slides.length };
+  for (const i of missing) writer.start(info, reused.slides[i], i);
+  return withScenes(reused, await writer.results());
+}
 
-  opts.log(`Designing ${todo.length} custom 3D scene${todo.length > 1 ? "s" : ""} with ${provider.model}`);
-  let next = 0;
-  let done = 0;
-  const one = async (i: number) => {
-    let extra = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await provider.structured({
-        operation: "deck.scene",
-        schema: SceneCodeSchema,
-        schemaName: "scene_code",
-        system: SCENE_CODE_SYSTEM,
-        input: scenePrompt(deck, slides[i], i) + extra,
-        maxOutputTokens: 8_000,
-        reasoningEffort: "low",
-        // A scene that takes too long is skipped (its catalog scene is used) rather than holding up the deck.
-        signal: AbortSignal.any([opts.signal, AbortSignal.timeout(SCENE_TIMEOUT_MS)]),
-        userId: opts.userId,
-        jobId: opts.jobId,
-      });
-      const code = res.data.code.replace(/^```(?:js|javascript)?\s*|```\s*$/g, "").trim();
-      const v = validateSceneCode(code);
-      if (v.ok) {
-        slides[i].scene.code = code;
-        done++;
-        opts.log(`Scene ${done}/${todo.length} ready — slide ${i + 1}: ${res.data.summary.slice(0, 120)}`);
-        return;
-      }
-      extra = `\n\nYour previous code was rejected: ${v.error}. Write it again following the rules.`;
-    }
-    opts.log(`Slide ${i + 1}: custom scene was rejected twice; using the catalog scene instead`, "warn");
-  };
-  const worker = async () => {
-    while (next < todo.length && !opts.signal.aborted) {
-      const i = todo[next++];
-      try {
-        await one(i);
-      } catch (err) {
-        if (opts.signal.aborted) throw err;
-        opts.log(`Slide ${i + 1}: custom scene failed (${(err as Error).message.slice(0, 160)}); using the catalog scene instead`, "warn");
-      }
-    }
-  };
-  // All slides at once: the total time is that of the slowest scene, not the sum.
-  await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 8, todo.length) }, worker));
-  return { ...deck, slides };
+export function withScenes(deck: DeckSpec, codes: Map<number, string>): DeckSpec {
+  return { ...deck, slides: deck.slides.map((s, i) => (codes.has(i) ? { ...s, scene: { ...s.scene, code: codes.get(i) } } : s)) };
 }
