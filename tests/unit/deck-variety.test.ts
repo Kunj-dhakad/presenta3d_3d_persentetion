@@ -25,13 +25,16 @@ describe("presentation variety", () => {
   it("gives each new deck a different design brief", () => {
     const briefs = new Set(Array.from({ length: 12 }, () => designBrief()));
     expect(briefs.size).toBeGreaterThan(8);
-    expect(designBrief()).toMatch(/palette idea: .+\n- environment idea: (grid|space|ocean|aurora|horizon|studio); transition: (side|dive)/);
+    expect(designBrief()).toMatch(/palette idea: .+\n- environment idea: (grid|space|ocean|aurora|horizon|studio)\n/);
   });
 
-  it("ships an engine that renders every environment and both transitions", () => {
+  it("ships an engine that renders every environment with the side-and-zoom travel", () => {
     const main = deckToProjectFiles(sampleDeck("Engine")).find((f) => f.path === "main.js")!.content;
     for (const env of ENVIRONMENTS) expect(main).toContain(`"${env}"`);
-    expect(main).toContain('deck.theme.transition === "dive"');
+    expect(main).toContain('const TRAVEL = "side"');
+    expect(main).toContain("fov: 55");
+    // Slides whose custom scene is still being written show nothing in its place.
+    expect(main).toContain("if (slide.scene.pending)");
   });
 });
 

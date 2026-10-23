@@ -76,6 +76,8 @@ const StoredSceneSchema = z.object({
   compose: ComposeSchema.optional(),
   /** A custom scene written by the model for this slide (function body; see server/deck/scene-code.ts). */
   code: z.string().max(14_000).optional(),
+  /** The custom scene is still being written: the engine shows only the world for now. */
+  pending: z.boolean().optional(),
   ...sceneColours,
 });
 
@@ -95,7 +97,7 @@ const ThemeSchema = z.object({
   accent: Hex,
   font: z.enum(["sans", "serif", "display", "mono"]).describe("Title font. Prefer display or sans; serif only for elegant, literary or luxury topics."),
   environment: z.enum(ENVIRONMENTS).describe("The 3D world the presentation travels through; pick what fits the topic."),
-  transition: z.enum(TRANSITIONS).describe("side = camera glides sideways between slides; dive = camera flies forward into depth."),
+  transition: z.enum(TRANSITIONS).describe('Always "side" (the camera zooms out, glides sideways and zooms in). "dive" is kept only for older decks.'),
 });
 
 /** What the model writes (OpenAI strict structured output). */

@@ -26,7 +26,7 @@ ${presetCatalog()}
 Use a different preset on every slide; never repeat one within a deck, and vary shapes and arrangements from slide to slide. Use "bar-chart" (with 3-8 numbers in scene.values) for slides about numbers.
 theme.environment is the world the camera travels through:
 ${ENVIRONMENTS.map((e) => `- ${e}: ${ENVIRONMENT_HINTS[e]}`).join("\n")}
-theme.transition: "side" (glide sideways between slides) or "dive" (fly forward into depth).
+theme.transition: always "side".
 Art direction: a dark theme.background (near black, tinted toward the palette), light theme.text, one vivid theme.accent. Pick scene.primary/secondary colours that harmonise with the accent; keep the palette consistent across the deck.
 Every deck must feel designed for its own topic: derive the palette, environment, font and scenes from the subject, not from habit. Do not default to cyan/blue or the grid environment.
 Names: use the names the user gives. If you must invent a product or company name, make it specific to the topic; avoid generic names like "Pulse", "Nova", "Nexus", "Aura" or "Vertex".
@@ -59,7 +59,7 @@ export function designBrief(): string {
   return [
     "Design brief for this deck (a fresh starting point; adapt anything that clashes with the topic):",
     `- palette idea: ${pick(PALETTES)}`,
-    `- environment idea: ${pick(ENVIRONMENTS)}; transition: ${pick(["side", "dive"])}`,
+    `- environment idea: ${pick(ENVIRONMENTS)}`,
     `- consider opening with one of these presets if it fits: ${scenes.join(", ")}`,
   ].join("\n");
 }
@@ -218,7 +218,9 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
 
   // 1) Show the presentation right away (scenes still being written use their catalog scene).
   log(`Building the 3D presentation and uploading it to ${storage().driver === "s3" ? "S3" : "local storage"}`);
-  let { files: nextFiles, build } = await saveAndBuild(deck, true);
+  // Slides whose custom scene is still being written show only the world until it arrives.
+  const pendingDeck = { ...deck, slides: deck.slides.map((s, i) => (writer.has(i) ? { ...s, scene: { ...s.scene, pending: true } } : s)) };
+  let { files: nextFiles, build } = await saveAndBuild(pendingDeck, true);
   log(build.status === "succeeded" ? (scenesPending ? "Preview is ready — custom 3D scenes are added as they finish" : "Preview is ready") : `Preview build failed: ${formatDiagnostic(build.errors[0])}`);
   ctx.progress(0.55);
 
@@ -227,7 +229,8 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     ctx.emit({ type: "stage", stage: "review", state: "start", detail: "one per slide" });
     const codes = await writer.results();
     ctx.emit({ type: "stage", stage: "review", state: "done", detail: `${codes.size + deck.slides.length - reused.missing.length}/${deck.slides.length} custom` });
-    if (codes.size) {
+    // Always rebuild: slides marked pending get their custom scene, or their catalog scene if writing it failed.
+    {
       const withCustom = withScenes(deck, codes);
       log("Adding the custom 3D scenes to the presentation");
       try {

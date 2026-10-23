@@ -61,7 +61,8 @@ ctx provides (destructure what you need):
 
 Rules:
 - Put everything in \`const group = new THREE.Group();\`, centred on the origin. The engine scales the finished group to fill its part of the screen, so think in proportions: a wide, cinematic composition (about 16:9), not a single small object.
-- Fill the frame in layers: a large, recognisable main subject in the middle ground, supporting objects around it, and a background layer that spreads across the whole width (particle fields, rings, light beams, floor patterns, floating shapes) so the scene feels like a full-screen world, not an object on an empty background.
+- Fill the frame in layers: a large, recognisable main subject in the middle ground, supporting objects around it, and a background layer that spreads across the whole width (particle fields, rings, light beams, floating shapes) so the scene feels like a full-screen world, not an object on an empty background.
+- No hard edges: the scene must blend into the dark page. Distribute background particles in a soft round or elliptical cloud whose density falls off toward the edges (e.g. gaussian or radius-weighted), never in a rectangle or box; avoid rows/grids of particles that end in straight lines.
 - Do not add ground planes, platforms, pedestals or large flat discs: the world already has a floor, and flat discs turn into a big glowing plate.
 - Make it clearly ABOUT this slide's subject: build recognisable objects from primitives (e.g. a coffee cup from a lathe/cylinder with a torus handle and rising steam particles; a rocket from cones and cylinders with a particle exhaust; a heart from two spheres and a cone; a city skyline from boxes; a plant from cylinders and leaf shapes; a chart from bars), combined with motion that expresses the idea.
 - Cinematic quality: layered depth, readable shapes, subtle motion. Use the deck colours.

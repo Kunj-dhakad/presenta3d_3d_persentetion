@@ -593,13 +593,45 @@ function tameBrightness(group, behindText) {
 // fill its part of the frame: the free half of the screen beside left/right
 // text, or the whole screen behind centred text. The scene is wrapped so its
 // own entrance animation (often on group.scale) still works.
+// Fade the outer part of every point cloud so a scene blends into the world
+// instead of ending in a visible rectangle.
+function softenPointClouds(group) {
+  group.traverse((o) => {
+    if (!o.isPoints || !o.geometry?.attributes?.position) return;
+    const pos = o.geometry.attributes.position;
+    if (pos.count < 40) return;
+    o.geometry.computeBoundingBox();
+    const bb = o.geometry.boundingBox;
+    const c = bb.getCenter(new THREE.Vector3());
+    const h = bb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    const base = o.material.color ? o.material.color.clone() : new THREE.Color(1, 1, 1);
+    const had = o.geometry.attributes.color;
+    const colors = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const dx = h.x > 1e-4 ? (pos.getX(i) - c.x) / h.x : 0;
+      const dy = h.y > 1e-4 ? (pos.getY(i) - c.y) / h.y : 0;
+      const dz = h.z > 1e-4 ? (pos.getZ(i) - c.z) / h.z : 0;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz * 0.35);
+      const f = 1 - THREE.MathUtils.smoothstep(d, 0.45, 1.05);
+      const r0 = had ? had.getX(i) : base.r, g0 = had ? had.getY(i) : base.g, b0 = had ? had.getZ(i) : base.b;
+      colors[i * 3] = r0 * f;
+      colors[i * 3 + 1] = g0 * f;
+      colors[i * 3 + 2] = b0 * f;
+    }
+    o.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    o.material.vertexColors = true;
+    if (o.material.color) o.material.color.set(0xffffff);
+    o.material.needsUpdate = true;
+  });
+}
 function fitToFrame(group, layout) {
   const box = new THREE.Box3().setFromObject(group);
   if (box.isEmpty()) return group;
   const size = box.getSize(new THREE.Vector3());
   const centre = box.getCenter(new THREE.Vector3());
   const side = (layout === "left" || layout === "right") && !narrow();
-  const target = narrow() ? { w: 7, h: 5 } : side ? { w: 7.6, h: 6.4 } : { w: 13, h: 7.2 };
+  // Larger than the free area: the soft edges of the scene spill over and blend into the page.
+  const target = narrow() ? { w: 8, h: 6 } : side ? { w: 10, h: 7.6 } : { w: 16, h: 8.6 };
   const k = THREE.MathUtils.clamp(Math.min(target.w / Math.max(size.x, 0.01), target.h / Math.max(size.y, 0.01)), 0.5, 3);
   const outer = new THREE.Group();
   group.position.sub(centre);
@@ -614,6 +646,7 @@ function buildCustom(slide, index) {
     const built = fn(sceneToolkit(slide, index));
     if (!built || !(built.group instanceof THREE.Object3D)) return null;
     tameBrightness(built.group, slide.layout === "hero" || slide.layout === "center" || slide.layout === "stats");
+    softenPointClouds(built.group);
     try {
       built.update?.(0); // place animated parts before measuring
     } catch {
@@ -643,6 +676,9 @@ function buildCustom(slide, index) {
 }
 
 function buildScene(slide, index) {
+  // A custom scene still being written: show only the world until it arrives
+  // (a stand-in scene that is then replaced would be confusing).
+  if (slide.scene.pending) return { group: new THREE.Group(), update: () => {} };
   const make = builders[slide.scene.kind] ?? builders.particles;
   const built = buildCustom(slide, index) ?? make(slide.scene, rng(index * 7919 + 17));
   // Remember each material's base opacity so the group can fade as a whole.
@@ -675,7 +711,9 @@ function dispose(group) {
 // Changing slides moves the camera through one continuous world: sideways
 // ("side") or forward into depth ("dive").
 const SPACING = 18;
-const TRAVEL = deck.theme.transition === "dive" ? "dive" : "side";
+// Every deck travels sideways through one world with a zoom-out / zoom-in
+// (theme.transition is kept for older decks but no longer changes the travel).
+const TRAVEL = "side";
 const stations = slides.map((s, i) => ({ x: TRAVEL === "dive" ? 0 : i * SPACING, z: TRAVEL === "dive" ? -i * SPACING : 0, built: null, entered: false }));
 const baseZ = () => (window.innerWidth < 760 ? 14 : 11);
 const narrow = () => window.innerWidth < 760;
@@ -971,7 +1009,7 @@ slides.forEach((_, i) => {
 });
 
 // ─── Camera travel ──────────────────────────────────────────────────────
-const rig = { x: 0, y: 0.6, z: 11, lookX: 0, lookZ: 0 };
+const rig = { x: 0, y: 0.6, z: 11, lookX: 0, lookY: 0.2, lookZ: 0, fov: 45 };
 let index = -1;
 let lastNav = 0;
 
@@ -1008,23 +1046,15 @@ function go(next, instant = false) {
     Object.assign(rig, { x: st.x, lookX: st.x, z: camZ, lookZ: st.z, y: 0.6 });
     arrive(next);
     renderSlide(slide, 0.1, dir);
-  } else if (TRAVEL === "dive") {
-    const duration = Math.min(2.6, 1.4 + 0.25 * (distance - 1));
-    gsap.to(rig, { z: camZ, lookZ: st.z, duration, ease: "power2.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
-    // Rise and sway slightly while flying forward, then settle.
-    const sway = next % 2 ? 1.6 : -1.6; // alternate sides for a weaving flight
-    gsap.timeline({ overwrite: "auto" })
-      .to(rig, { y: 2.2, x: sway, lookX: sway * 0.4, duration: duration * 0.45, ease: "power2.out" })
-      .to(rig, { y: 0.6, x: 0, lookX: 0, duration: duration * 0.55, ease: "power2.inOut" });
-    renderSlide(slide, duration * 0.45, dir);
   } else {
-    const duration = Math.min(2.4, 1.3 + 0.25 * (distance - 1));
-    gsap.to(rig, { x: st.x, lookX: st.x, duration, ease: "power2.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
-    // Pull back slightly mid-flight for a sense of travel, then settle.
+    // Zoom out, glide sideways to the next slide, zoom back in (Omma-style travel).
+    const duration = Math.min(2.6, 1.6 + 0.25 * (distance - 1));
+    const pull = 7 + Math.min(6, (distance - 1) * 2);
+    gsap.to(rig, { x: st.x, lookX: st.x, duration, ease: "power3.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
     gsap.timeline({ overwrite: "auto" })
-      .to(rig, { z: camZ + 3.5, y: 1.4, duration: duration * 0.45, ease: "power2.out" })
-      .to(rig, { z: camZ, y: 0.6, duration: duration * 0.55, ease: "power2.inOut" });
-    renderSlide(slide, duration * 0.45, dir);
+      .to(rig, { z: camZ + pull, y: 2.2, lookY: 0.9, fov: 55, duration: duration * 0.42, ease: "power2.out" })
+      .to(rig, { z: camZ, y: 0.6, lookY: 0.2, fov: 45, duration: duration * 0.58, ease: "power3.inOut" });
+    renderSlide(slide, duration * 0.5, dir);
   }
   accentLight.color = new THREE.Color(slide.scene.secondary);
   // Custom scenes use lit materials: a softer, higher-threshold bloom keeps their detail.
@@ -1149,7 +1179,11 @@ renderer.setAnimationLoop(() => {
   parallax.x += (mouse.x * 0.6 - parallax.x) * 0.04;
   parallax.y += (-mouse.y * 0.4 - parallax.y) * 0.04;
   camera.position.set(rig.x + parallax.x, rig.y + parallax.y, rig.z);
-  camera.lookAt(rig.lookX, 0.2, rig.lookZ);
+  if (Math.abs(camera.fov - rig.fov) > 0.01) {
+    camera.fov = rig.fov;
+    camera.updateProjectionMatrix();
+  }
+  camera.lookAt(rig.lookX, rig.lookY, rig.lookZ);
   sky.position.set(camera.position.x, 0, camera.position.z);
   composer.render();
 });
