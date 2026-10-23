@@ -20,8 +20,9 @@ const STAGES: { id: PipelineStage; label: string }[] = [
 const PRESENTATION_STAGES: { id: PipelineStage; label: string }[] = [
   { id: "understand", label: "Understanding your topic" },
   { id: "plan", label: "Planning the story" },
-  { id: "generate", label: "Writing slides & choosing 3D scenes" },
+  { id: "generate", label: "Writing the slides" },
   { id: "repair", label: "Fixing the deck" },
+  { id: "review", label: "Designing a 3D scene for each slide" },
   { id: "build", label: "Building the 3D presentation" },
   { id: "finalize", label: "Saving a version" },
 ];
@@ -63,7 +64,7 @@ export function JobProgress({ job, onCancel, variant = "code" }: { job: LiveJob;
   const presentation = variant === "presentation";
   const running = job.status === "running" || job.status === "queued";
   const tasks = Object.values(job.tasks);
-  const visibleStages = (presentation ? PRESENTATION_STAGES : STAGES).filter((s) => s.id !== "repair" || job.stages.repair);
+  const visibleStages = (presentation ? PRESENTATION_STAGES : STAGES).filter((s) => (s.id !== "repair" && !(presentation && s.id === "review")) || job.stages[s.id]);
   return (
     <div className="rounded-xl border border-border bg-card/60 p-3.5 text-sm" aria-live="polite">
       <div className="flex items-center gap-2">

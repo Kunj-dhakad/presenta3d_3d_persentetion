@@ -140,6 +140,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
       streamAbort.current?.abort();
+      // Let a remount (React Strict Mode runs effects twice in development) follow the job again.
+      followingJob.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);

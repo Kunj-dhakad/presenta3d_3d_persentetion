@@ -4,13 +4,15 @@ import type { Prisma } from "@/generated/mysql-prisma/client";
 import type { JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import { randomInt } from "node:crypto";
-import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, SCENE_KINDS, SCENE_KIND_HINTS, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
+import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, diversifyDeck, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
+import { SCENE_PRESETS, presetCatalog } from "@/lib/deck-presets";
 import { diffStats, toFileMap } from "@/lib/vfs/apply";
 import { getFiles, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
 import { buildProject } from "@/server/build/builder";
 import { formatDiagnostic } from "@/lib/build-types";
 import { storage } from "@/server/storage/storage";
 import { deckToProjectFiles } from "./codegen";
+import { addSceneCode } from "./scene-code";
 import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 
 export const DECK_SYSTEM = `You are the presentation designer of Strata. You create cinematic 3D presentations.
@@ -19,14 +21,14 @@ You do not write code. You write a DeckSpec: the content and art direction of ea
 Write a strong story: an opening hero slide, a clear arc, and a closing slide. Use 5-10 slides unless the user asks otherwise.
 Content rules: titles at most ~8 words; at most 4 bullets per slide, each at most ~12 words; real, specific copy (no lorem ipsum, no placeholders). Write in the language the user writes in.
 Layouts: "hero" for the opening (and optionally the closing), "left"/"right" for explanatory slides (alternate them), "center" for a single big statement, "stats" for 2-4 headline numbers.
-Each slide picks a 3D scene that matches its meaning:
-${SCENE_KINDS.map((k) => `- ${k}: ${SCENE_KIND_HINTS[k]}`).join("\n")}
-Vary the scenes; avoid repeating the same kind on consecutive slides. For "bars", put 3-8 numbers in scene.values.
+Each slide gets its own 3D scene: set scene.preset to the preset from this catalog (name: tags) whose tags best express that slide's specific idea:
+${presetCatalog()}
+Use a different preset on every slide; never repeat one within a deck, and vary shapes and arrangements from slide to slide. Use "bar-chart" (with 3-8 numbers in scene.values) for slides about numbers.
 theme.environment is the world the camera travels through:
 ${ENVIRONMENTS.map((e) => `- ${e}: ${ENVIRONMENT_HINTS[e]}`).join("\n")}
 theme.transition: "side" (glide sideways between slides) or "dive" (fly forward into depth).
 Art direction: a dark theme.background (near black, tinted toward the palette), light theme.text, one vivid theme.accent. Pick scene.primary/secondary colours that harmonise with the accent; keep the palette consistent across the deck.
-Every deck must feel designed for its own topic: derive the palette, environment, font and scenes from the subject, not from habit. Do not default to cyan/blue, the crystal scene or the grid environment.
+Every deck must feel designed for its own topic: derive the palette, environment, font and scenes from the subject, not from habit. Do not default to cyan/blue or the grid environment.
 Names: use the names the user gives. If you must invent a product or company name, make it specific to the topic; avoid generic names like "Pulse", "Nova", "Nexus", "Aura" or "Vertex".
 scene.speed 0.6-1.4 and scene.density 0.4-0.9 are good defaults. Colors are #rrggbb.`;
 
@@ -49,17 +51,16 @@ const PALETTES = [
  */
 export function designBrief(): string {
   const pick = <T,>(xs: readonly T[]) => xs[randomInt(xs.length)];
-  const scenes = SCENE_KINDS.filter((k) => k !== "bars")
-    .map((k) => ({ k, r: randomInt(1000) }))
+  const scenes = SCENE_PRESETS.filter((p) => p.kind !== "bars")
+    .map((p) => ({ name: p.name, r: randomInt(100000) }))
     .sort((a, b) => a.r - b.r)
-    .slice(0, 3)
-    .map((x) => x.k);
+    .slice(0, 4)
+    .map((x) => x.name);
   return [
     "Design brief for this deck (a fresh starting point; adapt anything that clashes with the topic):",
     `- palette idea: ${pick(PALETTES)}`,
     `- environment idea: ${pick(ENVIRONMENTS)}; transition: ${pick(["side", "dive"])}`,
-    `- font idea: ${pick(["sans", "serif", "display", "mono"])}`,
-    `- open with one of these scenes: ${scenes.join(", ")}`,
+    `- consider opening with one of these presets if it fits: ${scenes.join(", ")}`,
   ].join("\n");
 }
 
@@ -159,10 +160,23 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     if (!v.ok) throw new Error(`The presentation could not be generated: ${v.errors.slice(0, 3).join("; ")}`);
     ctx.emit({ type: "stage", stage: "repair", state: "done" });
   }
-  const deck = v.deck;
+  // No two slides may look alike, whatever the model chose.
+  let deck = diversifyDeck(v.deck);
   log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${deck.theme.transition} transition · ${deck.theme.font} font`);
   ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
-  ctx.progress(0.7);
+  ctx.progress(0.4);
+
+  // A custom 3D scene for every slide, designed for its content (catalog scenes are the fallback).
+  ctx.emit({ type: "stage", stage: "review", state: "start", detail: "one per slide" });
+  deck = await addSceneCode(deck, existing, provider, {
+    userId: input.userId,
+    jobId: ctx.jobId,
+    signal: ctx.signal,
+    log: (m, level = "info") => (level === "info" ? log(m) : ctx.emit({ type: "log", level, message: m })),
+  });
+  const custom = deck.slides.filter((s) => s.scene.code).length;
+  ctx.emit({ type: "stage", stage: "review", state: "done", detail: `${custom}/${deck.slides.length} custom` });
+  ctx.progress(0.75);
 
   // Write the project (deck.json + engine) and report changed files.
   const nextFiles = deckToProjectFiles(deck);

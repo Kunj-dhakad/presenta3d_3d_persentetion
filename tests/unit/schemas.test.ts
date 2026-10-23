@@ -176,9 +176,13 @@ describe("3D presentation deck schema", () => {
     const bad = sampleDeck();
     bad.theme.accent = "blue";
     expect(validateDeck(bad).ok).toBe(false);
-    const kind = sampleDeck() as unknown as { slides: { scene: { kind: string } }[] };
+    const kind = sampleDeck() as unknown as { slides: { scene: { kind: string; preset?: string } }[] };
     kind.slides[0].scene.kind = "teapot";
+    delete kind.slides[0].scene.preset;
     expect(validateDeck(kind).ok).toBe(false);
+    // The model can only pick presets from the catalog.
+    const ai = { ...sampleDeck(), slides: [{ ...sampleDeck().slides[0], scene: { preset: "teapot", primary: "#ffffff", secondary: "#000000", speed: 1, density: 0.5, values: [] } }] };
+    expect(DeckSpecSchema.safeParse(ai).success).toBe(false);
     expect(validateDeck({ ...sampleDeck(), slides: [] }).ok).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import type { DeckSpec } from "@/lib/schemas/deck";
+import { validateSceneCode } from "./scene-code";
 
 const RUNTIME_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "src", "server", "deck", "runtime.js.txt");
 
@@ -11,9 +12,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 body { font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 body[data-font="serif"] .title { font-family: "Playfair Display", Georgia, serif; letter-spacing: -0.01em; }
 body[data-font="display"] .title { font-family: "Space Grotesk", "Inter", sans-serif; }
-body[data-font="mono"] .title, body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, monospace; }
+/* "mono" decks keep the clean display title (monospace titles read poorly); only the small kicker is monospace. */
+body[data-font="mono"] .title { font-family: "Space Grotesk", "Inter", sans-serif; }
+body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, monospace; }
 #stage { position: fixed; inset: 0; cursor: default; }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#slide { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .slide { position: absolute; inset: 0; display: flex; padding: clamp(24px, 6vw, 96px); pointer-events: none; }
 .slide .content { max-width: min(46rem, 100%); pointer-events: auto; }
 .layout-hero, .layout-center, .layout-stats { align-items: center; justify-content: center; text-align: center; }
@@ -29,11 +33,11 @@ body[data-font="mono"] .title, body[data-font="mono"] .kicker { font-family: "Je
 .subtitle { margin: 18px 0 0; font-size: clamp(16px, 1.6vw, 22px); line-height: 1.5; opacity: 0.78; text-wrap: pretty; text-shadow: 0 1px 18px rgba(0, 0, 0, 0.6); }
 .layout-hero .subtitle, .layout-center .subtitle { margin-left: auto; margin-right: auto; max-width: 42rem; }
 .bullets { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
-.bullets li { position: relative; padding-left: 26px; font-size: clamp(15px, 1.35vw, 19px); line-height: 1.45; opacity: 0.9; }
+.bullets li { position: relative; padding-left: 26px; font-size: clamp(15px, 1.35vw, 19px); line-height: 1.45; opacity: 0.92; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6); }
 .bullets li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 12px; height: 2px; background: var(--accent); border-radius: 2px; }
 .layout-center .bullets, .layout-hero .bullets { justify-items: center; }
 .stats { margin-top: 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
-.stat { padding: 20px; border-radius: 18px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); text-align: left; }
+.stat { padding: 20px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 62%, transparent); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); text-align: left; }
 .stat strong { display: block; font-size: clamp(30px, 3.6vw, 52px); letter-spacing: -0.03em; color: var(--accent); }
 .stat span { display: block; margin-top: 4px; font-size: 14px; opacity: 0.75; }
 .pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); font-size: 13px; }
@@ -88,7 +92,7 @@ export function deckToProjectFiles(deck: DeckSpec): { path: string; content: str
 <body>
   <div id="stage">
     <canvas id="gl" aria-hidden="true"></canvas>
-    <main id="slide" class="slide" aria-live="polite"></main>
+    <main id="slide" aria-live="polite"></main>
   </div>
   <div class="progress" aria-hidden="true"><div id="progress"></div></div>
   <div id="chip" class="pill"><span id="counter"></span><span class="sep"></span><span id="chip-title"></span></div>
@@ -108,5 +112,16 @@ export function deckToProjectFiles(deck: DeckSpec): { path: string; content: str
     { path: "style.css", content: STYLE },
     { path: "deck.json", content: JSON.stringify(deck, null, 2) },
     { path: "main.js", content: runtime },
+    // Custom per-slide scenes written by the model, as ES modules the engine imports.
+    // Code that fails the screen is not emitted; the engine then uses the slide's catalog scene.
+    ...deck.slides.flatMap((s, i) =>
+      s.scene.code && validateSceneCode(s.scene.code).ok
+        ? [{ path: `scenes/slide-${i + 1}.js`, content: `// Generated scene for slide ${i + 1}. Runs only inside the sandboxed presentation.
+export default function scene(ctx) {
+${s.scene.code}
+}
+` }]
+        : [],
+    ),
   ];
 }

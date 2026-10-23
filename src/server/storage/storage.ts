@@ -39,7 +39,7 @@ function normalizePrefix(prefix: string) {
 }
 
 function isArtifactKey(key: string) {
-  return /^(?:previews|runtime|sites)\//.test(key);
+  return /^(?:previews|runtime|sites|deckmedia)\//.test(key);
 }
 
 async function walkLocal(dir: string, prefix: string, root: string): Promise<string[]> {

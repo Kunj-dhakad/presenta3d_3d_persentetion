@@ -7,6 +7,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const deck = await fetch("./deck.json").then((r) => r.json());
 const slides = deck.slides;
@@ -43,7 +44,8 @@ scene.add(accentLight);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const ENV = ["grid", "space", "ocean", "aurora", "horizon", "studio"].includes(deck.theme.environment) ? deck.theme.environment : "grid";
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), ENV === "studio" ? 0.4 : 0.75, 0.6, 0.15);
+const BLOOM = { strength: ENV === "studio" ? 0.4 : 0.75, threshold: 0.15 };
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM.strength, 0.6, BLOOM.threshold);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -329,9 +331,296 @@ const builders = {
   },
 };
 
+// ─── Composed scenes: shape × arrangement × motion × material ────────────
+// Most slides use one of ~130 curated presets built from these blocks.
+const SHAPES = {
+  sphere: () => new THREE.SphereGeometry(1, 32, 20),
+  cube: () => new THREE.BoxGeometry(1.45, 1.45, 1.45),
+  torus: () => new THREE.TorusGeometry(0.9, 0.32, 20, 48),
+  cone: () => new THREE.ConeGeometry(0.9, 1.8, 28),
+  cylinder: () => new THREE.CylinderGeometry(0.75, 0.75, 1.3, 32),
+  icosahedron: () => new THREE.IcosahedronGeometry(1.15, 0),
+  octahedron: () => new THREE.OctahedronGeometry(1.2, 0),
+  dodecahedron: () => new THREE.DodecahedronGeometry(1.15, 0),
+  tetrahedron: () => new THREE.TetrahedronGeometry(1.3, 0),
+  capsule: () => new THREE.CapsuleGeometry(0.5, 1.1, 8, 20),
+  ring: () => new THREE.TorusGeometry(1, 0.085, 12, 72),
+  knot: () => new THREE.TorusKnotGeometry(0.8, 0.26, 180, 20),
+};
+
+function composeMaterial(kind) {
+  const white = new THREE.Color(0xffffff);
+  switch (kind) {
+    case "glass":
+      return new THREE.MeshPhysicalMaterial({ color: white, metalness: 0.05, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.08, transparent: true, opacity: 0.5, envMapIntensity: 1.4, side: THREE.DoubleSide });
+    case "metal":
+      return new THREE.MeshStandardMaterial({ color: white, metalness: 1, roughness: 0.2, envMapIntensity: 1.2 });
+    case "wireframe":
+      return new THREE.MeshBasicMaterial({ color: white, wireframe: true, transparent: true, opacity: 0.9 });
+    case "matte":
+      return new THREE.MeshStandardMaterial({ color: white, metalness: 0, roughness: 0.8, envMapIntensity: 0.6 });
+    case "holographic":
+      return new THREE.MeshPhysicalMaterial({ color: white, metalness: 0.55, roughness: 0.12, iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [120, 480], envMapIntensity: 1.5 });
+    default: // glow
+      return new THREE.MeshBasicMaterial({ color: white, transparent: true });
+  }
+}
+
+const gauss = (r) => (r() + r() + r() - 1.5) / 1.5;
+
+/** Base positions (and a size hint) for n objects in an arrangement. */
+function arrange(kind, n, r) {
+  const P = [];
+  const v = (x, y, z) => P.push(new THREE.Vector3(x, y, z));
+  let size = THREE.MathUtils.clamp(1.7 / Math.sqrt(n), 0.12, 0.55);
+  let tilt = 0;
+  switch (kind) {
+    case "single":
+      v(0, 0, 0);
+      size = 1.75;
+      break;
+    case "ring":
+      for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; v(Math.cos(a) * 2.6, Math.sin(a) * 2.6, 0); }
+      size = THREE.MathUtils.clamp(5.5 / n, 0.16, 0.5);
+      break;
+    case "grid":
+    case "wave": {
+      const side = Math.ceil(Math.sqrt(n)), sp = 6.4 / side;
+      for (let i = 0; i < n; i++) v(((i % side) - (side - 1) / 2) * sp, 0, (Math.floor(i / side) - (side - 1) / 2) * sp);
+      size = sp * 0.32;
+      tilt = 0.55;
+      break;
+    }
+    case "spiral":
+      for (let i = 0; i < n; i++) { const rr = 3 * Math.sqrt((i + 0.5) / n), a = i * 2.39996; v(Math.cos(a) * rr, Math.sin(a) * rr, 0); }
+      size = THREE.MathUtils.clamp(2.2 / Math.sqrt(n), 0.1, 0.4);
+      tilt = 0.35;
+      break;
+    case "helix":
+      for (let i = 0; i < n; i++) { const t = i / n, a = t * Math.PI * 6 + (i % 2) * Math.PI; v(Math.cos(a) * 1.4, (t - 0.5) * 5.2, Math.sin(a) * 1.4); }
+      size = THREE.MathUtils.clamp(4.5 / n, 0.12, 0.32);
+      break;
+    case "scatter":
+      for (let i = 0; i < n; i++) v((r() - 0.5) * 7.5, (r() - 0.5) * 4.6, (r() - 0.5) * 4);
+      size = THREE.MathUtils.clamp(1.4 / Math.sqrt(n), 0.1, 0.35);
+      break;
+    case "stack":
+      for (let i = 0; i < n; i++) v(0, (i - (n - 1) / 2) * (5 / n), 0);
+      size = THREE.MathUtils.clamp(4 / n, 0.26, 0.6);
+      break;
+    case "orbit": {
+      const per = Math.ceil(n / 3);
+      for (let i = 0; i < n; i++) { const k = i % 3, j = Math.floor(i / 3), a = (j / per) * Math.PI * 2 + k; v(Math.cos(a) * (1.5 + k * 0.95), 0, Math.sin(a) * (1.5 + k * 0.95)); }
+      size = THREE.MathUtils.clamp(2.2 / Math.sqrt(n), 0.16, 0.42);
+      tilt = 0.45;
+      break;
+    }
+    case "shell":
+      for (let i = 0; i < n; i++) { const y = 1 - ((i + 0.5) / n) * 2, k = Math.sqrt(1 - y * y), a = i * 2.39996; v(Math.cos(a) * k * 2.5, y * 2.5, Math.sin(a) * k * 2.5); }
+      size = THREE.MathUtils.clamp(2.6 / Math.sqrt(n), 0.09, 0.32);
+      break;
+    case "tunnel": {
+      const per = Math.min(10, Math.max(4, Math.round(n / 4)));
+      for (let i = 0; i < n; i++) { const ring = Math.floor(i / per), a = ((i % per) / per) * Math.PI * 2 + ring * 0.3; v(Math.cos(a) * 2.3, Math.sin(a) * 2.3, 2 - ring * 1.7); }
+      size = 0.3;
+      break;
+    }
+    default: // cluster
+      for (let i = 0; i < n; i++) v(gauss(r) * 1.6, gauss(r) * 1.3, gauss(r) * 1.3);
+      size = THREE.MathUtils.clamp(1.5 / Math.sqrt(n), 0.14, 0.45);
+  }
+  // Sizes above are relative; objects read better a bit larger on screen.
+  return { P, size: kind === "single" ? size : size * 1.5, tilt };
+}
+
+builders.composed = (s, r) => {
+  const c = s.compose ?? { shape: "icosahedron", arrangement: "ring", motion: "rotate", material: "glow", count: 12 };
+  const n = c.arrangement === "single" ? 1 : Math.max(3, Math.min(160, Math.round(c.count * (0.6 + 0.6 * s.density))));
+  const sp = s.speed;
+  const group = new THREE.Group();
+  const holder = new THREE.Group(); // tilt
+  group.add(holder);
+  const { P, size, tilt } = arrange(c.arrangement, n, r);
+  holder.rotation.x = tilt;
+  group.scale.setScalar(1.15);
+  const a = col(s.primary), b = col(s.secondary);
+  const tint = (i) => a.clone().lerp(b, n === 1 ? 0.25 : i / (n - 1));
+  // Entry: objects fly in from far away and assemble.
+  const intro = { k: 0 };
+  const from = P.map((p, i) => p.clone().multiplyScalar(2.6).add(new THREE.Vector3((r() - 0.5) * 8, (r() - 0.5) * 6, (r() - 0.5) * 6 - 4)).add(new THREE.Vector3(0, 0, i % 2 ? 2 : -2)));
+
+  if (c.material === "points") {
+    // Point clouds sampled from each object's surface; motion applies to the whole cloud.
+    const geo = SHAPES[c.shape]().toNonIndexed();
+    const src = geo.attributes.position.array;
+    const step = Math.max(1, Math.floor(src.length / 3 / Math.max(60, 9000 / n)));
+    const pts = [], cols = [];
+    P.forEach((p, i) => {
+      const t = tint(i);
+      for (let k = 0; k < src.length; k += 3 * step) {
+        pts.push(p.x + src[k] * size, p.y + src[k + 1] * size, p.z + src[k + 2] * size);
+        cols.push(t.r, t.g, t.b);
+      }
+    });
+    geo.dispose();
+    const cloud = glowPoints(new Float32Array(pts), new Float32Array(cols), n === 1 ? 0.035 : 0.03);
+    holder.add(cloud);
+    if (n === 1) cloud.scale.setScalar(1);
+    return {
+      group,
+      enter: (tl) => { cloud.scale.setScalar(0.01); tl.to(cloud.scale, { x: 1, y: 1, z: 1, duration: 1.4, ease: "expo.out" }); },
+      update: (t) => {
+        cloud.rotation.y = t * 0.22 * sp;
+        if (c.motion === "breathe" || c.motion === "pulse") holder.scale.setScalar(1 + 0.07 * Math.sin(t * 1.4 * sp));
+        if (c.motion === "swirl" || c.motion === "orbit") cloud.rotation.z = t * 0.15 * sp;
+        if (c.motion === "float" || c.motion === "drift") cloud.position.y = Math.sin(t * 0.8 * sp) * 0.25;
+        if (c.motion === "wave") cloud.rotation.x = Math.sin(t * 0.7 * sp) * 0.25;
+      },
+    };
+  }
+
+  const mesh = new THREE.InstancedMesh(SHAPES[c.shape](), composeMaterial(c.material), n);
+  for (let i = 0; i < n; i++) mesh.setColorAt(i, tint(i));
+  mesh.instanceColor.needsUpdate = true;
+  holder.add(mesh);
+  // A soft glow sprite behind single hero objects.
+  if (n === 1) {
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: b, transparent: true, opacity: 0.14, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(6);
+    halo.position.z = -1.5;
+    group.add(halo);
+  }
+  const dummy = new THREE.Object3D();
+  const tmp = new THREE.Vector3();
+  const phase = P.map(() => r() * Math.PI * 2);
+  const yAxis = new THREE.Vector3(0, 1, 0), zAxis = new THREE.Vector3(0, 0, 1);
+  const vertical = ["ring", "spiral", "tunnel"].includes(c.arrangement);
+  const update = (t) => {
+    const k = intro.k;
+    for (let i = 0; i < n; i++) {
+      tmp.copy(P[i]);
+      let scale = size;
+      const ph = phase[i];
+      switch (c.motion) {
+        case "float": tmp.y += Math.sin(t * 1.1 * sp + ph) * 0.28; break;
+        case "pulse": scale *= 1 + 0.3 * Math.sin(t * 2.2 * sp + i * 0.45); break;
+        case "orbit": tmp.applyAxisAngle(yAxis, t * 0.35 * sp * (1 + (i % 3) * 0.4)); break;
+        case "wave":
+          if (vertical) tmp.z += Math.sin(tmp.x * 0.8 + t * 2 * sp) * 0.45;
+          else tmp.y += Math.sin(tmp.x * 0.9 + t * 2 * sp) * 0.4 + Math.cos(tmp.z * 0.9 + t * 1.6 * sp) * 0.25;
+          break;
+        case "swirl": tmp.applyAxisAngle(vertical ? zAxis : yAxis, (t * 0.45 * sp) / (0.6 + tmp.length() * 0.35)); break;
+        case "drift": {
+          const span = 6;
+          tmp.y = ((((P[i].y + t * 0.35 * sp + span / 2) % span) + span) % span) - span / 2;
+          tmp.x += Math.sin(t * 0.5 * sp + ph) * 0.25;
+          break;
+        }
+        default: break; // rotate, breathe: whole-group motion below
+      }
+      if (k < 1) tmp.lerpVectors(from[i], tmp, k);
+      dummy.position.copy(tmp);
+      dummy.rotation.set(t * 0.5 * sp + ph, t * 0.35 * sp + ph, 0);
+      if (c.arrangement === "single") dummy.rotation.set(t * 0.25 * sp, t * 0.4 * sp, 0);
+      dummy.scale.setScalar(scale * Math.max(0.001, k));
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (c.motion === "rotate" || c.motion === "orbit") holder.rotation.y = t * 0.18 * sp;
+    else holder.rotation.y = Math.sin(t * 0.2 * sp) * 0.35;
+    if (c.motion === "breathe") holder.scale.setScalar(1 + 0.08 * Math.sin(t * 1.1 * sp));
+  };
+  update(0);
+  return {
+    group,
+    enter: (tl) => { intro.k = 0; tl.to(intro, { k: 1, duration: 1.6, ease: "expo.out" }); },
+    update,
+  };
+};
+
+// Image-based lighting so metal, glass and holographic materials have something to reflect.
+{
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+}
+
+// Custom scenes written by the model for this deck (scenes/slide-N.js). A scene
+// that fails to load, throws, or returns something unusable falls back to the
+// slide's catalog scene, so the presentation always works.
+const customScenes = await Promise.all(
+  slides.map((s, i) => (s.scene.code ? import(`./scenes/slide-${i + 1}.js`).then((m) => m.default).catch(() => null) : null)),
+);
+function sceneToolkit(slide, index) {
+  return {
+    THREE,
+    gsap,
+    colors: { primary: slide.scene.primary, secondary: slide.scene.secondary, accent: deck.theme.accent, background: deck.theme.background },
+    color: (hex) => new THREE.Color(hex),
+    speed: slide.scene.speed,
+    density: slide.scene.density,
+    rng: rng(index * 7919 + 17),
+    glowPoints,
+    glowTexture,
+    standard,
+  };
+}
+// Large near-white surfaces bloom into a blob and wash out the text: cap the
+// brightness of mesh materials (points, sprites and lines keep their glow).
+function tameBrightness(group, behindText) {
+  const seen = new Set();
+  group.traverse((o) => {
+    // Under centred text, big glow sprites are halved too.
+    if (o.isSprite && behindText && o.material && !seen.has(o.material)) {
+      seen.add(o.material);
+      o.material.opacity *= 0.5;
+      return;
+    }
+    if (!o.isMesh || o.isSprite) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      if (m.color) {
+        const peak = Math.max(m.color.r, m.color.g, m.color.b);
+        if (peak > 0.72) m.color.multiplyScalar(0.72 / peak);
+      }
+      if (m.emissive && typeof m.emissiveIntensity === "number") m.emissiveIntensity = Math.min(m.emissiveIntensity, 0.6);
+    }
+  });
+}
+function buildCustom(slide, index) {
+  const fn = customScenes[index];
+  if (typeof fn !== "function") return null;
+  try {
+    const built = fn(sceneToolkit(slide, index));
+    if (!built || !(built.group instanceof THREE.Object3D)) return null;
+    tameBrightness(built.group, slide.layout === "hero" || slide.layout === "center" || slide.layout === "stats");
+    const update = typeof built.update === "function" ? built.update : () => {};
+    let broken = false;
+    return {
+      group: built.group,
+      // A scene that throws while animating freezes instead of breaking the deck.
+      update: (t) => {
+        if (broken) return;
+        try {
+          update(t);
+        } catch (err) {
+          broken = true;
+          console.warn("scene", index + 1, err);
+        }
+      },
+      enter: typeof built.enter === "function" ? (tl) => { try { built.enter(tl); } catch (err) { console.warn("scene", index + 1, err); } } : undefined,
+    };
+  } catch (err) {
+    console.warn("scene", index + 1, err);
+    return null;
+  }
+}
+
 function buildScene(slide, index) {
   const make = builders[slide.scene.kind] ?? builders.particles;
-  const built = make(slide.scene, rng(index * 7919 + 17));
+  const built = buildCustom(slide, index) ?? make(slide.scene, rng(index * 7919 + 17));
   // Remember each material's base opacity so the group can fade as a whole.
   built.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
@@ -366,7 +655,10 @@ const TRAVEL = deck.theme.transition === "dive" ? "dive" : "side";
 const stations = slides.map((s, i) => ({ x: TRAVEL === "dive" ? 0 : i * SPACING, z: TRAVEL === "dive" ? -i * SPACING : 0, built: null, entered: false }));
 const baseZ = () => (window.innerWidth < 760 ? 14 : 11);
 const narrow = () => window.innerWidth < 760;
-function sceneOffset(layout) {
+function sceneOffset(slide) {
+  const layout = slide.layout;
+  // Custom scenes under centred text sit further back and lower, keeping the text clear.
+  if (slide.scene.code && !narrow() && (layout === "hero" || layout === "center" || layout === "stats")) return { x: 0, y: -1.2, z: -5 };
   if (narrow()) return { x: 0, y: layout === "hero" || layout === "center" ? 0.2 : 1.4, z: layout === "center" || layout === "stats" ? -2 : -1 };
   if (layout === "left") return { x: 3, y: 0.2, z: 0 };
   if (layout === "right") return { x: -3, y: 0.2, z: 0 };
@@ -441,7 +733,8 @@ function addGrid(opacity, color = accent) {
 function addFloor(lightness, roughness, metalness) {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(world.lenX + 400, world.lenZ + 400),
-    new THREE.MeshStandardMaterial({ color: new THREE.Color(deck.theme.background).offsetHSL(0, 0, lightness), roughness, metalness }),
+    // Low envMapIntensity: the environment map is for objects; the floor must stay dark.
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(deck.theme.background).offsetHSL(0, 0, lightness), roughness, metalness, envMapIntensity: 0.04 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(world.cx, -2.85, world.cz);
@@ -540,12 +833,14 @@ if (ENV === "grid") {
   envUpdaters.push((t) => { sun.material.uniforms.time.value = t; });
 } else {
   // Studio: a soft, glossy stage with gentle light and no stars.
-  addFloor(0.06, 0.35, 0.25);
-  const spot = new THREE.SpotLight(0xffffff, 120, 60, 0.6, 0.6);
-  spot.position.set(0, 14, 6);
-  sky.add(spot);
-  sky.add(spot.target);
-  spot.target.position.set(0, -2.8, -4);
+  // Unlit stage floor: a lit floor turns grey and washes out the text.
+  const stage = new THREE.Mesh(
+    new THREE.PlaneGeometry(world.lenX + 400, world.lenZ + 400),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(deck.theme.background).offsetHSL(0, 0, 0.025) }),
+  );
+  stage.rotation.x = -Math.PI / 2;
+  stage.position.set(world.cx, -2.85, world.cz);
+  scene.add(stage);
   // Drawn over the floor too (no depth test) so the glow has no hard horizon edge.
   const haze = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: accent, transparent: true, opacity: 0.14, depthWrite: false, depthTest: false, fog: false }));
   haze.position.set(0, 3, -40);
@@ -560,8 +855,10 @@ function ensureBuilt(i) {
   const built = buildScene(slides[i], i);
   const wrapper = new THREE.Group();
   wrapper.add(built.group);
-  const off = sceneOffset(slides[i].layout);
+  const off = sceneOffset(slides[i]);
   wrapper.position.set(st.x + off.x, off.y, st.z + off.z);
+  // Beside the text, composed scenes are scaled down so they never cover it.
+  if (slides[i].scene.kind === "composed" && (slides[i].layout === "left" || slides[i].layout === "right") && !narrow()) wrapper.scale.setScalar(0.62);
   scene.add(wrapper);
   st.built = { ...built, wrapper };
 }
@@ -595,10 +892,23 @@ function el(tag, cls, text) {
 }
 
 let textTween = null;
-function renderSlide(slide, delay) {
+const TEXT_OUT = 0.32;
+// Each slide's text lives in its own page element. On a change, every page on
+// screen leaves (in the travel direction) before the new text comes in, so two
+// slides' text are never visible together, even when navigating quickly.
+function renderSlide(slide, delay, dir = 1) {
   textTween?.kill();
-  const old = slideEl.firstElementChild;
-  if (old) gsap.to(old, { opacity: 0, x: -40, duration: 0.35, ease: "power2.in", onComplete: () => old.remove() });
+  for (const old of [...slideEl.children]) {
+    gsap.killTweensOf([old, ...old.querySelectorAll("*")]);
+    if (old.dataset.leaving) {
+      old.remove(); // already on its way out: drop it now
+      continue;
+    }
+    old.dataset.leaving = "1";
+    old.setAttribute("aria-hidden", "true");
+    gsap.to(old, { opacity: 0, x: -70 * dir, duration: TEXT_OUT, ease: "power2.in", onComplete: () => old.remove() });
+  }
+  const page = el("div", `slide layout-${slide.layout}`);
   const box = el("div", "content");
   if (slide.kicker) box.append(el("p", "kicker", slide.kicker));
   box.append(el(slide.layout === "hero" ? "h1" : "h2", "title", slide.title));
@@ -617,11 +927,12 @@ function renderSlide(slide, delay) {
     }
     box.append(grid);
   }
-  slideEl.className = `slide layout-${slide.layout}`;
-  slideEl.append(box);
+  page.append(box);
+  slideEl.append(page);
   notesEl.textContent = slide.notes || "No speaker notes for this slide.";
-  gsap.set(box.children, { opacity: 0, x: 60 });
-  textTween = gsap.to(box.children, { opacity: 1, x: 0, duration: 0.8, stagger: 0.07, ease: "power3.out", delay });
+  gsap.set(box.children, { opacity: 0, x: 70 * dir });
+  // The new text starts only after the old text has left.
+  textTween = gsap.to(box.children, { opacity: 1, x: 0, duration: 0.8, stagger: 0.07, ease: "power3.out", delay: Math.max(delay, TEXT_OUT + 0.05) });
 }
 
 slides.forEach((_, i) => {
@@ -640,6 +951,10 @@ let index = -1;
 let lastNav = 0;
 
 function arrive(i) {
+  // Once arrived, only this slide's scene is shown (no neighbouring scenes in the background).
+  stations.forEach((other, j) => {
+    if (other.built) other.built.wrapper.visible = j === i;
+  });
   const st = stations[i];
   if (!st.built || st.entered) return;
   st.entered = true;
@@ -657,7 +972,9 @@ function go(next, instant = false) {
   if (now - lastNav < 250 && !instant) return;
   lastNav = now;
   for (let i = next - 1; i <= next + 1; i++) ensureBuilt(i);
+  if (stations[next].built) stations[next].built.wrapper.visible = true;
   const distance = index < 0 ? 0 : Math.abs(next - index);
+  const dir = index < 0 || next > index ? 1 : -1;
   index = next;
   const slide = slides[next];
   const st = stations[next];
@@ -665,7 +982,7 @@ function go(next, instant = false) {
   if (instant || distance === 0) {
     Object.assign(rig, { x: st.x, lookX: st.x, z: camZ, lookZ: st.z, y: 0.6 });
     arrive(next);
-    renderSlide(slide, 0.1);
+    renderSlide(slide, 0.1, dir);
   } else if (TRAVEL === "dive") {
     const duration = Math.min(2.6, 1.4 + 0.25 * (distance - 1));
     gsap.to(rig, { z: camZ, lookZ: st.z, duration, ease: "power2.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
@@ -674,7 +991,7 @@ function go(next, instant = false) {
     gsap.timeline({ overwrite: "auto" })
       .to(rig, { y: 2.2, x: sway, lookX: sway * 0.4, duration: duration * 0.45, ease: "power2.out" })
       .to(rig, { y: 0.6, x: 0, lookX: 0, duration: duration * 0.55, ease: "power2.inOut" });
-    renderSlide(slide, duration * 0.55);
+    renderSlide(slide, duration * 0.45, dir);
   } else {
     const duration = Math.min(2.4, 1.3 + 0.25 * (distance - 1));
     gsap.to(rig, { x: st.x, lookX: st.x, duration, ease: "power2.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
@@ -682,9 +999,11 @@ function go(next, instant = false) {
     gsap.timeline({ overwrite: "auto" })
       .to(rig, { z: camZ + 3.5, y: 1.4, duration: duration * 0.45, ease: "power2.out" })
       .to(rig, { z: camZ, y: 0.6, duration: duration * 0.55, ease: "power2.inOut" });
-    renderSlide(slide, duration * 0.55);
+    renderSlide(slide, duration * 0.45, dir);
   }
   accentLight.color = new THREE.Color(slide.scene.secondary);
+  // Custom scenes use lit materials: a softer, higher-threshold bloom keeps their detail.
+  gsap.to(bloom, { strength: slide.scene.code ? 0.45 : BLOOM.strength, threshold: slide.scene.code ? 0.6 : BLOOM.threshold, duration: instant ? 0 : 0.8, overwrite: "auto" });
   [...dotsEl.children].forEach((d, i) => d.classList.toggle("active", i <= index));
   counterEl.textContent = `${pad(index + 1)} / ${pad(slides.length)}`;
   chipTitleEl.textContent = slide.title;
@@ -784,7 +1103,7 @@ function resize() {
   rig.z = (stations[Math.max(0, index)]?.z ?? 0) + baseZ();
   stations.forEach((st, i) => {
     if (!st.built) return;
-    const off = sceneOffset(slides[i].layout);
+    const off = sceneOffset(slides[i]);
     st.built.wrapper.position.set(st.x + off.x, off.y, st.z + off.z);
   });
 }

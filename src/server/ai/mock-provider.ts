@@ -226,6 +226,25 @@ function respond(schemaName: string, input: string): unknown {
       return mockDeck(input, request);
     case "scene_spec":
       return mockSceneFor(request);
+    case "scene_code":
+      return {
+        summary: "A glowing ring of orbs slowly turning around a pulsing core.",
+        code: [
+          "const { THREE, colors, color, speed, density, standard } = ctx;",
+          "const group = new THREE.Group();",
+          "const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 1), standard(colors.primary, colors.secondary, { emissiveIntensity: 0.8 }));",
+          "group.add(core);",
+          "const orbGeo = new THREE.SphereGeometry(0.18, 16, 12);",
+          "const orbMat = new THREE.MeshBasicMaterial({ color: color(colors.secondary) });",
+          "const orbs = [];",
+          "for (let i = 0; i < Math.round(8 + 10 * density); i++) { const m = new THREE.Mesh(orbGeo, orbMat); group.add(m); orbs.push(m); }",
+          "const update = (t) => {",
+          "  core.scale.setScalar(1 + Math.sin(t * 2 * speed) * 0.08);",
+          "  orbs.forEach((m, i) => { const a = (i / orbs.length) * Math.PI * 2 + t * 0.4 * speed; m.position.set(Math.cos(a) * 2.4, Math.sin(a * 2) * 0.3, Math.sin(a) * 2.4); });",
+          "};",
+          "return { group, update };",
+        ].join("\n"),
+      };
     case "frame_content":
       return {
         summary: "Hero layout",

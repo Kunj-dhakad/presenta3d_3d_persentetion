@@ -5,6 +5,7 @@ import { filesDigest } from "@/server/vfs/digest";
 import { VFS_LIMITS, assertProjectPath, byteLength } from "@/lib/vfs/paths";
 import type { ProjectCategory, Framework } from "@/lib/schemas/project";
 import { removeProjectBuilds } from "@/server/build/builder";
+import { storage } from "@/server/storage/storage";
 import type { Prisma } from "@/generated/mysql-prisma/client";
 
 export type FileSet = { path: string; content: string }[];
@@ -160,6 +161,7 @@ export async function duplicateProject(ownerId: string, projectId: string) {
 
 export async function deleteProject(ownerId: string, projectId: string) {
   await getOwnedProject(ownerId, projectId);
-  await removeProjectBuilds(projectId);
+  // deckmedia/: slide images stored by an earlier version of presentations.
+  await Promise.all([removeProjectBuilds(projectId), storage().deletePrefix(`deckmedia/${projectId}/`).catch(() => {})]);
   await db.project.delete({ where: { id: projectId } });
 }

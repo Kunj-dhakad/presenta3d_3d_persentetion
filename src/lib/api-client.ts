@@ -66,7 +66,9 @@ export async function streamJob(jobId: string, onEvent: (e: JobEvent) => void, s
   const kick = () => {
     running = true;
     // Long request: it lasts as long as the job. Its result is not needed; progress comes from polling.
-    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin", signal })
+    // Not tied to `signal`: leaving the page must not cancel the run request, or a serverless host
+    // would stop the job. Starting it twice is harmless (only one request can claim the job).
+    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin", keepalive: false })
       .catch(() => {})
       .finally(() => {
         running = false;
