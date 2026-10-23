@@ -60,7 +60,9 @@ ctx provides (destructure what you need):
 - standard(hexColor, hexEmissive, extraOptions): a MeshStandardMaterial preset.
 
 Rules:
-- Put everything in \`const group = new THREE.Group();\`, centred on the origin and about 6 units wide and 4.5 units tall (the camera is ~11 units away). Fill that space: the scene should read clearly at a glance, not be a small object in the middle.
+- Put everything in \`const group = new THREE.Group();\`, centred on the origin. The engine scales the finished group to fill its part of the screen, so think in proportions: a wide, cinematic composition (about 16:9), not a single small object.
+- Fill the frame in layers: a large, recognisable main subject in the middle ground, supporting objects around it, and a background layer that spreads across the whole width (particle fields, rings, light beams, floor patterns, floating shapes) so the scene feels like a full-screen world, not an object on an empty background.
+- Do not add ground planes, platforms, pedestals or large flat discs: the world already has a floor, and flat discs turn into a big glowing plate.
 - Make it clearly ABOUT this slide's subject: build recognisable objects from primitives (e.g. a coffee cup from a lathe/cylinder with a torus handle and rising steam particles; a rocket from cones and cylinders with a particle exhaust; a heart from two spheres and a cone; a city skyline from boxes; a plant from cylinders and leaf shapes; a chart from bars), combined with motion that expresses the idea.
 - Cinematic quality: layered depth, readable shapes, subtle motion. Use the deck colours.
 - Lighting: the scene has ambient, a key light, an environment map and a soft bloom pass. Build the main objects with lit materials (MeshStandardMaterial / MeshPhysicalMaterial: metalness, roughness, clearcoat) so their form is visible. Use MeshBasicMaterial, emissive glow and glowPoints only for small accents (lights, particles, edges). Never use white or near-white for large surfaces; keep large surfaces at most ~70% brightness so they do not bloom into a blob.

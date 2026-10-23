@@ -589,6 +589,24 @@ function tameBrightness(group, behindText) {
     }
   });
 }
+// Generated scenes come in arbitrary sizes. Measure each one and scale it to
+// fill its part of the frame: the free half of the screen beside left/right
+// text, or the whole screen behind centred text. The scene is wrapped so its
+// own entrance animation (often on group.scale) still works.
+function fitToFrame(group, layout) {
+  const box = new THREE.Box3().setFromObject(group);
+  if (box.isEmpty()) return group;
+  const size = box.getSize(new THREE.Vector3());
+  const centre = box.getCenter(new THREE.Vector3());
+  const side = (layout === "left" || layout === "right") && !narrow();
+  const target = narrow() ? { w: 7, h: 5 } : side ? { w: 7.6, h: 6.4 } : { w: 13, h: 7.2 };
+  const k = THREE.MathUtils.clamp(Math.min(target.w / Math.max(size.x, 0.01), target.h / Math.max(size.y, 0.01)), 0.5, 3);
+  const outer = new THREE.Group();
+  group.position.sub(centre);
+  outer.add(group);
+  outer.scale.setScalar(k);
+  return outer;
+}
 function buildCustom(slide, index) {
   const fn = customScenes[index];
   if (typeof fn !== "function") return null;
@@ -596,10 +614,16 @@ function buildCustom(slide, index) {
     const built = fn(sceneToolkit(slide, index));
     if (!built || !(built.group instanceof THREE.Object3D)) return null;
     tameBrightness(built.group, slide.layout === "hero" || slide.layout === "center" || slide.layout === "stats");
+    try {
+      built.update?.(0); // place animated parts before measuring
+    } catch {
+      /* measured as built */
+    }
+    const framed = fitToFrame(built.group, slide.layout);
     const update = typeof built.update === "function" ? built.update : () => {};
     let broken = false;
     return {
-      group: built.group,
+      group: framed,
       // A scene that throws while animating freezes instead of breaking the deck.
       update: (t) => {
         if (broken) return;
@@ -658,7 +682,8 @@ const narrow = () => window.innerWidth < 760;
 function sceneOffset(slide) {
   const layout = slide.layout;
   // Custom scenes under centred text sit further back and lower, keeping the text clear.
-  if (slide.scene.code && !narrow() && (layout === "hero" || layout === "center" || layout === "stats")) return { x: 0, y: -1.2, z: -5 };
+  if (slide.scene.code && !narrow() && (layout === "hero" || layout === "center" || layout === "stats")) return { x: 0, y: 0, z: -2 };
+  if (slide.scene.code && !narrow() && (layout === "left" || layout === "right")) return { x: layout === "left" ? 4 : -4, y: 0.2, z: 0 };
   if (narrow()) return { x: 0, y: layout === "hero" || layout === "center" ? 0.2 : 1.4, z: layout === "center" || layout === "stats" ? -2 : -1 };
   if (layout === "left") return { x: 3, y: 0.2, z: 0 };
   if (layout === "right") return { x: -3, y: 0.2, z: 0 };

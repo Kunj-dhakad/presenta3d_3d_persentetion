@@ -42,7 +42,15 @@ export function ensureDeckEngineCurrent(projectId: string): Promise<boolean> {
       await markWorkingVersion(projectId, version.id);
     }
     return true;
-  })().finally(() => inFlight.delete(projectId));
+  })()
+    // Best effort: a failed upgrade (e.g. a transient database error) must not
+    // break opening the presentation; the last working build is shown and the
+    // upgrade is retried on the next visit.
+    .catch((err) => {
+      console.error("[deck-upgrade]", projectId, err instanceof Error ? err.message : err);
+      return false;
+    })
+    .finally(() => inFlight.delete(projectId));
   inFlight.set(projectId, p);
   return p;
 }
