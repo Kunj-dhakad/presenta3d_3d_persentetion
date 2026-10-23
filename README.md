@@ -1,4 +1,4 @@
-# Strata
+# 3D Presentation
 
 > **Current product mode: 3D presentations.** The UI is intentionally reduced to one flow:
 > **describe a topic in chat → get a cinematic 3D presentation → present it full page → publish a link.**
@@ -16,11 +16,11 @@
 >
 > The sections below describe the full platform.
 
-Strata is an AI creative platform. Describe an idea in plain language and it generates **runnable, editable projects**: websites, React/TypeScript apps, interactive three.js scenes, browser games and data visualizations. Every project has a live sandboxed preview, a Monaco code editor, version history, chat-driven edits, and publishing.
+3D Presentation is an AI creative platform. Describe an idea in plain language and it generates **runnable, editable projects**: websites, React/TypeScript apps, interactive three.js scenes, browser games and data visualizations. Every project has a live sandboxed preview, a Monaco code editor, version history, chat-driven edits, and publishing.
 
 It also includes a **3D Studio** (visual scene editor with AI scene generation), a **Canvas** (infinite design board with parallel AI frame generation), a **creative asset studio** (image / video / speech / sound / 3D model / material generation through real provider adapters) and an **asset library**.
 
-> Strata is an original implementation inspired by the publicly documented functionality of tools like Omma. It contains no code from, and claims no access to, any other product.
+> 3D Presentation is an original implementation inspired by the publicly documented functionality of tools like Omma. It contains no code from, and claims no access to, any other product.
 
 ---
 
@@ -42,7 +42,7 @@ The application requires the RDS MySQL variables in `.env` for local development
 
 ### No sign-in by default
 
-Strata runs in **local single-user mode** (`AUTH_MODE=local`, the default) in development and production: open the app and start building. There is no sign-up or login, and every visitor shares the same workspace. Set `AUTH_MODE=accounts` to enable email/password accounts and per-user workspaces.
+3D Presentation runs in **local single-user mode** (`AUTH_MODE=local`, the default) in development and production: open the app and start building. There is no sign-up or login, and every visitor shares the same workspace. Set `AUTH_MODE=accounts` to enable email/password accounts and per-user workspaces.
 
 ### Connect OpenAI
 
@@ -169,7 +169,7 @@ AWS warns that secrets written into `.env.production` may be readable to people 
    Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, and `MYSQL_PASSWORD` for RDS MySQL. The runtime uses Prisma's MariaDB driver adapter and the MySQL schema/migrations under `prisma/mysql`. The application has no SQLite/PostgreSQL runtime adapter.
 2. **Required env**: `NODE_ENV=production`, `APP_ORIGIN`, `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. `AUTH_MODE` defaults to `local`; set it to `accounts` only when sign-in is wanted. `SESSION_SECRET` (≥ 32 random chars) is needed for accounts. Leave `AI_PROVIDER` unset (`mock` is refused in production).
 3. **Storage**: `STORAGE_DRIVER=s3` with `KD_AWS_S3_BUCKET_NAME`, `KD_AWS_REGION`, `KD_AWS_ACCESS_KEY_ID`, and `KD_AWS_SECRET_ACCESS_KEY` (legacy `S3_*` names are also supported). All S3 objects are grouped under the `3dpresentation/` key prefix. Media, build previews, shared runtimes, and published site artifacts are stored in the configured bucket; project records and source files remain in RDS. The bucket can stay private because the app serves artifacts through its routes.
-4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.strata-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
+4. **Previews on a separate origin (recommended)**: serve `/preview`, `/preview-runtime` and `/sites` from a dedicated domain (e.g. `*.deck3d-usercontent.com`) and set `PREVIEW_ORIGIN`. The CSP sandbox already gives previews an opaque origin; a separate registrable domain adds defence in depth.
 5. **Build worker isolation**: the worker already runs as a separate, env-scrubbed, time-boxed process. For multi-tenant production, run it in a container or microVM with **no network**, a read-only root filesystem and CPU/memory limits (gVisor, Firecracker, or a Kubernetes Job), using the same stdin/stdout JSON contract as `runWorker`.
 6. **Public publishing**: `PUBLISH_PROVIDER=vercel` + `VERCEL_TOKEN` (and `VERCEL_TEAM_ID` if needed). The default `local` provider serves sites from this server under `/sites/<slug>` and is labelled as non-public.
 7. **Run**: `npm ci && npm run build && npm start` behind TLS. `outputFileTracingIncludes` in `next.config.ts` ships the worker, the scene runtime template and Monaco assets.

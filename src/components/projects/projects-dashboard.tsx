@@ -38,7 +38,7 @@ export function ProjectsDashboard() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [status, setStatus] = useState<"active" | "archived">("active");
-  const [view, changeView] = useLocalPref("strata.projects.view", "grid", ["grid", "list"] as const);
+  const [view, changeView] = useLocalPref("deck3d.projects.view", "grid", ["grid", "list"] as const);
   const [busy, setBusy] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<ProjectRow | null>(null);
   const [toRename, setToRename] = useState<ProjectRow | null>(null);

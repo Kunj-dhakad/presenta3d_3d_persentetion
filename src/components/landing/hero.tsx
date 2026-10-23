@@ -2,8 +2,8 @@
 
 import { motion, useReducedMotion } from "motion/react";
 
-/** Decorative layered backdrop: stacked translucent strata drifting slowly. */
-export function StrataHero() {
+/** Decorative layered backdrop: stacked translucent layers drifting slowly. */
+export function Hero() {
   const reduce = useReducedMotion();
   const layers = [0, 1, 2, 3, 4];
   return (

@@ -18,7 +18,7 @@ type JobRow = { id: string; kind: string; status: string; progress: number; erro
 const PLACEHOLDER: Record<MediaKind, string> = {
   image: "A brutalist concrete villa at golden hour, cinematic, 35mm photograph",
   video: "Slow dolly shot through a neon-lit rainy alley at night, reflections on wet pavement",
-  audio: "Welcome to Strata. Describe an idea, and watch it become a working product.",
+  audio: "Welcome to 3D Presentation. Describe an idea, and watch it become a working product.",
   sfx: "Heavy wooden door creaking open in a stone hallway, with echo",
   model3d: "A low-poly stylized treasure chest with brass fittings",
   material: "Weathered teal-painted wooden planks with peeling paint",

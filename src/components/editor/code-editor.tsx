@@ -67,7 +67,7 @@ export function CodeEditor({ readOnly = false }: { readOnly?: boolean }) {
       const markers = buildErrors
         .filter((d) => d.file === path && d.line > 0)
         .map((d) => ({ severity: monaco.MarkerSeverity.Error, message: d.message, startLineNumber: d.line, startColumn: Math.max(1, d.column + 1), endLineNumber: d.line, endColumn: Math.max(2, d.column + 2) + 40, source: "build" }));
-      monaco.editor.setModelMarkers(m, "strata-build", markers);
+      monaco.editor.setModelMarkers(m, "deck3d-build", markers);
     }
   }, [buildErrors, activePath]);
 
@@ -133,11 +133,11 @@ export function CodeEditor({ readOnly = false }: { readOnly?: boolean }) {
       <div className="min-h-0 flex-1">
         {activePath && content !== undefined ? (
           <Editor
-            key="strata-editor"
+            key="deck3d-editor"
             path={`file:///project/${activePath}`}
             language={languageForPath(activePath)}
             value={content}
-            theme="strata-dark"
+            theme="deck3d-dark"
             beforeMount={configureMonaco}
             onMount={onMount}
             onChange={(v) => {

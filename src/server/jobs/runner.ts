@@ -37,10 +37,10 @@ export type JobContext = {
   progress: (p: number) => void;
 };
 
-const g = globalThis as unknown as { __strataJobs?: Map<string, Handle>; __strataQueue?: (() => void)[]; __strataActive?: { n: number } };
-const handles = (g.__strataJobs ??= new Map<string, Handle>());
-const queue = (g.__strataQueue ??= []);
-const active = (g.__strataActive ??= { n: 0 });
+const g = globalThis as unknown as { __deck3dJobs?: Map<string, Handle>; __deck3dQueue?: (() => void)[]; __deck3dActive?: { n: number } };
+const handles = (g.__deck3dJobs ??= new Map<string, Handle>());
+const queue = (g.__deck3dQueue ??= []);
+const active = (g.__deck3dActive ??= { n: 0 });
 const MAX_ACTIVE_JOBS = 4;
 
 async function flush(h: Handle, extra: Prisma.GenerationJobUpdateInput = {}) {

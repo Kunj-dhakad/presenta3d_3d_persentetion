@@ -62,7 +62,7 @@ describe("preview serving and publishing", () => {
     expect(csp).not.toMatch(/allow-same-origin/);
     expect(csp).toMatch(/connect-src 'self'/);
     expect(await res.text()).toContain('type="importmap"');
-    const trav = await previewGET(new Request("http://x/"), { params: Promise.resolve({ buildId: b.buildId, path: ["..", "..", "strata.db"] }) });
+    const trav = await previewGET(new Request("http://x/"), { params: Promise.resolve({ buildId: b.buildId, path: ["..", "..", "deck3d.db"] }) });
     expect(trav.status).toBe(400);
     const badId = await previewGET(new Request("http://x/"), { params: Promise.resolve({ buildId: "../../x", path: [] }) });
     expect(badId.status).toBe(404);
@@ -83,7 +83,7 @@ describe("preview serving and publishing", () => {
     // Built-in hosting loads the shared runtime, kept in storage so it outlives redeploys.
     const { hash } = await ensureRuntime();
     expect(html).toContain(`/preview-runtime/${hash}/react.js`);
-    expect(html).not.toContain("data-strata-shim");
+    expect(html).not.toContain("data-deck3d-shim");
     expect(await storage().get(`${sitePrefix}/_runtime/react.js`)).toBeNull();
     expect(await storage().get(`runtime/${hash}/react.js`)).toBeTruthy();
     expect(await storage().get(`runtime/${hash}/manifest.json`)).toBeTruthy();

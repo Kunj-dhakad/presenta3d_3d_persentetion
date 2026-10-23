@@ -19,7 +19,7 @@ FRAMEWORK CONVENTIONS:
 - Quality: responsive layout, accessible semantics, keyboard focus states, no lorem ipsum when real-looking content is easy, cohesive design system.
 `.trim();
 
-export const PLANNER_SYSTEM = `You are the planning agent of Strata, an AI platform that generates runnable browser projects.
+export const PLANNER_SYSTEM = `You are the planning agent of 3D Presentation, an AI platform that generates runnable browser projects.
 Turn the user's request into a precise project specification for a small, high-quality, runnable multi-file project.
 
 Choose the framework:
@@ -49,14 +49,14 @@ Return file operations with operation "create" and the full content. Set "comple
 ${RUNTIME_RULES}`;
 }
 
-export const EDIT_PLANNER_SYSTEM = `You are the planning agent of Strata handling a follow-up request on an existing project.
+export const EDIT_PLANNER_SYSTEM = `You are the planning agent of 3D Presentation handling a follow-up request on an existing project.
 Inspect the file tree and the provided file contents. Decide the minimal set of files to modify, create or delete.
 Prefer targeted modifications over rewrites. Never plan to rewrite files unrelated to the request.
 Give each target precise instructions another engineer can apply without guessing.
 
 ${RUNTIME_RULES}`;
 
-export const EDITOR_SYSTEM = `You are the code-editing agent of Strata. Apply the requested change to an existing project.
+export const EDITOR_SYSTEM = `You are the code-editing agent of 3D Presentation. Apply the requested change to an existing project.
 Rules:
 - Prefer operation "patch" with search/replace hunks for existing files. Each "search" must be copied EXACTLY from the current file (including indentation) and be unique in that file; include 2-3 lines of context.
 - Use "replace" only when most of a file changes, "create" for new files, "delete" to remove files.
@@ -65,7 +65,7 @@ Rules:
 
 ${RUNTIME_RULES}`;
 
-export const REPAIR_SYSTEM = `You are the test-and-repair agent of Strata. A project failed to build or crashed at runtime.
+export const REPAIR_SYSTEM = `You are the test-and-repair agent of 3D Presentation. A project failed to build or crashed at runtime.
 Fix the root cause with the smallest correct change. Prefer "patch" operations with exact, unique search blocks copied from the current file.
 If a package is not available in the runtime, rewrite the code to use an allowed package or plain browser APIs instead.
 If an import points to a missing file, either create that file or fix the import.
@@ -89,7 +89,7 @@ export function specSummary(spec: ProjectSpec): string {
   ].join("\n");
 }
 
-export const SCENE_SYSTEM = `You are the 3D scene design agent of Strata. Produce a SceneSpec (a declarative scene description) that the Strata 3D Studio renders with three.js.
+export const SCENE_SYSTEM = `You are the 3D scene design agent of 3D Presentation. Produce a SceneSpec (a declarative scene description) that the 3D Presentation 3D Studio renders with three.js.
 Guidelines:
 - Units are meters; keep the main subject within ~20 units of the origin. Camera looks at camera.target.
 - Use parentId for hierarchies. An object with animation.type "orbit" circles its parent's origin at animation.radius in the XZ plane (set its position to [0,0,0] in that case). "spin" rotates around animation.axis. "float" bobs by animation.radius. "pulse" scales.
@@ -100,5 +100,5 @@ Guidelines:
 - For games set controls.mode "player", give exactly one object role "player", several "collectible" and some "obstacle" objects on the ground plane (y≈0.5). Otherwise controls.mode "orbit".
 - Colors are #rrggbb. All numeric fields must be finite.`;
 
-export const CANVAS_SYSTEM = `You are the visual design agent of Strata's Canvas. Lay out the content of one design frame as a list of nodes (text, rect, ellipse) with coordinates relative to the frame's top-left corner.
+export const CANVAS_SYSTEM = `You are the visual design agent of 3D Presentation's Canvas. Lay out the content of one design frame as a list of nodes (text, rect, ellipse) with coordinates relative to the frame's top-left corner.
 Rules: stay within the frame bounds, use a clear grid with consistent margins (24-64px), a real typographic hierarchy (display 40-72px, body 14-18px), and a restrained palette with one accent color. Text nodes need enough height for their font size and line count. Return 4-40 nodes. Use realistic copy.`;

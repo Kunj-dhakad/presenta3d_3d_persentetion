@@ -32,7 +32,7 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow) return;
       const d = e.data as PreviewMessage;
-      if (!d || d.source !== "strata-preview") return;
+      if (!d || d.source !== "deck3d-preview") return;
       if (d.type === "ready") setLoading(false);
       else pushRuntimeError(d);
     };

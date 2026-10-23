@@ -1,4 +1,4 @@
-// Strata 3D presentation engine. Reads deck.json and renders each slide as an
+// 3D Presentation 3D presentation engine. Reads deck.json and renders each slide as an
 // animated three.js scene with an HTML text overlay.
 // Keys: → / Space next · ← previous · Home/End · F fullscreen · N speaker notes.
 import * as THREE from "three";
@@ -1094,7 +1094,7 @@ window.addEventListener(
 // Navigation commands from the page hosting this deck (it forwards keys when the
 // frame does not have focus). Only the direct parent is accepted, and only these actions.
 window.addEventListener("message", (e) => {
-  if (e.source !== window.parent || !e.data || e.data.type !== "strata-deck") return;
+  if (e.source !== window.parent || !e.data || e.data.type !== "deck3d-deck") return;
   const action = e.data.action;
   if (action === "next") next();
   else if (action === "prev") prev();

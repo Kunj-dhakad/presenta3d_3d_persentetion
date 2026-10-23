@@ -7,7 +7,7 @@ import { authMode, env, sessionSecret } from "@/server/env";
 import { localModeUser } from "./local-user";
 export { localModeUser };
 
-export const SESSION_COOKIE = "strata_session";
+export const SESSION_COOKIE = "deck3d_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type SessionUser = { id: string; email: string; name: string };

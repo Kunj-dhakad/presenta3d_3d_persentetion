@@ -15,7 +15,7 @@ import { deckToProjectFiles } from "./codegen";
 import { addSceneCode } from "./scene-code";
 import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 
-export const DECK_SYSTEM = `You are the presentation designer of Strata. You create cinematic 3D presentations.
+export const DECK_SYSTEM = `You are the presentation designer of 3D Presentation. You create cinematic 3D presentations.
 You do not write code. You write a DeckSpec: the content and art direction of each slide. A fixed three.js engine renders it with animated 3D scenes, glow and smooth transitions.
 
 Write a strong story: an opening hero slide, a clear arc, and a closing slide. Use 5-10 slides unless the user asks otherwise.

@@ -20,9 +20,9 @@ export type BuildSummary = {
 
 /** Messages posted by the preview shim (preview-runner/shim.js). */
 export type PreviewMessage =
-  | { source: "strata-preview"; type: "ready"; loadMs: number }
+  | { source: "deck3d-preview"; type: "ready"; loadMs: number }
   | {
-      source: "strata-preview";
+      source: "deck3d-preview";
       type: "runtime-error" | "console-error" | "resource-error" | "csp-violation";
       message: string;
       stack: string;

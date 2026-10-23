@@ -8,7 +8,7 @@ if (!MYSQL_HOST || !MYSQL_DATABASE || !MYSQL_USER || !MYSQL_PASSWORD) {
 async function main() {
   try {
     await db.$queryRaw`SELECT 1`;
-    await db.user.findUnique({ where: { email: "__strata_rds_connection_check__@invalid.local" }, select: { id: true } });
+    await db.user.findUnique({ where: { email: "__deck3d_rds_connection_check__@invalid.local" }, select: { id: true } });
     const userCount = await db.user.count();
     console.log(`RDS app connection check passed (read-only SELECT 1); users=${userCount}.`);
   } finally {

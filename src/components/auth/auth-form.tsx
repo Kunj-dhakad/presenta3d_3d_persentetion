@@ -71,7 +71,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <p className="mt-6 text-sm text-muted-foreground">
           {mode === "login" ? (
             <>
-              New to Strata?{" "}
+              New to 3D Presentation?{" "}
               <Link className="text-foreground underline-offset-4 hover:underline" href="/signup">
                 Create an account
               </Link>

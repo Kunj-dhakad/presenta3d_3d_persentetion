@@ -16,7 +16,7 @@ describe("isolated build worker", () => {
       expect(r.ok).toBe(true);
       const html = r.files.find((f) => f.path === "index.html")!;
       expect(html.content).toContain('<script type="importmap">');
-      expect(html.content).toContain("data-strata-shim");
+      expect(html.content).toContain("data-deck3d-shim");
     });
   }
 

@@ -43,8 +43,8 @@ describe.skipIf(!configured)("live OpenAI integration (uses your API key)", () =
     const first = await go("Build a small interactive three.js scene with a rotating glowing torus knot, orbit controls and a title overlay.");
     expect(first.buildStatus).toBe("succeeded");
     expect((await getFiles(project.id)).length).toBeGreaterThanOrEqual(2);
-    const second = await go("Change the title overlay text to 'Strata Live Test'.");
+    const second = await go("Change the title overlay text to 'Deck Live Test'.");
     expect(second.buildStatus).toBe("succeeded");
-    expect((await getFiles(project.id)).some((f) => f.content.includes("Strata Live Test"))).toBe(true);
+    expect((await getFiles(project.id)).some((f) => f.content.includes("Deck Live Test"))).toBe(true);
   });
 });

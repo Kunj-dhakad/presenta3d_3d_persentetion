@@ -14,7 +14,7 @@ export const modelUri = (monaco: Monaco, path: string) => monaco.Uri.parse(`${MO
 export function configureMonaco(monaco: Monaco) {
   if (configured) return;
   configured = true;
-  monaco.editor.defineTheme("strata-dark", {
+  monaco.editor.defineTheme("deck3d-dark", {
     base: "vs-dark",
     inherit: true,
     rules: [

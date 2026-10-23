@@ -30,7 +30,7 @@ export function useDeckRemote(frameRef: RefObject<HTMLIFrameElement | null>) {
       const action = KEY_ACTIONS[e.key];
       if (!action || e.ctrlKey || e.metaKey || e.altKey) return;
       e.preventDefault();
-      frameRef.current?.contentWindow?.postMessage({ type: "strata-deck", action }, "*");
+      frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action }, "*");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

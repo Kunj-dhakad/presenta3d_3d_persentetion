@@ -7,10 +7,10 @@ import Database from "better-sqlite3";
 nextEnv.loadEnvConfig(process.cwd());
 
 // Real OpenAI settings come from .env / the environment; test records stay in an isolated fixture DB.
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strata-int-"));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "deck3d-int-"));
 const dbFile = path.join(dir, "int.db").split(path.sep).join("/");
 process.env.DATA_DIR = dir;
-process.env.STRATA_TEST_DATABASE_FILE = dbFile;
+process.env.TEST_DATABASE_FILE = dbFile;
 process.env.AI_PROVIDER = "openai";
 (process.env as Record<string, string>).NODE_ENV = "test";
 const testDb = new Database(dbFile);

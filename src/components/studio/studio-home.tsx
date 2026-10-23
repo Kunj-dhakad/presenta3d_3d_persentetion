@@ -24,7 +24,7 @@ export function StudioHome() {
   const [scenes, setScenes] = useState<SceneRow[] | null>(null);
   const [providers, setProviders] = useState<Providers | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [tab, setTab] = useLocalPref("strata.studio.tab", "scenes", ["scenes", ...MEDIA_KINDS] as const);
+  const [tab, setTab] = useLocalPref("deck3d.studio.tab", "scenes", ["scenes", ...MEDIA_KINDS] as const);
 
   useEffect(() => {
     api<{ scenes: Template[] }>("/api/examples").then((r) => setTemplates(r.scenes), () => setTemplates([]));

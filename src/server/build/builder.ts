@@ -94,7 +94,7 @@ function injectHead(html: string, runtimeBase: string) {
   const injection =
     `<meta charset="utf-8">\n` +
     `<script type="importmap">${JSON.stringify(importMap(runtimeBase))}</script>\n` +
-    `<script data-strata-shim>${shim()}</script>\n`;
+    `<script data-deck3d-shim>${shim()}</script>\n`;
   html = html.replace(/<script[^>]*type=["']importmap["'][^>]*>[\s\S]*?<\/script>/gi, "");
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}\n${injection}`);
   return `<!doctype html>\n<html><head>\n${injection}</head><body>\n${html}\n</body></html>`;

@@ -67,7 +67,7 @@ export function ShareViewer({ name, description, files, previewUrl, showCode = f
           </nav>
           <div className="min-w-0 flex-1">
             {file ? (
-              <Editor path={`share://${file.path}`} value={file.content} language={languageForPath(file.path)} theme="strata-dark" beforeMount={configureMonaco} options={{ readOnly: true, domReadOnly: true, minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true }} />
+              <Editor path={`share://${file.path}`} value={file.content} language={languageForPath(file.path)} theme="deck3d-dark" beforeMount={configureMonaco} options={{ readOnly: true, domReadOnly: true, minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true }} />
             ) : (
               <p className="p-6 text-sm text-muted-foreground">This project has no files.</p>
             )}

@@ -83,7 +83,7 @@ export function App() {
       </main>
       <footer className="footer">
         <span>© 2026 Northwind Labs</span>
-        <span className="muted">Demo project generated in Strata</span>
+        <span className="muted">Demo project generated in 3D Presentation</span>
       </footer>
     </>
   );

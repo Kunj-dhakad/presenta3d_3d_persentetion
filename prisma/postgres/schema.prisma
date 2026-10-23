@@ -1,4 +1,4 @@
-// Strata database schema.
+// 3D Presentation database schema.
 // GENERATED from prisma/schema.prisma by scripts/derive-postgres-schema.mjs. Do not edit.
 
 generator client {

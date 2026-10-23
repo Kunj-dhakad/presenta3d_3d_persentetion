@@ -12,7 +12,7 @@ const database = process.env.E2E_MYSQL_DATABASE;
 if (!database) throw new Error("Set E2E_MYSQL_DATABASE to a separate disposable RDS database before running Playwright.");
 const env = {
   AI_PROVIDER: "mock",
-  STRATA_ALLOW_MOCK: "1",
+  ALLOW_MOCK_AI: "1",
   APP_ORIGIN: `http://localhost:${PORT}`,
   MYSQL_HOST: process.env.MYSQL_HOST ?? "",
   MYSQL_PORT: process.env.MYSQL_PORT ?? "3306",

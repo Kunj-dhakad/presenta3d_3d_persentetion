@@ -80,7 +80,7 @@ export function env(): ServerEnv {
     const fields = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid server configuration: ${fields}`);
   }
-  if (parsed.data.NODE_ENV === "production" && parsed.data.AI_PROVIDER === "mock" && !process.env.STRATA_ALLOW_MOCK) {
+  if (parsed.data.NODE_ENV === "production" && parsed.data.AI_PROVIDER === "mock" && !process.env.ALLOW_MOCK_AI) {
     throw new Error("AI_PROVIDER=mock is a test-only setting and is refused in production.");
   }
   cached = parsed.data;
@@ -92,7 +92,7 @@ export function resetEnvCache() {
   cached = null;
 }
 
-const DEV_SESSION_SECRET = "strata-dev-only-session-secret-change-me-0000";
+const DEV_SESSION_SECRET = "deck3d-dev-only-session-secret-change-me-0000";
 
 export function sessionSecret(): string {
   const e = env();

@@ -48,14 +48,14 @@ describe("project generation pipeline (offline test provider + real build worker
     const p = await createProject(u.id, { name: "Untitled project", category: "website", framework: "vanilla" });
     await run(new MockTextProvider(), u.id, p.id, "A simple landing page");
     const before = await getFiles(p.id);
-    const { result } = await run(new MockTextProvider(), u.id, p.id, 'Change the heading text to "Hello Strata"');
+    const { result } = await run(new MockTextProvider(), u.id, p.id, 'Change the heading text to "Hello Deck"');
     expect(result.changedFiles).toEqual(["index.html"]);
     const after = await getFiles(p.id);
-    expect(after.find((f) => f.path === "index.html")?.content).toContain('<h1 id="title">Hello Strata</h1>');
+    expect(after.find((f) => f.path === "index.html")?.content).toContain('<h1 id="title">Hello Deck</h1>');
     // Untouched files are byte-identical.
     expect(after.find((f) => f.path === "app.js")).toEqual(before.find((f) => f.path === "app.js"));
     const pre = await db.projectVersion.findUniqueOrThrow({ where: { id: result.preVersionId! } });
-    expect(JSON.stringify(pre.files)).not.toContain("Hello Strata");
+    expect(JSON.stringify(pre.files)).not.toContain("Hello Deck");
   });
 
   it("repairs a failing build automatically (bounded) and reports it honestly", async () => {

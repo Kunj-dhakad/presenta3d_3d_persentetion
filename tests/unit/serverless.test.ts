@@ -33,7 +33,7 @@ describe("serverless deployment", () => {
     const html = Buffer.from((await storage().get(`previews/${build.buildId}/index.html`))!).toString("utf8");
     expect(html).toContain('<script type="importmap">');
     expect(html).toContain(`/preview-runtime/${prebuiltRuntime()!.hash}/three.js`);
-    expect(html).toContain("data-strata-shim");
+    expect(html).toContain("data-deck3d-shim");
     expect(await storage().get(`previews/${build.buildId}/main.js`)).toBeTruthy();
   });
 

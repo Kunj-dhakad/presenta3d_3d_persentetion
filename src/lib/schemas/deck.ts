@@ -201,7 +201,7 @@ export function diversifyDeck(deck: DeckSpec): DeckSpec {
 }
 
 /** Starter deck used when a presentation is created without AI (and by tests). */
-export function sampleDeck(topic = "Strata"): DeckSpec {
+export function sampleDeck(topic = "3D Presentation"): DeckSpec {
   const scene = (preset: string, primary: string, secondary: string, values: number[] = []) =>
     expandPreset({ preset, primary, secondary, speed: 1, density: 0.7, values }) as DeckSlide["scene"];
   return {

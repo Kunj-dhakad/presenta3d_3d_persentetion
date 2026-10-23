@@ -84,7 +84,7 @@ export async function bundleForPublish(buildId: string, runtimePrefix: string | 
       let data = await storage().get(key);
       if (!data) throw new Error(`build artifact is missing: ${filePath}`);
       if (/\.html?$/.test(filePath)) {
-        let html = Buffer.from(data).toString("utf8").replace(/<script data-strata-shim>[\s\S]*?<\/script>\n?/, "");
+        let html = Buffer.from(data).toString("utf8").replace(/<script data-deck3d-shim>[\s\S]*?<\/script>\n?/, "");
         if (runtimePrefix !== null) html = html.split(`${runtime.base}/`).join(runtimePrefix);
         data = Buffer.from(html, "utf8");
       }
@@ -168,10 +168,10 @@ class VercelDeploymentProvider implements DeploymentProvider {
   }
   async deploy({ slug, name, files }: { slug: string; name: string; files: { path: string; data: Buffer }[] }) {
     const body = {
-      name: `strata-${slug}`.slice(0, 90),
+      name: `deck3d-${slug}`.slice(0, 90),
       target: "production",
       projectSettings: { framework: null },
-      meta: { source: "strata", title: name.slice(0, 100) },
+      meta: { source: "deck3d", title: name.slice(0, 100) },
       files: files.map((f) => ({ file: f.path, data: f.data.toString("base64"), encoding: "base64" })),
     };
     const r = await fetch(`https://api.vercel.com/v13/deployments${this.q()}`, { method: "POST", headers: this.headers(), body: JSON.stringify(body) });

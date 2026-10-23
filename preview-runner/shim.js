@@ -4,7 +4,7 @@
 (function () {
   var post = function (msg) {
     try {
-      msg.source = "strata-preview";
+      msg.source = "deck3d-preview";
       parent.postMessage(msg, "*");
     } catch {
       /* ignore */

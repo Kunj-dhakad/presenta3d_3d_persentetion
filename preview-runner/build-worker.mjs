@@ -192,7 +192,7 @@ function headInjection(runtimeBase, shim) {
   return (
     `<meta charset="utf-8">\n` +
     `<script type="importmap">${JSON.stringify(importMap(runtimeBase))}</script>\n` +
-    `<script data-strata-shim>${shim}</script>\n`
+    `<script data-deck3d-shim>${shim}</script>\n`
   );
 }
 

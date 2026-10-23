@@ -29,7 +29,7 @@ function createClient(): PrismaClient {
 
 import type { PrismaClient } from "@/generated/mysql-prisma/client";
 
-const globalForPrisma = globalThis as unknown as { __strataPrisma?: PrismaClient };
+const globalForPrisma = globalThis as unknown as { __deck3dPrisma?: PrismaClient };
 
-export const db: PrismaClient = globalForPrisma.__strataPrisma ?? createClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.__strataPrisma = db;
+export const db: PrismaClient = globalForPrisma.__deck3dPrisma ?? createClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.__deck3dPrisma = db;

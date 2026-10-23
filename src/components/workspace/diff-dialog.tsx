@@ -105,7 +105,7 @@ export function DiffDialog({
                     originalModelPath={`inmemory://diff/before/${current.path}`}
                     modifiedModelPath={`inmemory://diff/after/${current.path}`}
                     language={languageForPath(current.path)}
-                    theme="strata-dark"
+                    theme="deck3d-dark"
                     beforeMount={configureMonaco}
                     options={{ readOnly: true, renderSideBySide: true, minimap: { enabled: false }, fontSize: 12.5, scrollBeyondLastLine: false, automaticLayout: true }}
                   />

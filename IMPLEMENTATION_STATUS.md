@@ -40,7 +40,7 @@ _Last updated: 2026-10-21. Verified on Windows 11, Node 24.18.0, npm 11.16.0, Ne
 
 ## Working features
 
-**Foundation.** Next.js 16 App Router; Cache Components with Suspense boundaries for runtime data; strict TypeScript; Tailwind v4 + shadcn/ui; original "Strata" identity and logo; dark-first design system; navigation rail with app switcher, activity notifications, contextual help and account menu; mobile bottom navigation; landing page.
+**Foundation.** Next.js 16 App Router; Cache Components with Suspense boundaries for runtime data; strict TypeScript; Tailwind v4 + shadcn/ui; original "3D Presentation" identity and logo; dark-first design system; navigation rail with app switcher, activity notifications, contextual help and account menu; mobile bottom navigation; landing page.
 
 **Auth.** Local single-user mode (default in development, refused in production). Accounts mode: email/password with scrypt, DB sessions, HttpOnly cookies, CSRF origin checks, rate limits and an audit log.
 

@@ -144,7 +144,7 @@ function AppSwitcher() {
       </PopoverTrigger>
       <PopoverContent side="right" align="start" className="w-88 p-2">
         <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <LayoutGrid className="size-3.5" /> Strata workspaces
+          <LayoutGrid className="size-3.5" /> 3D Presentation
         </div>
         <div className="grid gap-0.5">
           {NAV_ITEMS.map((n) => (

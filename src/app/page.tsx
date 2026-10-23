@@ -4,7 +4,7 @@ import { ArrowRight, Boxes, Keyboard, MessageSquare, Palette, Play, Rocket } fro
 import { Logo } from "@/components/brand/logo";
 import { currentUser } from "@/server/auth/session";
 import { LandingPrompt } from "@/components/landing/landing-prompt";
-import { StrataHero } from "@/components/landing/strata-hero";
+import { Hero } from "@/components/landing/hero";
 
 async function NavCta() {
   const user = await currentUser();
@@ -53,7 +53,7 @@ export default function LandingPage() {
       </header>
 
       <section className="relative overflow-hidden">
-        <StrataHero />
+        <Hero />
         <div className="relative mx-auto max-w-3xl px-4 pb-20 pt-24 text-center sm:px-6 sm:pt-32">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted-foreground">
             <span className="size-1.5 rounded-full bg-brand" /> AI · 3D · Presentations

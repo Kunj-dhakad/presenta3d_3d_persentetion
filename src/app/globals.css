@@ -55,7 +55,7 @@
 }
 
 /*
- * Strata is dark-first. The `.dark` palette is the product palette; `:root`
+ * 3D Presentation is dark-first. The `.dark` palette is the product palette; `:root`
  * keeps a light palette for third-party surfaces that opt out.
  */
 :root {

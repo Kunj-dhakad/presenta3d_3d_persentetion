@@ -57,7 +57,7 @@ export function starterFiles(framework: Framework): { path: string; content: str
     return [
       { path: "index.html", content: `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>New app</title>\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="/src/main.${ext}"></script>\n</body>\n</html>\n` },
       { path: `src/main.${ext}`, content: `import { createRoot } from "react-dom/client";\nimport { App } from "./App";\nimport "./styles.css";\n\ncreateRoot(document.getElementById("root")${framework === "react-ts" ? "!" : ""}).render(<App />);\n` },
-      { path: `src/App.${ext}`, content: `import { useState } from "react";\n\nexport function App() {\n  const [count, setCount] = useState(0);\n  return (\n    <main className="app">\n      <h1>Hello from Strata</h1>\n      <button onClick={() => setCount(count + 1)}>Clicked {count} times</button>\n    </main>\n  );\n}\n` },
+      { path: `src/App.${ext}`, content: `import { useState } from "react";\n\nexport function App() {\n  const [count, setCount] = useState(0);\n  return (\n    <main className="app">\n      <h1>Hello from 3D Presentation</h1>\n      <button onClick={() => setCount(count + 1)}>Clicked {count} times</button>\n    </main>\n  );\n}\n` },
       { path: "src/styles.css", content: `body { margin: 0; font-family: system-ui, sans-serif; background: #0b0b0f; color: #ececf1; }\n.app { min-height: 100vh; display: grid; place-content: center; gap: 16px; text-align: center; }\nbutton { padding: 10px 16px; border-radius: 10px; border: 1px solid #333; background: #1a1a22; color: inherit; cursor: pointer; }\n` },
     ];
   }
@@ -68,7 +68,7 @@ export function starterFiles(framework: Framework): { path: string; content: str
     ];
   }
   return [
-    { path: "index.html", content: `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>New site</title>\n  <link rel="stylesheet" href="./styles.css">\n</head>\n<body>\n  <main class="page">\n    <h1>Hello from Strata</h1>\n    <p>Edit the files or ask the AI to build something.</p>\n  </main>\n  <script type="module" src="./main.js"></script>\n</body>\n</html>\n` },
+    { path: "index.html", content: `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>New site</title>\n  <link rel="stylesheet" href="./styles.css">\n</head>\n<body>\n  <main class="page">\n    <h1>Hello from 3D Presentation</h1>\n    <p>Edit the files or ask the AI to build something.</p>\n  </main>\n  <script type="module" src="./main.js"></script>\n</body>\n</html>\n` },
     { path: "styles.css", content: `body { margin: 0; font-family: system-ui, sans-serif; background: #0b0b0f; color: #ececf1; }\n.page { max-width: 720px; margin: 0 auto; padding: 80px 24px; }\n` },
     { path: "main.js", content: `document.querySelector("h1").addEventListener("click", (e) => {\n  e.target.textContent = "You clicked the heading";\n});\n` },
   ];
