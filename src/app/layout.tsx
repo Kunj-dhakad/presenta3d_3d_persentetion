@@ -7,9 +7,15 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const SITE_TITLE = "Strata — AI 3D Presentations";
+const SITE_DESCRIPTION = "Describe your topic and get a cinematic 3D presentation: AI writes the slides and designs an animated 3D scene for every slide. Present it full screen or share it with a link.";
+
 export const metadata: Metadata = {
-  title: { default: "Strata — describe it, build it", template: "%s · Strata" },
-  description: "An AI creative platform that turns natural-language ideas into runnable websites, React apps, interactive 3D experiences and games.",
+  title: { default: SITE_TITLE, template: "%s · Strata" },
+  description: SITE_DESCRIPTION,
+  // Link previews (email, WhatsApp, Slack, LinkedIn …)
+  openGraph: { title: SITE_TITLE, description: SITE_DESCRIPTION, siteName: "Strata", type: "website" },
+  twitter: { card: "summary", title: SITE_TITLE, description: SITE_DESCRIPTION },
 };
 
 export const viewport: Viewport = { themeColor: "#0b0b0f", colorScheme: "dark" };
