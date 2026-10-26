@@ -19,14 +19,11 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": [
       "./preview-runner/**/*",
-      // Runtime hash pointer read by the builder (the files are traced for the runtime route below).
       "./preview-runtime-dist/current.json",
       "./src/server/scene-codegen/runtime.js.txt",
       "./src/server/deck/runtime.js.txt",
     ],
     "/preview-runtime/[hash]/[...path]": ["./preview-runtime-dist/**/*"],
-    // Publishing copies the prebuilt runtime into the site; the isolated build worker
-    // (non-presentation projects) spawns esbuild as a separate process, so neither is traced automatically.
     "/api/**/*": ["./preview-runtime-dist/**/*", "./node_modules/esbuild/**/*", "./node_modules/@esbuild/**/*"],
     "/vendor/monaco/[...path]": ["./node_modules/monaco-editor/min/**/*"],
   },

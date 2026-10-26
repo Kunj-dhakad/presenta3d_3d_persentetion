@@ -112,17 +112,17 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid-rows-[auto_minmax(0,1fr)] w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-2xl">
+      <DialogContent className="grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Share & publish</DialogTitle>
           <DialogDescription>Publish your presentation as a web page, or create private share links.</DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="publish" className="min-h-0">
+        <Tabs defaultValue="publish" className="min-h-0 min-w-0">
           <TabsList className="w-full">
             <TabsTrigger value="publish"><Rocket /> Publish</TabsTrigger>
             <TabsTrigger value="links"><Link2 /> Share links</TabsTrigger>
           </TabsList>
-          <TabsContent value="publish" className="mt-3 grid max-h-[calc(100dvh-13rem)] gap-3 overflow-y-auto pr-1">
+          <TabsContent value="publish" className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh-13rem)] gap-3 overflow-y-auto pr-1">
             {!info ? (
               <p className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Loading…</p>
             ) : (
@@ -140,12 +140,12 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
                   {!info.provider.ok && <p className="mt-2 text-xs text-destructive">{info.provider.reason}</p>}
                 </div>
                 {live && (
-                  <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
+                  <div className="min-w-0 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
                     <p className="text-xs text-muted-foreground">Live · updated {timeAgo(live.updatedAt)}</p>
                     <div className="mt-1 flex items-center gap-2">
                       <a href={absolute(live.url) ?? "#"} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate font-mono text-xs text-brand hover:underline">{absolute(live.url)}</a>
-                      <Button size="icon-xs" variant="ghost" onClick={() => live.url && copy(absolute(live.url)!)} aria-label="Copy URL"><Copy /></Button>
-                      <a href={absolute(live.url) ?? "#"} target="_blank" rel="noopener noreferrer" aria-label="Open site"><ExternalLink className="size-3.5 text-muted-foreground" /></a>
+                      <Button size="icon-xs" variant="ghost" className="shrink-0" onClick={() => live.url && copy(absolute(live.url)!)} aria-label="Copy URL"><Copy /></Button>
+                      <a href={absolute(live.url) ?? "#"} target="_blank" rel="noopener noreferrer" aria-label="Open site" className="shrink-0"><ExternalLink className="size-3.5 text-muted-foreground" /></a>
                     </div>
                   </div>
                 )}
@@ -153,7 +153,7 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
                   <p className="flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"><TriangleAlert className="size-4 shrink-0" />Last deployment failed: {latest.error}</p>
                 )}
                 {!hasWorkingBuild && <p className="text-xs text-muted-foreground">There is no successful build yet. Build the project before publishing.</p>}
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   {live && <Button variant="ghost" onClick={() => void unpublish()} disabled={busy !== null}>{busy === "unpublish" && <Loader2 className="animate-spin" />}Unpublish</Button>}
                   <Button onClick={() => void publish()} disabled={busy !== null || !hasWorkingBuild || !info.provider.ok}>
                     {busy === "publish" ? <Loader2 className="animate-spin" /> : <Rocket />} {live ? "Publish update" : "Publish"}
@@ -162,7 +162,7 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
               </>
             )}
           </TabsContent>
-          <TabsContent value="links" className="mt-3 grid max-h-[calc(100dvh-13rem)] gap-3 overflow-y-auto pr-1">
+          <TabsContent value="links" className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh-13rem)] gap-3 overflow-y-auto pr-1">
             <p className="text-xs text-muted-foreground">Anyone with a link can view the presentation (read-only). Links can expire and can be revoked at any time.</p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Select value={expiry} onValueChange={setExpiry}>
