@@ -34,7 +34,7 @@ model Project {
   id                   String           @id @default(cuid())
   ownerId              String
   name                 String
-  description          String           @default("") @db.LongText
+  description          String           @default("") @db.VarChar(2000)
   /// website | react-app | dashboard | scene3d | game | ui-design | data-viz | creative-asset | presentation
   category             String           @default("website")
   /// react-ts | react-js | vanilla | three

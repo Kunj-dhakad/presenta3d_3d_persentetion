@@ -1,4 +1,6 @@
 -- 3D presentation tables in the PHP app's (CI_Core) database. Creates only p3d_* tables.
+-- JSON fields are LONGTEXT so the file also runs on MySQL 5.6 / older MariaDB (no JSON type);
+-- the app reads and writes them as JSON text either way. LONGTEXT holds JSON.
 -- CreateTable
 CREATE TABLE `p3d_users` (
     `id` VARCHAR(191) NOT NULL,
@@ -17,12 +19,12 @@ CREATE TABLE `p3d_projects` (
     `id` VARCHAR(191) NOT NULL,
     `ownerId` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
-    `description` LONGTEXT NOT NULL DEFAULT '',
+    `description` VARCHAR(2000) NOT NULL DEFAULT '',
     `category` VARCHAR(191) NOT NULL DEFAULT 'website',
     `framework` VARCHAR(191) NOT NULL DEFAULT 'vanilla',
     `status` VARCHAR(191) NOT NULL DEFAULT 'active',
-    `spec` JSON NULL,
-    `sceneSpec` JSON NULL,
+    `spec` LONGTEXT NULL,
+    `sceneSpec` LONGTEXT NULL,
     `isTemplate` BOOLEAN NOT NULL DEFAULT false,
     `lastBuildId` VARCHAR(191) NULL,
     `lastBuildStatus` VARCHAR(191) NULL,
@@ -59,7 +61,7 @@ CREATE TABLE `p3d_project_versions` (
     `kind` VARCHAR(191) NOT NULL,
     `label` VARCHAR(191) NULL,
     `summary` LONGTEXT NULL,
-    `files` JSON NOT NULL,
+    `files` LONGTEXT NOT NULL,
     `fileCount` INTEGER NOT NULL,
     `digest` VARCHAR(191) NOT NULL,
     `isWorking` BOOLEAN NOT NULL DEFAULT false,
@@ -76,8 +78,8 @@ CREATE TABLE `p3d_builds` (
     `projectId` VARCHAR(191) NOT NULL,
     `status` VARCHAR(191) NOT NULL,
     `versionDigest` VARCHAR(191) NOT NULL,
-    `errors` JSON NULL,
-    `warnings` JSON NULL,
+    `errors` LONGTEXT NULL,
+    `warnings` LONGTEXT NULL,
     `durationMs` INTEGER NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
@@ -105,7 +107,7 @@ CREATE TABLE `p3d_chat_messages` (
     `conversationId` VARCHAR(191) NOT NULL,
     `role` VARCHAR(191) NOT NULL,
     `content` LONGTEXT NOT NULL,
-    `meta` JSON NULL,
+    `meta` LONGTEXT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `p3d_chat_messages_conversationId_createdAt_idx`(`conversationId`, `createdAt`),
@@ -121,9 +123,9 @@ CREATE TABLE `p3d_generation_jobs` (
     `status` VARCHAR(191) NOT NULL DEFAULT 'queued',
     `provider` VARCHAR(191) NOT NULL,
     `model` VARCHAR(191) NULL,
-    `input` JSON NOT NULL,
-    `output` JSON NULL,
-    `events` JSON NULL,
+    `input` LONGTEXT NOT NULL,
+    `output` LONGTEXT NULL,
+    `events` LONGTEXT NULL,
     `error` LONGTEXT NULL,
     `progress` DOUBLE NOT NULL DEFAULT 0,
     `externalId` VARCHAR(191) NULL,
@@ -151,7 +153,7 @@ CREATE TABLE `p3d_assets` (
     `source` VARCHAR(191) NOT NULL,
     `prompt` LONGTEXT NULL,
     `provider` VARCHAR(191) NULL,
-    `metadata` JSON NULL,
+    `metadata` LONGTEXT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     UNIQUE INDEX `p3d_assets_storageKey_key`(`storageKey`),
@@ -165,7 +167,7 @@ CREATE TABLE `p3d_canvas_documents` (
     `id` VARCHAR(191) NOT NULL,
     `ownerId` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
-    `data` JSON NOT NULL,
+    `data` LONGTEXT NOT NULL,
     `revision` INTEGER NOT NULL DEFAULT 0,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
@@ -179,7 +181,7 @@ CREATE TABLE `p3d_canvas_versions` (
     `id` VARCHAR(191) NOT NULL,
     `canvasId` VARCHAR(191) NOT NULL,
     `label` VARCHAR(191) NULL,
-    `data` JSON NOT NULL,
+    `data` LONGTEXT NOT NULL,
     `revision` INTEGER NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
@@ -253,7 +255,7 @@ CREATE TABLE `p3d_audit_logs` (
     `action` VARCHAR(191) NOT NULL,
     `targetType` VARCHAR(191) NULL,
     `targetId` VARCHAR(191) NULL,
-    `meta` JSON NULL,
+    `meta` LONGTEXT NULL,
     `ip` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
