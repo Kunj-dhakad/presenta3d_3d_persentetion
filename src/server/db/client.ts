@@ -20,7 +20,13 @@ function createClient(): PrismaClient {
       password: e.MYSQL_PASSWORD!,
       database: e.MYSQL_DATABASE!,
       // The workspace opens ~7 requests at once; a small pool makes them queue behind each other.
-      connectionLimit: 10,
+      // A serverless instance (Amplify/Lambda) serves one request at a time, so it needs far fewer:
+      // with many instances, 10 each would use up the database's max_connections.
+      connectionLimit: process.env.NODE_ENV === "production" ? 4 : 10,
+      // A frozen or recycled serverless instance never closes its connections, and MySQL's default
+      // wait_timeout keeps them open for 8 hours until the server refuses new ones. Let the server
+      // drop connections idle for 3 minutes (the pool itself recycles idle ones after 60 s).
+      sessionVariables: { wait_timeout: 180 },
       // RDS connections that sit idle can be dropped silently by the network; a query sent on
       // one then hangs for minutes (jobs were reported as "interrupted" while waiting on it).
       // Recycle idle connections early, keep the rest alive, and let a stuck query fail fast.
