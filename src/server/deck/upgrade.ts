@@ -8,7 +8,7 @@ import { deckToProjectFiles } from "./codegen";
 const inFlight = new Map<string, Promise<boolean>>();
 
 /**
- * Presentations store a copy of the engine (main.js, index.html, style.css)
+ * Presentations store a copy of the engine (main.js, index.html)
  * next to their deck.json. When the engine improves, regenerate those files
  * from the unchanged deck.json and rebuild, so older presentations get the
  * new behaviour too. The slides themselves are never modified.

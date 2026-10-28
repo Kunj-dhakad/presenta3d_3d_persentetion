@@ -40,7 +40,8 @@ export function ChatPanel({
   job: LiveJob | null;
   ai: AiStatus;
   busy: boolean;
-  onSend: (prompt: string) => void;
+  /** May resolve to false when the prompt was not accepted; the text is then put back in the box. */
+  onSend: (prompt: string) => void | boolean | Promise<boolean>;
   onCancel: () => void;
   onReview: (m: ChatMessageRow) => void;
   onRevert: (m: ChatMessageRow) => void;
@@ -63,8 +64,10 @@ export function ChatPanel({
   const submit = () => {
     const v = value.trim();
     if (!v || busy) return;
-    onSend(v);
     setValue("");
+    void Promise.resolve(onSend(v)).then((ok) => {
+      if (ok === false) setValue((cur) => cur || v);
+    });
   };
 
   return (

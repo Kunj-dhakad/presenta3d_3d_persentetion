@@ -47,11 +47,39 @@ function scheduleFlush(h: Handle) {
   h.flushTimer = setTimeout(() => void flush(h), 800);
 }
 
+/** Persist a job's final state (with its final status event), then deliver that event to listeners. */
+async function settle(h: Handle, event: JobEventBody, data: Prisma.GenerationJobUpdateInput) {
+  const ev = { ...event, t: Date.now() } as JobEvent;
+  const events = [...h.events, ev];
+  const save = () =>
+    db.generationJob
+      .update({ where: { id: h.id }, data: { ...data, events: events.slice(-500) as unknown as Prisma.InputJsonValue, progress: h.progress } })
+      .then(
+        () => true,
+        () => false,
+      );
+  if (h.flushTimer) {
+    clearTimeout(h.flushTimer);
+    h.flushTimer = null;
+  }
+  if (!(await save())) {
+    await new Promise((r) => setTimeout(r, 500));
+    await save(); // one retry on a transient database error
+  }
+  h.events.push(ev);
+  for (const l of h.listeners) l(ev);
+}
+
 type JobInput = { id?: string; userId: string; projectId?: string | null; kind: string; provider: string; model?: string | null; input: Prisma.InputJsonValue };
 
-/** A job that has not reported progress for this long, and is not running in this process, is treated as dead. */
-const STALE_MS = 5 * 60_000;
+/**
+ * A running job refreshes updatedAt every HEARTBEAT_MS, even during long silent model calls. One that
+ * has been silent for STALE_MS (several missed heartbeats) and is not running in this process was
+ * stopped (server restart, host request timeout, frozen instance). Kept short so that a dead job does
+ * not block new prompts for the project for long.
+ */
 const HEARTBEAT_MS = 10_000;
+const STALE_MS = 90_000;
 
 function createJobRow(input: JobInput) {
   return db.generationJob.create({
@@ -107,15 +135,15 @@ function prepare<T>(jobId: string, work: (ctx: JobContext) => Promise<T>, opts: 
           emit({ type: "progress", progress: h.progress }); // persisted with the next (batched) flush
         },
       });
-      emit({ type: "status", status: "succeeded" });
+      // The final status is saved before it is announced: a client that sees "succeeded" may send the
+      // next prompt at once, and that request must not find this job still "running" in the database.
       // Clears any "interrupted" mark another request may have set while this job was slow.
-      const done = { status: "succeeded", progress: 1, error: null, output: (output ?? null) as Prisma.InputJsonValue, finishedAt: new Date() };
-      if (!(await flush(h, done))) await flush(h, done); // one retry on a transient database error
+      await settle(h, { type: "status", status: "succeeded" }, { status: "succeeded", progress: 1, error: null, output: (output ?? null) as Prisma.InputJsonValue, finishedAt: new Date() });
     } catch (err) {
       const cancelled = h.controller.signal.aborted;
       const message = cancelled ? "Cancelled" : err instanceof Error ? err.message : "Job failed";
-      emit({ type: "status", status: cancelled ? "cancelled" : "failed", message });
-      await flush(h, { status: cancelled ? "cancelled" : "failed", error: message.slice(0, 2000), finishedAt: new Date() });
+      const status = cancelled ? "cancelled" : "failed";
+      await settle(h, { type: "status", status, message }, { status, error: message.slice(0, 2000), finishedAt: new Date() });
     } finally {
       clearInterval(heartbeat);
       h.done = true;
@@ -222,13 +250,19 @@ export async function reconcileOrphanedJob<J extends { id: string; status: strin
   return job;
 }
 
+/** The project's unfinished generation job, if one is really still running. */
 export async function activeProjectJob(projectId: string) {
-  const running = await db.generationJob.findFirst({
+  const unfinished = await db.generationJob.findMany({
     where: { projectId, status: { in: ["queued", "running"] } },
     orderBy: { createdAt: "desc" },
+    take: 5,
     select: { id: true, status: true, updatedAt: true },
   });
-  if (!running) return null;
-  const r = await reconcileOrphanedJob(running);
-  return r.status === "failed" ? null : running;
+  for (const job of unfinished) {
+    // Finished in this process, but its final database write failed: not running.
+    if (handles.get(job.id)?.done) continue;
+    const r = await reconcileOrphanedJob(job);
+    if (r.status !== "failed") return job;
+  }
+  return null;
 }

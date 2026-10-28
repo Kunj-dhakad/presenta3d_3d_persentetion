@@ -25,7 +25,7 @@ async function run(userId: string, projectId: string, prompt: string) {
 describe("3D presentation generation", () => {
   it("produces a project that builds in the isolated worker with no errors", async () => {
     const files = deckToProjectFiles(sampleDeck("Build check"));
-    expect(files.map((f) => f.path)).toEqual(["index.html", "style.css", "deck.json", "main.js"]);
+    expect(files.map((f) => f.path)).toEqual(["index.html", "deck.json", "main.js"]);
     const r = await runWorker<{ ok: boolean; errors: BuildDiagnostic[] }>({ mode: "project", framework: "three", files, runtimeBase: "/preview-runtime/test" }, { timeoutMs: 60_000 });
     expect(r.errors).toEqual([]);
     expect(r.ok).toBe(true);

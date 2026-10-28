@@ -46,6 +46,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const streamAbort = useRef<AbortController | null>(null);
   const startedFromParam = useRef(false);
   const followingJob = useRef<string | null>(null);
+  const sendingRef = useRef(false);
+  const [sending, setSending] = useState(false);
   const jobRunning = Boolean(job && (job.status === "running" || job.status === "queued"));
 
   const loadMessages = useCallback(async (cid: string) => {
@@ -92,8 +94,13 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
     [loadMessages, loadProject, projectId],
   );
 
+  /** Returns false when the prompt was not accepted, so the chat box keeps the text. */
   const send = useCallback(
-    async (prompt: string) => {
+    async (prompt: string): Promise<boolean> => {
+      // Blocks a second submit (double Enter, click + Enter) while the first request is in flight.
+      if (sendingRef.current) return false;
+      sendingRef.current = true;
+      setSending(true);
       try {
         const r = await api<{ jobId: string; conversationId: string; userMessageId: string }>(`/api/projects/${projectId}/generate`, {
           method: "POST",
@@ -102,8 +109,16 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         setConversationId(r.conversationId);
         setMessages((m) => [...m, { id: r.userMessageId, role: "user", content: prompt, createdAt: new Date().toISOString(), meta: null }]);
         void follow(r.jobId);
+        return true;
       } catch (e) {
-        toast.error(errorMessage(e));
+        // A generation is still running for this project: show its progress in the chat instead of an error.
+        const running = e instanceof ApiError && e.code === "JOB_RUNNING" ? (e.details as { jobId?: string } | null)?.jobId : undefined;
+        if (running) void follow(running);
+        else toast.error(errorMessage(e));
+        return false;
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
       }
     },
     [projectId, conversationId, follow],
@@ -202,8 +217,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       messages={messages}
       job={job}
       ai={ai}
-      busy={jobRunning}
-      onSend={(p) => void send(p)}
+      busy={jobRunning || sending}
+      onSend={send}
       onCancel={() => job && void api(`/api/jobs/${job.jobId}`, { method: "DELETE" }).catch((e) => toast.error(errorMessage(e)))}
       onReview={() => {}}
       onRevert={(m) => void revert(m)}

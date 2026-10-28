@@ -136,11 +136,12 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-pointer-lock allow-downloads"
               allow="fullscreen; accelerometer; gyroscope"
               referrerPolicy="no-referrer"
-              className="size-full border-0 bg-white"
+              // Hidden until it has loaded, so a half-loaded document (no styles or scene yet) is never shown.
+              className={cn("size-full border-0 bg-white", loading && "invisible")}
               onLoad={() => setTimeout(() => setLoading(false), 300)}
             />
             {loading && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/40">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
               </div>
             )}

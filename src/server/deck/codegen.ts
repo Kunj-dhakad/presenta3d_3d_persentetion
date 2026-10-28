@@ -73,7 +73,11 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-/** Deterministic DeckSpec → runnable 3D presentation project. */
+/**
+ * Deterministic DeckSpec → runnable 3D presentation project.
+ * The styles are inlined: with a separate style.css the page could paint
+ * unstyled while that extra request (an S3 round trip) was still loading.
+ */
 export function deckToProjectFiles(deck: DeckSpec): { path: string; content: string }[] {
   const runtime = fs.readFileSync(RUNTIME_PATH, "utf8");
   return [
@@ -87,7 +91,8 @@ export function deckToProjectFiles(deck: DeckSpec): { path: string; content: str
   <title>${escapeHtml(deck.title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./style.css">
+  <style>
+${STYLE}  </style>
 </head>
 <body>
   <div id="stage">
@@ -109,7 +114,6 @@ export function deckToProjectFiles(deck: DeckSpec): { path: string; content: str
 </html>
 `,
     },
-    { path: "style.css", content: STYLE },
     { path: "deck.json", content: JSON.stringify(deck, null, 2) },
     { path: "main.js", content: runtime },
     // Custom per-slide scenes written by the model, as ES modules the engine imports.

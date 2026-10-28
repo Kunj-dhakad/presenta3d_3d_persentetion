@@ -65,7 +65,8 @@ export function designBrief(): string {
 }
 
 export const DECK_EDIT_RULES = `You are editing an existing deck. Return the COMPLETE updated deck.
-Apply exactly what the user asks; keep every other slide, word and setting unchanged. If the user refers to a slide by number, slides are numbered from 1.`;
+Apply exactly what the user asks; keep every other slide, word and setting unchanged. If the user refers to a slide by number, slides are numbered from 1.
+Exception: if the user asks for a presentation about a different topic (a new deck, not a change to this one), replace the whole deck: write a new story and a new design for the new topic, with a different palette, environment, font and scenes from the current deck (see the design brief). Do not keep the old colours or world.`;
 
 function currentDeck(files: Map<string, string>): DeckSpec | null {
   const raw = files.get("deck.json");
@@ -163,7 +164,8 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
           // Scene code is left out: it is large and the model does not need it to edit slides.
           existing ? `Current deck (JSON):\n${JSON.stringify(deckForPrompt(existing))}` : "",
           `User request:\n${input.prompt}`,
-          existing ? "" : brief,
+          // For edits the brief is used only if the request turns out to be a new topic (see DECK_EDIT_RULES).
+          existing ? `${brief}\n(Use this brief only if you are replacing the deck with a new topic.)` : brief,
           extra,
         ]
           .filter(Boolean)

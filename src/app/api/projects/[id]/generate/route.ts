@@ -24,7 +24,9 @@ export const POST = api<{ id: string }>(
   async ({ req, user, params }) => {
     const provider = textProviderOrThrow();
     const [project, body] = await Promise.all([getOwnedProject(user.id, params.id), readJson(req, GenerateBody, 64 * 1024)]);
-    if (await activeProjectJob(project.id)) throw new HttpError(409, "A generation is already running for this project", "JOB_RUNNING");
+    // The client follows the running job in the chat (details.jobId) instead of starting a second one.
+    const running = await activeProjectJob(project.id);
+    if (running) throw new HttpError(409, "A generation is already running for this project", "JOB_RUNNING", { jobId: running.id });
     return startDeckGeneration({ userId: user.id, projectId: project.id, provider, request: body });
   },
   { rateLimit: { bucket: "generate", perMinute: () => env().GENERATION_RATE_LIMIT_PER_MIN } },
