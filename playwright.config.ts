@@ -13,6 +13,9 @@ if (!database) throw new Error("Set E2E_MYSQL_DATABASE to a separate disposable 
 const env = {
   // The app runs inside the PHP app's iframe; tests/e2e/support.ts plays that page and makes its tokens.
   PHP_TOKEN_KEY: "e2e-php-token-key",
+  // Lets the simulated PHP page frame the app (next.config.ts frame-ancestors). Read at build time:
+  // build with FRAME_ANCESTORS=http://php.localhost before running the e2e tests.
+  FRAME_ANCESTORS: "http://php.localhost",
   AI_PROVIDER: "mock",
   ALLOW_MOCK_AI: "1",
   APP_ORIGIN: `http://localhost:${PORT}`,
@@ -33,6 +36,10 @@ const env = {
   STORAGE_DRIVER: process.env.E2E_STORAGE_DRIVER ?? "local",
 };
 
+// The simulated PHP page (tests/e2e/support.ts) has no real address, so Chromium would treat it as a
+// public site and block it from framing localhost. Real deployments are public→public or local→local.
+const chromiumArgs = ["--disable-features=LocalNetworkAccessChecks"];
+
 export default defineConfig({
   testDir: "tests/e2e",
   timeout: 120_000,
@@ -44,10 +51,10 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure", screenshot: "only-on-failure", viewport: { width: 1440, height: 900 } },
   // E2E_BROWSERS=chromium,firefox runs a subset.
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, launchOptions: { args: chromiumArgs } } },
     { name: "firefox", use: { ...devices["Desktop Firefox"], viewport: { width: 1440, height: 900 } } },
     { name: "webkit", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 } } },
-    { name: "msedge", use: { ...devices["Desktop Edge"], channel: "msedge", viewport: { width: 1440, height: 900 } } },
+    { name: "msedge", use: { ...devices["Desktop Edge"], channel: "msedge", viewport: { width: 1440, height: 900 }, launchOptions: { args: chromiumArgs } } },
   ].filter((p) => !process.env.E2E_BROWSERS || process.env.E2E_BROWSERS.split(",").includes(p.name)),
   webServer: {
     command: `npm run db:deploy && npx next start -p ${PORT}`,

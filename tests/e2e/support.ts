@@ -7,7 +7,8 @@ import { expect, type FrameLocator, type Page } from "@playwright/test";
  * access token) and records what the app tells it (LOADER_OFF, P3D_OPENED…).
  */
 
-export const PHP_ORIGIN = "http://php.test";
+// A *.localhost origin: browsers block public-looking sites from framing localhost (Local Network Access).
+export const PHP_ORIGIN = "http://php.localhost";
 /** Must match PHP_TOKEN_KEY in playwright.config.ts. */
 export const PHP_TOKEN_KEY = "e2e-php-token-key";
 
