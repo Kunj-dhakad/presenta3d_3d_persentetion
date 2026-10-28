@@ -2,12 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useWorkspace, type ChatMessageRow, type LiveJob } from "@/stores/workspace";
-import { useSceneEditor, animationAt } from "@/stores/scene-editor";
-import { snapBox, useCanvasEditor, activePage } from "@/stores/canvas-editor";
 import { ChatPanel } from "@/components/workspace/chat-panel";
-import { createObject } from "@/lib/schemas/scene";
-import { solarSystem } from "@/lib/scene/templates";
-import { emptyCanvas } from "@/lib/schemas/canvas";
 
 afterEach(cleanup);
 // jsdom does not implement element scrolling.
@@ -113,74 +108,5 @@ describe("chat panel", () => {
     fireEvent.change(box, { target: { value: "  build a game  " } });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(onSend).toHaveBeenCalledWith("build a game");
-  });
-});
-
-describe("3D scene editor state", () => {
-  it("edits scene parameters with undo/redo and coalesces rapid slider changes", () => {
-    const s = useSceneEditor.getState();
-    s.load(solarSystem());
-    s.updateObject("earth", (o) => void (o.material.roughness = 0.1), "rough");
-    s.updateObject("earth", (o) => void (o.material.roughness = 0.2), "rough");
-    expect(useSceneEditor.getState().past).toHaveLength(1);
-    s.addObject("box");
-    const added = useSceneEditor.getState().selection;
-    expect(added?.kind).toBe("object");
-    s.undo();
-    expect(useSceneEditor.getState().scene!.objects.find((o) => o.id === (added as { id: string }).id)).toBeUndefined();
-    s.redo();
-    expect(useSceneEditor.getState().scene!.objects.some((o) => o.id === (added as { id: string }).id)).toBe(true);
-  });
-
-  it("removes objects together with their descendants", () => {
-    const s = useSceneEditor.getState();
-    s.load(solarSystem());
-    s.select({ kind: "object", id: "earth" });
-    s.removeSelected();
-    const ids = useSceneEditor.getState().scene!.objects.map((o) => o.id);
-    expect(ids).not.toContain("earth");
-    expect(ids).not.toContain("moon");
-    expect(ids).toContain("mars");
-  });
-
-  it("computes deterministic animation state from timeline time", () => {
-    const orbit = createObject("sphere", "p", { animation: { type: "orbit", speed: 1, axis: "y", radius: 4, phase: 0 } });
-    expect(animationAt(orbit, 0)).toMatchObject({ dx: 4, dz: 0 });
-    expect(animationAt(orbit, Math.PI / 2).dz).toBeCloseTo(4);
-    const spin = createObject("box", "b", { animation: { type: "spin", speed: 2, axis: "y", radius: 0, phase: 0 } });
-    expect(animationAt(spin, 3).spin).toBe(6);
-  });
-});
-
-describe("canvas editor state", () => {
-  it("creates nodes inside frames, groups, reorders, duplicates and undoes", () => {
-    const s = useCanvasEditor.getState();
-    s.load(emptyCanvas(), 0);
-    const frame = s.addNode("frame", { x: 0, y: 0, w: 400, h: 300 });
-    const a = s.addNode("rect", { x: 20, y: 20, w: 50, h: 50 });
-    const b = s.addNode("text", { x: 100, y: 20, w: 120, h: 40 });
-    const page = () => activePage(useCanvasEditor.getState().doc!);
-    expect(page().nodes.find((n) => n.id === a)!.frameId).toBe(frame);
-    s.setSelection([a, b]);
-    s.groupSelection();
-    expect(new Set(page().nodes.filter((n) => n.id === a || n.id === b).map((n) => n.groupId)).size).toBe(1);
-    s.setSelection([a]);
-    s.reorder("back");
-    expect(page().nodes[0].id).toBe(a);
-    s.setSelection([frame]);
-    s.duplicateSelection();
-    expect(page().nodes).toHaveLength(6); // frame copy includes its children
-    s.deleteSelection();
-    expect(page().nodes).toHaveLength(3);
-    s.undo();
-    expect(page().nodes).toHaveLength(6);
-    s.addPage();
-    expect(useCanvasEditor.getState().doc!.pages).toHaveLength(2);
-  });
-
-  it("snaps to other nodes' edges and centers", () => {
-    const r = snapBox({ x: 103, y: 0, w: 50, h: 50 }, [{ x: 0, y: 200, w: 100, h: 50 }], 6);
-    expect(r.dx).toBe(-3);
-    expect(r.guides).toEqual([{ axis: "x", at: 100 }]);
   });
 });

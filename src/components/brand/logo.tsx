@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** 3D Presentation mark: three offset layers forming a rising stack. */
+/** Present 3D mark: three offset layers forming a rising stack. */
 export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={cn("size-6", className)} aria-hidden="true">
@@ -21,7 +21,7 @@ export function Logo({ className, withWordmark = true }: { className?: string; w
   return (
     <span className={cn("inline-flex items-center gap-2 text-foreground", className)}>
       <LogoMark />
-      {withWordmark && <span className="text-[15px] font-semibold tracking-[-0.02em]">3D Presentation</span>}
+      {withWordmark && <span className="text-[15px] font-semibold tracking-[-0.02em]">Present 3D</span>}
     </span>
   );
 }

@@ -8,12 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, errorMessage, timeAgo } from "@/lib/api-client";
+import { publicLink } from "@/components/embed/parent-bridge";
 
 type Deployment = { id: string; status: string; url: string | null; provider: string; isPublic: boolean; error: string | null; createdAt: string; updatedAt: string };
 type PublishInfo = { provider: { id: string; isPublic: boolean; storage?: string; ok: boolean; reason: string | null }; deployments: Deployment[] };
 
-/** Links for built-in hosting are stored as paths; show them on the domain the app is served from. */
-const absolute = (url: string | null) => (url && url.startsWith("/") ? `${window.location.origin}${url}` : url);
+/** Links for built-in hosting are stored as paths; show them on the PHP app's public page (see publicLink). */
+const absolute = publicLink;
 type Link = { id: string; tokenPrefix: string; createdAt: string; expiresAt: string | null; revokedAt: string | null; active: boolean };
 
 function copy(text: string) {

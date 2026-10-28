@@ -10,7 +10,6 @@ export default defineConfig({
   schema: "prisma/mysql/schema.prisma",
   migrations: {
     path: "prisma/mysql/migrations",
-    seed: "tsx --conditions=react-server prisma/seed.ts",
   },
   datasource: { url },
 });

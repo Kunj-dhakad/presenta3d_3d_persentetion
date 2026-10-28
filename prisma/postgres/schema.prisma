@@ -1,4 +1,4 @@
-// 3D Presentation database schema.
+// Present 3D database schema.
 // GENERATED from prisma/schema.prisma by scripts/derive-postgres-schema.mjs. Do not edit.
 
 generator client {

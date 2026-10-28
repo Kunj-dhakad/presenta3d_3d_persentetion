@@ -37,14 +37,14 @@ const schema = z.object({
   OPENAI_TIMEOUT_MS: intWithDefault(120_000, 5_000, 600_000),
   OPENAI_BASE_URL: optionalString,
   AI_PROVIDER: z.enum(["openai", "mock"]).default("openai"),
-  /** local = shared single-user workspace without sign-in; accounts = email/password sign-in. */
-  AUTH_MODE: z.enum(["local", "accounts"]).optional(),
+  /** The PHP app's (CI_Core) MySQL database: this app keeps its tables there, prefixed p3d_. */
   MYSQL_HOST: optionalString,
   MYSQL_PORT: intWithDefault(3306, 1, 65535),
   MYSQL_DATABASE: optionalString,
   MYSQL_USER: optionalString,
   MYSQL_PASSWORD: optionalString,
-  SESSION_SECRET: optionalString,
+  /** Key PHP signs access tokens with (encrypt_user_token); empty = PHP's default. */
+  PHP_TOKEN_KEY: optionalString,
   APP_ORIGIN: optionalString,
   PREVIEW_ORIGIN: optionalString,
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
@@ -53,6 +53,8 @@ const schema = z.object({
   S3_ENDPOINT: optionalString,
   S3_ACCESS_KEY_ID: optionalString,
   S3_SECRET_ACCESS_KEY: optionalString,
+  /** Folder inside the PHP app's bucket (pitchoraai) that holds this app's files. */
+  S3_ROOT_PREFIX: z.string().default("assets/uploads/3d_presentations/"),
   KD_AWS_REGION: optionalString,
   KD_AWS_S3_BUCKET_NAME: optionalString,
   KD_AWS_ACCESS_KEY_ID: optionalString,
@@ -94,28 +96,11 @@ export function resetEnvCache() {
   cached = null;
 }
 
-const DEV_SESSION_SECRET = "deck3d-dev-only-session-secret-change-me-0000";
-
-export function sessionSecret(): string {
-  const e = env();
-  if (e.SESSION_SECRET && e.SESSION_SECRET.length >= 32) return e.SESSION_SECRET;
-  if (e.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET must be set (>= 32 chars) in production.");
-  }
-  return DEV_SESSION_SECRET;
-}
-
-/** Single-user mode is the default everywhere; opt into accounts explicitly. */
-export function authMode(): "local" | "accounts" {
-  return env().AUTH_MODE ?? "local";
-}
-
 /** Non-secret summary of configuration that is safe to show in the UI. */
 export function publicConfigStatus() {
   const e = env();
   return {
     aiProvider: e.AI_PROVIDER,
-    authMode: authMode(),
     openai: {
       configured: Boolean(e.OPENAI_API_KEY && e.OPENAI_MODEL),
       hasKey: Boolean(e.OPENAI_API_KEY),

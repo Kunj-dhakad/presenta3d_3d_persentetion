@@ -1,13 +1,11 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { unstable_rethrow } from "next/navigation";
-import { SESSION_COOKIE, userFromToken, type SessionUser } from "@/server/auth/session";
-import { localModeUser } from "@/server/auth/local-user";
+import { TOKEN_HEADER, userForToken, type SessionUser } from "@/server/auth/php-token";
 import { rateLimit } from "./rate-limit";
-import { authMode, env } from "@/server/env";
+import { env } from "@/server/env";
 import { PathError } from "@/lib/vfs/paths";
 
 import { HttpError, badRequest } from "./errors";
@@ -71,10 +69,9 @@ function errorResponse(err: unknown, requestId: string): Response {
   return Response.json({ error: { message: "Internal server error", code: "INTERNAL" }, requestId }, { status: 500 });
 }
 
-async function resolveUser(): Promise<SessionUser | null> {
-  const jar = await cookies();
-  if (authMode() === "local") return localModeUser();
-  return userFromToken(jar.get(SESSION_COOKIE)?.value);
+/** The PHP user whose access token came with the request (see src/lib/api-client.ts). */
+async function resolveUser(req: Request): Promise<SessionUser | null> {
+  return (await userForToken(req.headers.get(TOKEN_HEADER))) ?? null;
 }
 
 export function api<P = Record<string, never>>(
@@ -92,8 +89,8 @@ export function api<P>(handler: (ctx: Ctx<P>) => Promise<Response | unknown>, op
     const requestId = randomUUID();
     try {
       if (!checkOrigin(req)) throw new HttpError(403, "Cross-origin request rejected", "CSRF");
-      const user = await resolveUser();
-      if (opts.auth !== false && !user) throw new HttpError(401, "Sign in required", "UNAUTHENTICATED");
+      const user = await resolveUser(req);
+      if (opts.auth !== false && !user) throw new HttpError(401, "Your session has expired. Reopen 3D presentations from your dashboard.", "UNAUTHENTICATED");
       const ip = clientIp(req);
       if (opts.rateLimit) {
         const key = `${opts.rateLimit.bucket}:${user?.id ?? ip}`;

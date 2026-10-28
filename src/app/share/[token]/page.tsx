@@ -3,13 +3,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { resolveShareToken } from "@/server/services/share";
-import { getFiles } from "@/server/services/projects";
 import { previewUrlFor } from "@/server/build/urls";
 import { ShareViewer } from "@/components/share/share-viewer";
 import { ensureDeckEngineCurrent } from "@/server/deck/upgrade";
 import { db } from "@/server/db/client";
 
-export const metadata: Metadata = { title: "Shared project", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Shared presentation", robots: { index: false, follow: false } };
 
 async function Inner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -18,9 +17,8 @@ async function Inner({ params }: { params: Promise<{ token: string }> }) {
   const link = await resolveShareToken(token);
   if (!link) notFound();
   await ensureDeckEngineCurrent(link.projectId);
-  const files = await getFiles(link.projectId);
   const p = (await db.project.findUnique({ where: { id: link.projectId } }))!;
-  return <ShareViewer name={p.name} description={p.description} files={files} previewUrl={p.lastWorkingBuildId ? previewUrlFor(p.lastWorkingBuildId) : null} />;
+  return <ShareViewer name={p.name} previewUrl={p.lastWorkingBuildId ? previewUrlFor(p.lastWorkingBuildId) : null} />;
 }
 
 /** Public, read-only view of a project behind an unguessable, revocable share token. */

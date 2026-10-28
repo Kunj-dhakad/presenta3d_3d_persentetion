@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "./api-client";
+import { paths } from "@/components/embed/parent-bridge";
 
 /**
  * Create a presentation and queue its generation in one request. Returns the
@@ -8,5 +9,5 @@ import { api } from "./api-client";
  */
 export async function createPresentation(prompt: string): Promise<string> {
   const r = await api<{ projectId: string; jobId: string }>("/api/presentations", { method: "POST", json: { prompt } });
-  return `/chat/${r.projectId}?job=${encodeURIComponent(r.jobId)}`;
+  return `${paths.workspace(r.projectId)}?job=${encodeURIComponent(r.jobId)}`;
 }

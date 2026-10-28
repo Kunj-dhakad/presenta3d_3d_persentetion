@@ -1,4 +1,4 @@
-// 3D Presentation 3D presentation engine. Reads deck.json and renders each slide as an
+// Present 3D 3D presentation engine. Reads deck.json and renders each slide as an
 // animated three.js scene with an HTML text overlay.
 // Keys: → / Space next · ← previous · Home/End · F fullscreen · N speaker notes.
 import * as THREE from "three";

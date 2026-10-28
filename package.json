@@ -17,7 +17,6 @@
     "db:migrate": "node scripts/require-rds-config.mjs && prisma migrate dev --schema prisma/mysql/schema.prisma",
     "db:deploy": "node scripts/require-rds-config.mjs && prisma migrate deploy --schema prisma/mysql/schema.prisma",
     "db:check": "node --conditions=react-server --import tsx --import ./scripts/load-next-env.mjs scripts/check-rds-connection.ts",
-    "db:seed": "tsx --conditions=react-server --import ./scripts/load-next-env.mjs prisma/seed.ts",
     "postinstall": "prisma generate --schema prisma/mysql/schema.prisma && prisma generate --schema prisma/test/schema.prisma",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "fix:tailwind": "node scripts/canonicalize-tailwind.mjs --write",

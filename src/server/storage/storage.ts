@@ -131,10 +131,14 @@ export function signV4(input: {
 
 export class S3StorageAdapter implements StorageAdapter {
   readonly driver = "s3";
-  private readonly rootPrefix = "3dpresentation/";
+  /** Folder inside the bucket; in production the PHP app's bucket, under S3_ROOT_PREFIX. */
+  private readonly rootPrefix: string;
   constructor(
-    private cfg: { bucket: string; region: string; endpoint?: string; accessKeyId: string; secretAccessKey: string },
-  ) {}
+    private cfg: { bucket: string; region: string; endpoint?: string; accessKeyId: string; secretAccessKey: string; rootPrefix: string },
+  ) {
+    const prefix = cfg.rootPrefix.replace(/^\/+/, "");
+    this.rootPrefix = prefix && !prefix.endsWith("/") ? prefix + "/" : prefix;
+  }
 
   private bucketUrl() {
     const base = this.cfg.endpoint ? `${this.cfg.endpoint.replace(/\/$/, "")}/${this.cfg.bucket}` : `https://${this.cfg.bucket}.s3.${this.cfg.region}.amazonaws.com`;
@@ -236,7 +240,7 @@ export function storage(): StorageAdapter {
     if (!bucket || !region || !accessKeyId || !secretAccessKey) {
       throw new Error("STORAGE_DRIVER=s3 requires KD_AWS_S3_BUCKET_NAME, KD_AWS_REGION, KD_AWS_ACCESS_KEY_ID and KD_AWS_SECRET_ACCESS_KEY (or their S3_* equivalents)");
     }
-    adapter = new S3StorageAdapter({ bucket, region, endpoint: e.S3_ENDPOINT, accessKeyId, secretAccessKey });
+    adapter = new S3StorageAdapter({ bucket, region, endpoint: e.S3_ENDPOINT, accessKeyId, secretAccessKey, rootPrefix: e.S3_ROOT_PREFIX });
   } else {
     if (isServerless()) {
       // Each serverless instance has its own /tmp: previews written by one instance are invisible to the others.

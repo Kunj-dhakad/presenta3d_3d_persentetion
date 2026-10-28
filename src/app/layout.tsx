@@ -7,14 +7,14 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const SITE_TITLE = "3D Presentation — create cinematic presentations with AI";
+const SITE_TITLE = "Present 3D — create cinematic presentations with AI";
 const SITE_DESCRIPTION = "Describe your topic and get a cinematic 3D presentation: AI writes the slides and designs an animated 3D scene for every slide. Present it full screen or share it with a link.";
 
 export const metadata: Metadata = {
-  title: { default: SITE_TITLE, template: "%s · 3D Presentation" },
+  title: { default: SITE_TITLE, template: "%s · Present 3D" },
   description: SITE_DESCRIPTION,
   // Link previews (email, WhatsApp, Slack, LinkedIn …)
-  openGraph: { title: SITE_TITLE, description: SITE_DESCRIPTION, siteName: "3D Presentation", type: "website" },
+  openGraph: { title: SITE_TITLE, description: SITE_DESCRIPTION, siteName: "Present 3D", type: "website" },
   twitter: { card: "summary", title: SITE_TITLE, description: SITE_DESCRIPTION },
 };
 

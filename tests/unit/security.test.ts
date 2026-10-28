@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { authMode, env, publicConfigStatus, resetEnvCache } from "@/server/env";
-import { hashPassword, verifyPassword } from "@/server/auth/password";
+import { createCipheriv, randomBytes } from "node:crypto";
+import { env, publicConfigStatus, resetEnvCache } from "@/server/env";
+import { decodePhpToken, ownerIdFor } from "@/server/auth/php-token";
 import { checkOrigin, readJson } from "@/server/http/api";
 import { rateLimit, resetRateLimits } from "@/server/http/rate-limit";
 import { scrubbedEnv } from "@/server/build/worker-process";
@@ -16,7 +17,7 @@ afterEach(() => {
   process.env.OPENAI_API_KEY = "";
   delete process.env.SESSION_SECRET_BACKUP;
   (process.env as Record<string, string>).NODE_ENV = "test";
-  delete process.env.AUTH_MODE;
+  delete process.env.PHP_TOKEN_KEY;
   resetEnvCache();
 });
 
@@ -58,7 +59,7 @@ describe("secret handling", () => {
     walk(root);
     expect(offenders).toEqual([]);
     // Every server module that touches secrets is marked server-only.
-    for (const f of ["server/env.ts", "server/ai/openai-provider.ts", "server/auth/session.ts", "server/db/client.ts"]) {
+    for (const f of ["server/env.ts", "server/ai/openai-provider.ts", "server/auth/php-token.ts", "server/db/client.ts"]) {
       expect(fs.readFileSync(path.join(root, f), "utf8")).toMatch(/^import "server-only";/m);
     }
   });
@@ -67,38 +68,46 @@ describe("secret handling", () => {
     const example = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
     expect(example).toMatch(/^OPENAI_API_KEY=$/m);
     expect(example).not.toMatch(/sk-[A-Za-z0-9]{10,}/);
-    // No variable is exposed to the browser bundle.
-    expect(example).not.toMatch(/^NEXT_PUBLIC_/m);
+    // Only the parent-page allow-list (no secret) is exposed to the browser bundle.
+    expect(example.match(/^NEXT_PUBLIC_\w+/gm) ?? []).toEqual(["NEXT_PUBLIC_PARENT_ORIGINS"]);
   });
 
-  it("allows local single-user mode in production and requires explicit opt-in for accounts", () => {
+  it("refuses the mock AI provider in production", () => {
     (process.env as Record<string, string>).NODE_ENV = "production";
     process.env.AI_PROVIDER = "mock";
     resetEnvCache();
     expect(() => env()).toThrow(/test-only/);
     process.env.AI_PROVIDER = "openai";
-    process.env.AUTH_MODE = "local";
     resetEnvCache();
     expect(() => env()).not.toThrow();
-    expect(authMode()).toBe("local");
-    delete process.env.AUTH_MODE;
-    resetEnvCache();
-    expect(authMode()).toBe("local");
-    process.env.AUTH_MODE = "accounts";
-    resetEnvCache();
-    expect(authMode()).toBe("accounts");
     process.env.AI_PROVIDER = "mock";
   });
 });
 
 describe("authentication and request protection", () => {
-  it("hashes passwords with scrypt and verifies them", async () => {
-    const h = await hashPassword("correct horse battery");
-    expect(h).toMatch(/^scrypt\$/);
-    expect(h).not.toContain("correct horse");
-    expect(await verifyPassword("correct horse battery", h)).toBe(true);
-    expect(await verifyPassword("wrong", h)).toBe(false);
-    expect(await verifyPassword("x", "!local-mode-no-password")).toBe(false);
+  /** What PHP's encrypt_user_token() produces (application/helpers/tokengenerate_helper.php). */
+  function phpToken(data: string, passphrase = "your-256-bit-secret") {
+    const key = Buffer.alloc(32);
+    Buffer.from(passphrase).copy(key);
+    const iv = randomBytes(16);
+    const cipher = createCipheriv("aes-256-cbc", key, iv);
+    const encrypted = Buffer.concat([cipher.update(data), cipher.final()]).toString("base64");
+    return Buffer.concat([iv, Buffer.from(encrypted)]).toString("base64");
+  }
+
+  it("reads the PHP app's access tokens and nothing else", () => {
+    const identity = decodePhpToken(phpToken("user_id=2:business_id=7"));
+    expect(identity).toEqual({ userId: "2", businessId: "7" });
+    expect(ownerIdFor(identity!)).toBe("7_2");
+    // A real token from the PHP app's database.
+    expect(decodePhpToken("kxlSGdm7D6ZTYpJ0yvvh9XQ1Zi9wSGU3YzlBYTN5RnNEeE9PQWQ3QlA4WU0yeExLVDBWNmlRaWhIRlE9")).toEqual({ userId: "2", businessId: "2" });
+    expect(decodePhpToken("")).toBeNull();
+    expect(decodePhpToken("not a token")).toBeNull();
+    expect(decodePhpToken(phpToken("user_id=x:business_id=7"))).toBeNull();
+    expect(decodePhpToken(phpToken("user_id=2:business_id=7", "another-key"))).toBeNull();
+    process.env.PHP_TOKEN_KEY = "another-key";
+    resetEnvCache();
+    expect(decodePhpToken(phpToken("user_id=2:business_id=7", "another-key"))).toEqual({ userId: "2", businessId: "7" });
   });
 
   it("rejects cross-origin and opaque-origin (sandboxed preview) mutations", () => {

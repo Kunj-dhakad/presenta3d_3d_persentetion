@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink, Maximize } from "lucide-react";
 import { useDeckRemote } from "./use-deck-remote";
+import { paths } from "@/components/embed/parent-bridge";
 
 /**
  * Full-page presentation: the deck runs in a sandboxed iframe that fills the
@@ -32,7 +33,7 @@ export function PresentView({ projectId, name, url }: { projectId: string; name:
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-background text-center">
         <p className="text-sm">“{name}” has no preview yet.</p>
-        <Link href={`/chat/${projectId}`} className="text-sm text-brand hover:underline">Back to the editor</Link>
+        <Link href={paths.workspace(projectId)} className="text-sm text-brand hover:underline">Back to the editor</Link>
       </div>
     );
   }
@@ -50,7 +51,7 @@ export function PresentView({ projectId, name, url }: { projectId: string; name:
         onLoad={() => frame.current?.focus()}
       />
       <div className={`pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 bg-linear-to-b from-black/70 to-transparent p-4 transition-opacity duration-300 ${controls ? "opacity-100" : "opacity-0"}`}>
-        <Link href={`/chat/${projectId}`} className="pointer-events-auto inline-flex h-8 items-center gap-1.5 rounded-full bg-white/10 px-3 text-sm text-white backdrop-blur hover:bg-white/20">
+        <Link href={paths.workspace(projectId)} className="pointer-events-auto inline-flex h-8 items-center gap-1.5 rounded-full bg-white/10 px-3 text-sm text-white backdrop-blur hover:bg-white/20">
           <ArrowLeft className="size-4" /> Exit
         </Link>
         <span className="truncate text-sm text-white/80">{name}</span>

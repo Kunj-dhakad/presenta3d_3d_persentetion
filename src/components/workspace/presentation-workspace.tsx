@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, Eye, MessageSquare, Pencil, Play, Rocket } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, MessageSquare, Pencil, Play, Rocket } from "lucide-react";
 import { useWorkspace, type ChatMessageRow, type ProjectMeta } from "@/stores/workspace";
 import { api, ApiError, errorMessage, streamJob } from "@/lib/api-client";
 import type { BuildSummary } from "@/lib/build-types";
@@ -16,6 +16,7 @@ import { PreviewPane } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
+import { inIframe, notifyParent, paths } from "@/components/embed/parent-bridge";
 
 type ProjectResponse = { project: ProjectMeta; lastBuild: (BuildSummary & { createdAt: string }) | null };
 type Conversation = { id: string; title: string };
@@ -49,6 +50,11 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const sendingRef = useRef(false);
   const [sending, setSending] = useState(false);
   const jobRunning = Boolean(job && (job.status === "running" || job.status === "queued"));
+
+  // The PHP page shows this presentation's own address (edit/<id>) once it is open.
+  useEffect(() => {
+    notifyParent("P3D_OPENED", { projectId });
+  }, [projectId]);
 
   const loadMessages = useCallback(async (cid: string) => {
     const r = await api<{ messages: ChatMessageRow[] }>(`/api/conversations/${cid}/messages`);
@@ -130,7 +136,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
     let cancelled = false;
     // New presentation (?job=): show progress at once, while the rest loads in parallel.
     const newJob = params.get("job");
-    if (newJob) router.replace(`/chat/${projectId}`);
+    if (newJob) router.replace(paths.workspace(projectId));
     (async () => {
       if (newJob) void follow(newJob);
       try {
@@ -173,7 +179,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
     const prompt = params.get("prompt");
     if (!loaded || !prompt || startedFromParam.current || jobRunning) return;
     startedFromParam.current = true;
-    router.replace(`/chat/${projectId}`);
+    router.replace(paths.workspace(projectId));
     void send(prompt);
   }, [loaded, params, jobRunning, projectId, router, send]);
 
@@ -206,7 +212,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <AlertCircle className="size-6 text-destructive" />
         <p className="text-sm">{loadError}</p>
-        <Button variant="secondary" onClick={() => router.push("/projects")}>Back to presentations</Button>
+        <Button variant="secondary" onClick={() => notifyParent("P3D_BACK")}>Back to presentations</Button>
       </div>
     );
   }
@@ -232,6 +238,11 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+        {inIframe() && (
+          <button onClick={() => notifyParent("P3D_BACK")} className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Back to presentations" title="Back to presentations">
+            <ArrowLeft className="size-4" />
+          </button>
+        )}
         {renaming ? (
           <Input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => void rename()} onKeyDown={(e) => { if (e.key === "Enter") void rename(); if (e.key === "Escape") setRenaming(false); }} className="h-8 max-w-72 text-sm" aria-label="Presentation name" />
         ) : (
@@ -242,7 +253,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         )}
         <div className="ml-auto flex items-center gap-2">
           <Button size="sm" variant="secondary" asChild disabled={!hasPreview}>
-            <Link href={hasPreview ? `/present/${projectId}` : "#"} aria-disabled={!hasPreview} className={cn(!hasPreview && "pointer-events-none opacity-50")}>
+            <Link href={hasPreview ? paths.present(projectId) : "#"} aria-disabled={!hasPreview} className={cn(!hasPreview && "pointer-events-none opacity-50")}>
               <Play /> Present
             </Link>
           </Button>

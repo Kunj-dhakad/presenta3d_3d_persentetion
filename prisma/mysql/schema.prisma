@@ -1,4 +1,5 @@
-// Canonical application schema for AWS RDS MySQL.
+// 3D presentation tables, kept in the PHP app's (CI_Core) MySQL database with a p3d_ prefix.
+// Users are the PHP app's users: User.id is "<business_id>_<user_id>" (see src/server/auth/php-token.ts).
 
 generator client {
   provider = "prisma-client"
@@ -16,7 +17,6 @@ model User {
   passwordHash  String
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
-  sessions      Session[]
   projects      Project[]
   conversations Conversation[]
   jobs          GenerationJob[]
@@ -25,20 +25,10 @@ model User {
   shareLinks    ShareLink[]
   usage         UsageRecord[]
   auditLogs     AuditLog[]
+
+  @@map("p3d_users")
 }
 
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  userAgent String?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
-}
 
 model Project {
   id                   String           @id @default(cuid())
@@ -74,6 +64,8 @@ model Project {
   @@index([ownerId, updatedAt])
   @@index([ownerId, status])
   @@index([ownerId, category])
+
+  @@map("p3d_projects")
 }
 
 model ProjectFile {
@@ -88,6 +80,8 @@ model ProjectFile {
 
   @@unique([projectId, path])
   @@index([projectId])
+
+  @@map("p3d_project_files")
 }
 
 model ProjectVersion {
@@ -108,6 +102,8 @@ model ProjectVersion {
 
   @@index([projectId, createdAt])
   @@index([projectId, digest])
+
+  @@map("p3d_project_versions")
 }
 
 model Build {
@@ -124,6 +120,8 @@ model Build {
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
+
+  @@map("p3d_builds")
 }
 
 model Conversation {
@@ -139,6 +137,8 @@ model Conversation {
 
   @@index([userId, updatedAt])
   @@index([projectId])
+
+  @@map("p3d_conversations")
 }
 
 model ChatMessage {
@@ -153,6 +153,8 @@ model ChatMessage {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+
+  @@map("p3d_chat_messages")
 }
 
 model GenerationJob {
@@ -182,6 +184,8 @@ model GenerationJob {
   @@index([userId, createdAt])
   @@index([projectId, createdAt])
   @@index([status])
+
+  @@map("p3d_generation_jobs")
 }
 
 model Asset {
@@ -204,6 +208,8 @@ model Asset {
 
   @@index([ownerId, createdAt])
   @@index([ownerId, type])
+
+  @@map("p3d_assets")
 }
 
 model CanvasDocument {
@@ -218,6 +224,8 @@ model CanvasDocument {
   versions  CanvasVersion[]
 
   @@index([ownerId, updatedAt])
+
+  @@map("p3d_canvas_documents")
 }
 
 model CanvasVersion {
@@ -230,6 +238,8 @@ model CanvasVersion {
   canvas    CanvasDocument @relation(fields: [canvasId], references: [id], onDelete: Cascade)
 
   @@index([canvasId, createdAt])
+
+  @@map("p3d_canvas_versions")
 }
 
 model ShareLink {
@@ -245,6 +255,8 @@ model ShareLink {
   createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+
+  @@map("p3d_share_links")
 }
 
 model Deployment {
@@ -265,6 +277,8 @@ model Deployment {
 
   @@index([projectId, createdAt])
   @@index([slug])
+
+  @@map("p3d_deployments")
 }
 
 model UsageRecord {
@@ -287,6 +301,8 @@ model UsageRecord {
 
   @@index([userId, createdAt])
   @@index([jobId])
+
+  @@map("p3d_usage_records")
 }
 
 model AuditLog {
@@ -302,4 +318,6 @@ model AuditLog {
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
+
+  @@map("p3d_audit_logs")
 }

@@ -13,6 +13,18 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The PHP app's access token (from INIT_DATA, see src/components/embed/embed-gate.tsx).
+ * There is no login here: every API request carries it.
+ */
+let accessToken = "";
+export function setAccessToken(token: string) {
+  accessToken = token;
+}
+function authHeaders(): Record<string, string> {
+  return accessToken ? { "x-access-token": accessToken } : {};
+}
+
 /** JSON fetch against this app's API with consistent error handling. */
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = init;
@@ -20,7 +32,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
   try {
     res = await fetch(path, {
       ...rest,
-      headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
+      headers: { ...authHeaders(), ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
       body: json !== undefined ? JSON.stringify(json) : rest.body,
       credentials: "same-origin",
     });
@@ -71,7 +83,7 @@ export async function streamJob(jobId: string, onEvent: (e: JobEvent) => void, s
     running = true;
     // Long request: it lasts as long as one step. Not tied to `signal`: leaving the page must not stop
     // a step half-way. Requesting a step twice is harmless (only one request can hold the job's lease).
-    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin" })
+    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin", headers: authHeaders() })
       .then((r) => (r.ok ? (r.json() as Promise<{ started: boolean; continue: boolean }>) : null))
       .then(
         (r) => {

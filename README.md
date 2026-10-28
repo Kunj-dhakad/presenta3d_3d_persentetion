@@ -1,4 +1,20 @@
-# 3D Presentation
+# Present 3D
+
+> **Runs inside the PHP app (CI_Core).** There is no login, database or bucket of its own:
+>
+> * **Pages:** the PHP app opens `/embed/new`, `/embed/p/<id>` and `/embed/present/<id>` in an iframe
+>   (`application/controllers/default/Presentation3d_controller.php`, routes `3d-presentation/*`). After
+>   `REACT_READY` it sends `INIT_DATA { token, URL }`; the page answers `LOADER_OFF`, `P3D_OPENED` and `P3D_BACK`
+>   (`src/components/embed/`). Opened directly: `?token=<access token>` for development.
+> * **Login:** every API request carries the business's access token (`x-access-token`), decrypted like PHP's
+>   `decript_user_token()` (`src/server/auth/php-token.ts`). A presentation belongs to `"<business_id>_<user_id>"`.
+> * **Database:** the PHP app's MySQL database; this app's tables are prefixed `p3d_`
+>   (`prisma/mysql/schema.prisma`; SQL in `CI_Core/app/application/sql/p3d_tables.sql`). PHP lists, renames and deletes from them.
+> * **Files:** `STORAGE_DRIVER=s3` with the PHP app's bucket, under `S3_ROOT_PREFIX` (default `assets/uploads/3d_presentations/`).
+> * **Public link:** a published deck is `/sites/<slug>/` here and `3d-view/<slug>` on the PHP site.
+> * **Settings to set on Amplify:** `MYSQL_*` (PHP database), `OPENAI_*`, `STORAGE_DRIVER=s3`, `KD_AWS_*` (PHP bucket),
+>   `APP_ORIGIN`, `NEXT_PUBLIC_PARENT_ORIGINS` (e.g. `https://present3d.com,https://*.present3d.com`), and `FRAME_ANCESTORS`
+>   if the PHP site is on another domain than present3d.com.
 
 > **Current product mode: 3D presentations.** The UI is intentionally reduced to one flow:
 > **describe a topic in chat → get a cinematic 3D presentation → present it full page → publish a link.**
@@ -16,11 +32,11 @@
 >
 > The sections below describe the full platform.
 
-3D Presentation is an AI creative platform. Describe an idea in plain language and it generates **runnable, editable projects**: websites, React/TypeScript apps, interactive three.js scenes, browser games and data visualizations. Every project has a live sandboxed preview, a Monaco code editor, version history, chat-driven edits, and publishing.
+Present 3D is an AI creative platform. Describe an idea in plain language and it generates **runnable, editable projects**: websites, React/TypeScript apps, interactive three.js scenes, browser games and data visualizations. Every project has a live sandboxed preview, a Monaco code editor, version history, chat-driven edits, and publishing.
 
 It also includes a **3D Studio** (visual scene editor with AI scene generation), a **Canvas** (infinite design board with parallel AI frame generation), a **creative asset studio** (image / video / speech / sound / 3D model / material generation through real provider adapters) and an **asset library**.
 
-> 3D Presentation is an original implementation inspired by the publicly documented functionality of tools like . It contains no code from, and claims no access to, any other product.
+> Present 3D is an original implementation inspired by the publicly documented functionality of tools like . It contains no code from, and claims no access to, any other product.
 
 ---
 
@@ -42,7 +58,7 @@ The application requires the RDS MySQL variables in `.env` for local development
 
 ### No sign-in by default
 
-3D Presentation runs in **local single-user mode** (`AUTH_MODE=local`, the default) in development and production: open the app and start building. There is no sign-up or login, and every visitor shares the same workspace. Set `AUTH_MODE=accounts` to enable email/password accounts and per-user workspaces.
+Present 3D runs in **local single-user mode** (`AUTH_MODE=local`, the default) in development and production: open the app and start building. There is no sign-up or login, and every visitor shares the same workspace. Set `AUTH_MODE=accounts` to enable email/password accounts and per-user workspaces.
 
 ### Connect OpenAI
 

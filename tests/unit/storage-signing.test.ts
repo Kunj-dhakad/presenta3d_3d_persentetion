@@ -38,7 +38,7 @@ describe("S3 SigV4 signing", () => {
       return new Response("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>3dpresentation/previews/build/b.js</Key></Contents></ListBucketResult>");
     }) as typeof fetch;
     try {
-      const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret" });
+      const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret", rootPrefix: "3dpresentation/" });
       await expect(adapter.list("previews/build/")).resolves.toEqual(["previews/build/a.js", "previews/build/b.js"]);
       expect(requests).toHaveLength(2);
       expect(requests[0].pathname).toBe("/");
@@ -57,7 +57,7 @@ describe("S3 SigV4 signing", () => {
       return new Response(null, { status: 200 });
     }) as typeof fetch;
     try {
-      const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret" });
+      const adapter = new S3StorageAdapter({ bucket: "test-bucket", region: "us-east-1", accessKeyId: "test-key", secretAccessKey: "test-secret", rootPrefix: "3dpresentation/" });
       await adapter.put("owner/abcdefghijklmnop.png", Buffer.from("media"), "image/png");
       await adapter.get("previews/build/index.html");
       await adapter.delete("runtime/hash/manifest.json");
