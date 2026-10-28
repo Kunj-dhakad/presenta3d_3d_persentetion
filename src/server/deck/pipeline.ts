@@ -87,6 +87,16 @@ async function conversation(conversationId: string) {
     .join("\n");
 }
 
+/** Run `fn`, and once more if it fails (e.g. a database connection dropped by the network). */
+async function retryOnce<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    await new Promise((r) => setTimeout(r, 500));
+    return fn();
+  }
+}
+
 /**
  * Generate or edit a 3D presentation: the model writes a validated DeckSpec,
  * the deterministic engine turns it into a runnable project.
@@ -258,13 +268,14 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
 
   ctx.emit({ type: "stage", stage: "finalize", state: "start" });
   log("Saving a version and the chat reply");
-  const post = changed.length ? await snapshot(input.projectId, "ai", { summary: `${deck.title} (${deck.slides.length} slides)`, files: nextFiles }) : null;
-  if (post && build.status === "succeeded") await markWorkingVersion(input.projectId, post.id);
+  // Retried once: by now the presentation is built, a transient database error must not lose it.
+  const post = changed.length ? await retryOnce(() => snapshot(input.projectId, "ai", { summary: `${deck.title} (${deck.slides.length} slides)`, files: nextFiles })) : null;
+  if (post && build.status === "succeeded") await retryOnce(() => markWorkingVersion(input.projectId, post.id));
   const buildStatus = build.status === "succeeded" ? ("succeeded" as const) : ("failed" as const);
   const summary = existing
     ? `Updated “${deck.title}” — ${deck.slides.length} slides.`
     : `Created “${deck.title}” — ${deck.slides.length} slides with 3D scenes. Use the arrow keys or click to move through it.`;
-  const [message] = await Promise.all([
+  const [message] = await retryOnce(() => Promise.all([
     db.chatMessage.create({
       data: {
         conversationId: input.conversationId,
@@ -274,7 +285,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
       },
     }),
     db.conversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } }),
-  ]);
+  ]));
   const result: PipelineResult = {
     summary,
     changedFiles: changed.map((c) => c.path),

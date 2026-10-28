@@ -3,20 +3,6 @@ import { db } from "@/server/db/client";
 import type { Prisma } from "@/generated/mysql-prisma/client";
 import type { JobEvent, JobEventBody } from "@/lib/jobs";
 
-/**
- * Server-side job processing for long-running work (generation pipelines,
- * media generation). Jobs run detached from the HTTP request that created
- * them: closing the browser does not cancel a job, and clients can re-attach
- * to its event stream. Events are persisted to GenerationJob.events.
- *
- * Serverless hosts (AWS Amplify compute, Lambda) freeze an instance as soon
- * as its response is sent, so work started "in the background" never
- * finishes there. Generation jobs therefore use `createDeferredJob`: the
- * POST only records the job, and the first request for its event stream
- * claims it (atomically, so exactly one instance runs it) and executes it
- * while that streaming response is open. Other instances follow the job
- * through its persisted events.
- */
 
 type Listener = (e: JobEvent) => void;
 
@@ -43,14 +29,17 @@ const queue = (g.__deck3dQueue ??= []);
 const active = (g.__deck3dActive ??= { n: 0 });
 const MAX_ACTIVE_JOBS = 4;
 
-async function flush(h: Handle, extra: Prisma.GenerationJobUpdateInput = {}) {
+async function flush(h: Handle, extra: Prisma.GenerationJobUpdateInput = {}): Promise<boolean> {
   if (h.flushTimer) {
     clearTimeout(h.flushTimer);
     h.flushTimer = null;
   }
-  await db.generationJob
+  return db.generationJob
     .update({ where: { id: h.id }, data: { events: h.events.slice(-500) as unknown as Prisma.InputJsonValue, progress: h.progress, ...extra } })
-    .catch(() => {});
+    .then(
+      () => true,
+      () => false,
+    );
 }
 
 function scheduleFlush(h: Handle) {
@@ -61,7 +50,7 @@ function scheduleFlush(h: Handle) {
 type JobInput = { id?: string; userId: string; projectId?: string | null; kind: string; provider: string; model?: string | null; input: Prisma.InputJsonValue };
 
 /** A job that has not reported progress for this long, and is not running in this process, is treated as dead. */
-const STALE_MS = 2 * 60_000;
+const STALE_MS = 5 * 60_000;
 const HEARTBEAT_MS = 10_000;
 
 function createJobRow(input: JobInput) {
@@ -119,7 +108,9 @@ function prepare<T>(jobId: string, work: (ctx: JobContext) => Promise<T>, opts: 
         },
       });
       emit({ type: "status", status: "succeeded" });
-      await flush(h, { status: "succeeded", progress: 1, output: (output ?? null) as Prisma.InputJsonValue, finishedAt: new Date() });
+      // Clears any "interrupted" mark another request may have set while this job was slow.
+      const done = { status: "succeeded", progress: 1, error: null, output: (output ?? null) as Prisma.InputJsonValue, finishedAt: new Date() };
+      if (!(await flush(h, done))) await flush(h, done); // one retry on a transient database error
     } catch (err) {
       const cancelled = h.controller.signal.aborted;
       const message = cancelled ? "Cancelled" : err instanceof Error ? err.message : "Job failed";

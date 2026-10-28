@@ -21,6 +21,14 @@ function createClient(): PrismaClient {
       database: e.MYSQL_DATABASE!,
       // The workspace opens ~7 requests at once; a small pool makes them queue behind each other.
       connectionLimit: 10,
+      // RDS connections that sit idle can be dropped silently by the network; a query sent on
+      // one then hangs for minutes (jobs were reported as "interrupted" while waiting on it).
+      // Recycle idle connections early, keep the rest alive, and let a stuck query fail fast.
+      idleTimeout: 60, // seconds
+      keepAliveDelay: 20_000,
+      connectTimeout: 10_000,
+      acquireTimeout: 20_000,
+      socketTimeout: 90_000,
     },
     { onConnectionError: (error) => console.error("[rds-mysql] connection error", error.code, error.errno) },
   );
