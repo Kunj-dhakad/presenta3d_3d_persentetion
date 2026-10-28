@@ -136,6 +136,8 @@ type WriterOptions = { userId: string; jobId: string; signal: AbortSignal; log: 
  */
 export class SceneWriter {
   private tasks = new Map<number, Promise<string | null>>();
+  /** Finished scenes: their code, or null when writing it failed. */
+  private finished = new Map<number, string | null>();
   private running = 0;
   private waiting: (() => void)[] = [];
   private done = 0;
@@ -159,7 +161,24 @@ export class SceneWriter {
       if (!this.opts.signal.aborted) this.opts.log(`Slide ${index + 1}: custom scene failed (${(err as Error).message.slice(0, 160)}); using the catalog scene instead`, "warn");
       return null;
     });
+    void task.then((code) => this.finished.set(index, code));
     this.tasks.set(index, task);
+  }
+
+  /** Scenes finished so far: code, or null when writing it failed. */
+  settled(): Map<number, string | null> {
+    return new Map(this.finished);
+  }
+
+  /** Wait until every started scene has finished, or until `deadline` (ms epoch), whichever comes first. */
+  async until(deadline: number): Promise<void> {
+    const all = Promise.all(this.tasks.values()).then(() => {});
+    if (deadline === Infinity) return all;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([all, new Promise<void>((r) => (timer = setTimeout(r, Math.max(0, deadline - Date.now()))))]);
+    clearTimeout(timer);
+    // Let scenes that resolved in the same tick be recorded in `finished`.
+    await new Promise((r) => setImmediate(r));
   }
 
   async results(): Promise<Map<number, string>> {

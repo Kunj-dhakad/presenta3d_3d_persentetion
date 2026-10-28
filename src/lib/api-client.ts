@@ -55,30 +55,42 @@ export function errorMessage(err: unknown): string {
 /**
  * Follow a server-side job until it ends, delivering each event once.
  *
- * Works on any host, including serverless ones that buffer streaming
- * responses (AWS Amplify): `POST /run` executes a queued job inside that
- * request, while short `GET /poll?after=N` requests fetch new events
+ * Works on any host, including serverless ones that cut long requests off
+ * (AWS Amplify): the job runs in steps of under a minute, each one inside a
+ * `POST /run` request; when a step ends with `continue`, the next one is
+ * requested at once, and a step that was cut off is taken over by a later
+ * request. Short `GET /poll?after=N` requests fetch new events meanwhile
  * (from memory on the running instance, otherwise from the database).
  */
 export async function streamJob(jobId: string, onEvent: (e: JobEvent) => void, signal?: AbortSignal): Promise<void> {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   let running = false;
+  let finished = false;
+  let nextKickAt = 0;
   const kick = () => {
     running = true;
-    // Long request: it lasts as long as the job. Its result is not needed; progress comes from polling.
-    // Not tied to `signal`: leaving the page must not cancel the run request, or a serverless host
-    // would stop the job. Starting it twice is harmless (only one request can claim the job).
-    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin", keepalive: false })
-      .catch(() => {})
-      .finally(() => {
-        running = false;
-      });
+    // Long request: it lasts as long as one step. Not tied to `signal`: leaving the page must not stop
+    // a step half-way. Requesting a step twice is harmless (only one request can hold the job's lease).
+    void fetch(`/api/jobs/${jobId}/run`, { method: "POST", credentials: "same-origin" })
+      .then((r) => (r.ok ? (r.json() as Promise<{ started: boolean; continue: boolean }>) : null))
+      .then(
+        (r) => {
+          running = false;
+          // The step saved a checkpoint: run the next one now. Otherwise another request holds the job
+          // (or this one was cut off): check again shortly; a stopped step is taken over after its lease expires.
+          if (r?.continue && !finished) kick();
+          else nextKickAt = Date.now() + 3000;
+        },
+        () => {
+          running = false;
+          nextKickAt = Date.now() + 2000;
+        },
+      );
   };
   kick();
 
   let seen = 0;
   let failures = 0;
-  let queuedSince = Date.now();
   for (;;) {
     if (signal?.aborted) return;
     let data: { events: JobEvent[]; total: number; status: string; error: string | null; done: boolean };
@@ -99,6 +111,7 @@ export async function streamJob(jobId: string, onEvent: (e: JobEvent) => void, s
       onEvent(e);
     }
     if (data.done) {
+      finished = true;
       const last = data.events.at(-1);
       if (!(last?.type === "status" && last.status === data.status)) {
         onEvent({ type: "status", status: data.status as JobStatus, message: data.error ?? undefined, t: Date.now() });
@@ -106,13 +119,8 @@ export async function streamJob(jobId: string, onEvent: (e: JobEvent) => void, s
       onEvent({ type: "end", t: Date.now() } as JobEvent);
       return;
     }
-    // If the run request was lost before it claimed the job, start it again.
-    if (data.status === "queued") {
-      if (!running && Date.now() - queuedSince > 4000) {
-        queuedSince = Date.now();
-        kick();
-      }
-    } else queuedSince = Date.now();
+    // No step running from this page (cut off, lost, or another request held the job): request the next one.
+    if (!running && Date.now() >= nextKickAt) kick();
     await sleep(700);
   }
 }

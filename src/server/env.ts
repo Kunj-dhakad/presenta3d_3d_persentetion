@@ -65,6 +65,8 @@ const schema = z.object({
   MAX_REPAIR_ATTEMPTS: intWithDefault(2, 0, 5),
   AGENT_CONCURRENCY: intWithDefault(3, 1, 8),
   GENERATION_RATE_LIMIT_PER_MIN: intWithDefault(6, 1, 120),
+  /** Longest a generation step may run in one request (serverless hosts cut requests off after ~60 s). */
+  JOB_STEP_BUDGET_MS: intWithDefault(45_000, 5_000, 600_000),
   DATA_DIR: z.string().default(".data"),
 });
 

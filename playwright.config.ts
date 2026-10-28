@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
-import nextEnv from "@next/env";
+import { loadEnvConfig } from "@next/env";
 
-nextEnv.loadEnvConfig(process.cwd());
+loadEnvConfig(process.cwd());
 
 /**
  * End-to-end tests use a separate disposable RDS database so the application
@@ -25,6 +25,10 @@ const env = {
   OPENAI_API_KEY: "sk-e2e-SENTINEL-must-not-leak-0000",
   OPENAI_MODEL: "",
   GENERATION_RATE_LIMIT_PER_MIN: "60",
+  // Short generation steps, so every test also exercises a job resuming across several requests
+  // (on serverless hosts each step must end within about a minute).
+  JOB_STEP_BUDGET_MS: process.env.E2E_JOB_STEP_BUDGET_MS ?? "16000",
+  STORAGE_DRIVER: process.env.E2E_STORAGE_DRIVER ?? "local",
 };
 
 export default defineConfig({
@@ -36,7 +40,13 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"], ["html", { open: "never" }]],
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure", screenshot: "only-on-failure", viewport: { width: 1440, height: 900 } },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } }],
+  // E2E_BROWSERS=chromium,firefox runs a subset.
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"], viewport: { width: 1440, height: 900 } } },
+    { name: "webkit", use: { ...devices["Desktop Safari"], viewport: { width: 1440, height: 900 } } },
+    { name: "msedge", use: { ...devices["Desktop Edge"], channel: "msedge", viewport: { width: 1440, height: 900 } } },
+  ].filter((p) => !process.env.E2E_BROWSERS || process.env.E2E_BROWSERS.split(",").includes(p.name)),
   webServer: {
     command: `npm run db:deploy && npx next start -p ${PORT}`,
     url: `http://localhost:${PORT}/`,

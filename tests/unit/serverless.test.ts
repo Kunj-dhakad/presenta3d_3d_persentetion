@@ -60,7 +60,7 @@ describe("serverless deployment", () => {
     await (first ?? second)!.done;
 
     const done = await db.generationJob.findUniqueOrThrow({ where: { id: jobId } });
-    expect(done.status).toBe("succeeded");
+    expect({ status: done.status, error: done.error }).toEqual({ status: "succeeded", error: null });
     const p = await db.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(p.lastBuildStatus).toBe("succeeded");
     // A finished job is never claimed again.

@@ -39,7 +39,8 @@ function normalizePrefix(prefix: string) {
 }
 
 function isArtifactKey(key: string) {
-  return /^(?:previews|runtime|sites|deckmedia)\//.test(key);
+  // jobs/<jobId>/: checkpoints of generation jobs that run in steps.
+  return /^(?:previews|runtime|sites|deckmedia|jobs)\//.test(key);
 }
 
 async function walkLocal(dir: string, prefix: string, root: string): Promise<string[]> {

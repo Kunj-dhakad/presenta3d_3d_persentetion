@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db/client";
 import type { Prisma } from "@/generated/mysql-prisma/client";
-import type { JobContext } from "@/server/jobs/runner";
+import { CONTINUE, type JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import { randomInt } from "node:crypto";
 import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, diversifyDeck, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
@@ -9,7 +9,7 @@ import { SCENE_PRESETS, presetCatalog } from "@/lib/deck-presets";
 import { diffStats, toFileMap } from "@/lib/vfs/apply";
 import { getFiles, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
 import { buildProject } from "@/server/build/builder";
-import { formatDiagnostic } from "@/lib/build-types";
+import { formatDiagnostic, type BuildSummary } from "@/lib/build-types";
 import { storage } from "@/server/storage/storage";
 import { deckToProjectFiles } from "./codegen";
 import { SceneWriter, asSceneSlide, completedSlides, deckForPrompt, reuseScenes, withScenes } from "./scene-code";
@@ -98,129 +98,90 @@ async function retryOnce<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Rounds (steps) a slide's custom scene gets before its catalog scene is kept. */
+const MAX_SCENE_ROUNDS = 3;
+/** A scene round starts only with this much time left in the step (a scene takes 25-50 s to write). */
+const MIN_SCENE_WINDOW_MS = 30_000;
+/** Time the final save, build and version need. */
+const MIN_FINAL_WINDOW_MS = 15_000;
+/** Steps that may start writing the slides; a deck call that keeps getting cut off is given up. */
+const MAX_DECK_ATTEMPTS = 3;
+
+/** What a deck job has done so far, saved between its steps (see claimJob). */
+type Checkpoint = {
+  v: 1;
+  t0: number;
+  deckAttempts: number;
+  /** Set once the slides are written and the first preview is built. */
+  deck?: DeckSpec;
+  /** Slides still waiting for their custom scene. */
+  missing?: number[];
+  rounds?: number;
+  existing?: boolean;
+  preVersionId?: string | null;
+  /** Files before this request (for the change list). */
+  before?: Record<string, string>;
+  /** The first preview was built with placeholder (pending) scenes and must be rebuilt at the end. */
+  rebuild?: boolean;
+  firstBuild?: BuildSummary;
+};
+
+const checkpointKey = (jobId: string) => `jobs/${jobId}/checkpoint.json`;
+
+async function loadCheckpoint(jobId: string): Promise<Checkpoint | null> {
+  try {
+    const raw = await storage().get(checkpointKey(jobId));
+    const cp = raw ? (JSON.parse(Buffer.from(raw).toString("utf8")) as Checkpoint) : null;
+    return cp?.v === 1 ? cp : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCheckpoint(jobId: string, cp: Checkpoint) {
+  return retryOnce(() => storage().put(checkpointKey(jobId), Buffer.from(JSON.stringify(cp), "utf8"), "application/json"));
+}
+
 /**
  * Generate or edit a 3D presentation: the model writes a validated DeckSpec,
- * the deterministic engine turns it into a runnable project.
+ * the deterministic engine turns it into a runnable project, and a custom 3D
+ * scene is written for each slide.
+ *
+ * Runs in steps that each end by `ctx.deadline` (serverless requests are cut
+ * off after about a minute): progress is saved in a checkpoint and CONTINUE is
+ * returned; the next step resumes from it. With no deadline it runs to the end.
  */
-export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvider, input: PipelineInput): Promise<PipelineResult> {
+export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvider, input: PipelineInput): Promise<PipelineResult | typeof CONTINUE> {
+  const stepped = Number.isFinite(ctx.deadline);
+  const saved = stepped ? await loadCheckpoint(ctx.jobId) : null;
+  const t0 = saved?.t0 ?? Date.now();
   // Live log lines shown while the presentation is being made (and saved with the job).
-  const t0 = Date.now();
   const log = (message: string) => ctx.emit({ type: "log", level: "info", message: `${((Date.now() - t0) / 1000).toFixed(1)}s · ${message}` });
+  const left = () => ctx.deadline - Date.now();
+  const pause = async (cp: Checkpoint): Promise<typeof CONTINUE> => {
+    await saveCheckpoint(ctx.jobId, cp);
+    return CONTINUE;
+  };
 
-  ctx.emit({ type: "stage", stage: "understand", state: "start" });
-  log("Loading the project and conversation");
-  // Independent reads run in parallel: each one is a network round trip to the database.
-  const [project, fileList, history] = await Promise.all([
-    db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
-    getFiles(input.projectId),
-    conversation(input.conversationId),
-  ]);
-  const files = toFileMap(fileList);
-  const existing = currentDeck(files);
-  if (existing) log(`Found the current deck (${existing.slides.length} slides); saving a restore point`);
-  const pre = files.size ? await snapshot(input.projectId, "pre-ai", { summary: `Before: ${input.prompt.slice(0, 100)}`, files: fileList }) : null;
-
-  ctx.emit({ type: "understanding", text: existing ? `Updating your presentation: ${input.prompt.slice(0, 160)}` : `Designing a 3D presentation: ${input.prompt.slice(0, 160)}` });
-  ctx.emit({ type: "stage", stage: "understand", state: "done" });
-  ctx.emit({ type: "stage", stage: "plan", state: "done", detail: existing ? `${existing.slides.length} slides` : "story, slides and 3D scenes" });
-  ctx.emit({ type: "stage", stage: "generate", state: "start", detail: existing ? "Editing slides" : "Writing slides" });
-  ctx.progress(0.1);
-
-  // Custom 3D scenes are written in the background, starting as soon as each
-  // slide's text is known, so they overlap with the rest of the deck being written.
+  // Scenes still being written when a step ends are stopped and written again by the next step.
+  const stopScenes = new AbortController();
   const writer = new SceneWriter(provider, {
     userId: input.userId,
     jobId: ctx.jobId,
-    signal: ctx.signal,
+    signal: AbortSignal.any([ctx.signal, stopScenes.signal]),
     log: (m, level = "info") => (level === "info" ? log(m) : ctx.emit({ type: "log", level, message: m })),
   });
-  let scanned = 0;
-  const onText = existing
-    ? undefined // edits reuse unchanged scenes; changed slides are known only once the edit is complete
-    : (text: string) => {
-        if (text.length - scanned < 120) return; // scan in steps, not on every token
-        scanned = text.length;
-        const { head, slides } = completedSlides(text);
-        if (!head) return;
-        slides.forEach((raw, i) => {
-          if (writer.has(i)) return;
-          const slide = asSceneSlide(raw);
-          if (!slide) return;
-          if (writer.started === 0) log(`Designing custom 3D scenes with ${provider.model} while the slides are written`);
-          writer.start(head, slide, i);
-        });
-      };
 
-  const brief = designBrief();
-  const ask = async (extra: string) =>
-    (
-      await provider.structured({
-        operation: existing ? "deck.edit" : "deck.generate",
-        schema: DeckSpecSchema,
-        schemaName: "deck_spec",
-        system: existing ? `${DECK_SYSTEM}\n\n${DECK_EDIT_RULES}` : DECK_SYSTEM,
-        input: [
-          history ? `Conversation so far:\n${history}` : "",
-          // Scene code is left out: it is large and the model does not need it to edit slides.
-          existing ? `Current deck (JSON):\n${JSON.stringify(deckForPrompt(existing))}` : "",
-          `User request:\n${input.prompt}`,
-          // For edits the brief is used only if the request turns out to be a new topic (see DECK_EDIT_RULES).
-          existing ? `${brief}\n(Use this brief only if you are replacing the deck with a new topic.)` : brief,
-          extra,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        maxOutputTokens: 16_000,
-        // Writing slide copy needs little deliberation; low effort roughly halves generation time.
-        reasoningEffort: "low",
-        signal: ctx.signal,
-        userId: input.userId,
-        jobId: ctx.jobId,
-        onProgress: (chars) => ctx.emit({ type: "stream", taskId: "deck", chars }),
-        onText,
-      })
-    ).data;
-
-  log(`Asking ${provider.name} · ${provider.model} to ${existing ? "edit the slides" : "write the story and slides"}`);
-  let raw: unknown;
-  try {
-    raw = await ask("");
-  } catch (err) {
-    if (err instanceof AIError && err.retryable && !ctx.signal.aborted) {
-      ctx.emit({ type: "log", level: "warn", message: `${err.message}. Retrying once.` });
-      raw = await ask("");
-    } else throw err;
-  }
-  let v = validateDeck(raw);
-  if (!v.ok) {
-    ctx.emit({ type: "stage", stage: "repair", state: "start", detail: v.errors[0] });
-    raw = await ask(`Your previous answer was invalid:\n${v.errors.join("\n")}\nReturn a corrected, complete deck.`);
-    v = validateDeck(raw);
-    if (!v.ok) throw new Error(`The presentation could not be generated: ${v.errors.slice(0, 3).join("; ")}`);
-    ctx.emit({ type: "stage", stage: "repair", state: "done" });
-  }
-  // No two slides may look alike, whatever the model chose.
-  const reused = reuseScenes(diversifyDeck(v.deck), existing);
-  let deck = reused.deck;
-  log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${deck.theme.transition} transition · ${deck.theme.font} font`);
-  ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
-  ctx.progress(0.4);
-
-  // Scenes for slides not started while streaming (and changed slides of an edit).
-  const info = { title: deck.title, theme: deck.theme, slideCount: deck.slides.length };
-  if (reused.missing.some((i) => !writer.has(i)) && writer.started === 0) log(`Designing ${reused.missing.length} custom 3D scene${reused.missing.length > 1 ? "s" : ""} with ${provider.model}`);
-  for (const i of reused.missing) writer.start(info, deck.slides[i], i);
-  const scenesPending = writer.started > 0;
-
-  const meta = {
-    name: project.name === "Untitled project" || project.name === "Untitled presentation" ? deck.title.slice(0, 120) : project.name,
+  const meta = (name: string, deck: DeckSpec) => ({
+    name: name === "Untitled project" || name === "Untitled presentation" ? deck.title.slice(0, 120) : name,
     description: deck.slides[0]?.subtitle.slice(0, 500) ?? "",
     category: "presentation",
     framework: "three",
-  };
-  const saveAndBuild = async (d: DeckSpec, first: boolean) => {
+  });
+  const saveAndBuild = async (d: DeckSpec, projectData: Prisma.ProjectUpdateInput) => {
+    await ctx.ensureLease();
     const out = deckToProjectFiles(d);
-    await writeFileSet(input.projectId, out, first ? meta : {});
+    await writeFileSet(input.projectId, out, projectData);
     ctx.emit({ type: "stage", stage: "build", state: "start" });
     const b = await buildProject({ projectId: input.projectId, framework: "three", files: out });
     ctx.emit({ type: "build", status: b.status === "succeeded" ? "succeeded" : "failed", buildId: b.buildId, previewUrl: b.previewUrl, errors: b.errors, warnings: b.warnings, attempt: 0 });
@@ -228,70 +189,223 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     return { files: out, build: b };
   };
 
-  // 1) Show the presentation right away (scenes still being written use their catalog scene).
-  log(`Building the 3D presentation and uploading it to ${storage().driver === "s3" ? "S3" : "local storage"}`);
-  // Slides whose custom scene is still being written show only the world until it arrives.
-  const pendingDeck = { ...deck, slides: deck.slides.map((s, i) => (writer.has(i) ? { ...s, scene: { ...s.scene, pending: true } } : s)) };
-  let { files: nextFiles, build } = await saveAndBuild(pendingDeck, true);
-  log(build.status === "succeeded" ? (scenesPending ? "Preview is ready — custom 3D scenes are added as they finish" : "Preview is ready") : `Preview build failed: ${formatDiagnostic(build.errors[0])}`);
-  ctx.progress(0.55);
+  let cp: Checkpoint;
+  if (saved?.deck) {
+    cp = saved;
+    log(`Resuming: ${cp.missing?.length ?? 0} custom 3D scene${cp.missing?.length === 1 ? "" : "s"} still to design`);
+  } else {
+    // ─── Step 1: write the slides and show the first preview ───────────────
+    const deckAttempts = (saved?.deckAttempts ?? 0) + 1;
+    if (deckAttempts > MAX_DECK_ATTEMPTS) throw new Error("Writing the slides was interrupted several times. Please try again.");
+    if (stepped) await saveCheckpoint(ctx.jobId, { v: 1, t0, deckAttempts });
+    if (deckAttempts > 1) log("Resuming: the previous attempt was cut off, writing the slides again");
 
-  // 2) Swap in the custom scenes once they are written.
-  if (scenesPending) {
+    ctx.emit({ type: "stage", stage: "understand", state: "start" });
+    log("Loading the project and conversation");
+    // Independent reads run in parallel: each one is a network round trip to the database.
+    const [project, fileList, history] = await Promise.all([
+      db.project.findUniqueOrThrow({ where: { id: input.projectId } }),
+      getFiles(input.projectId),
+      conversation(input.conversationId),
+    ]);
+    const files = toFileMap(fileList);
+    const existing = currentDeck(files);
+    if (existing) log(`Found the current deck (${existing.slides.length} slides); saving a restore point`);
+    const pre = files.size ? await snapshot(input.projectId, "pre-ai", { summary: `Before: ${input.prompt.slice(0, 100)}`, files: fileList }) : null;
+
+    ctx.emit({ type: "understanding", text: existing ? `Updating your presentation: ${input.prompt.slice(0, 160)}` : `Designing a 3D presentation: ${input.prompt.slice(0, 160)}` });
+    ctx.emit({ type: "stage", stage: "understand", state: "done" });
+    ctx.emit({ type: "stage", stage: "plan", state: "done", detail: existing ? `${existing.slides.length} slides` : "story, slides and 3D scenes" });
+    ctx.emit({ type: "stage", stage: "generate", state: "start", detail: existing ? "Editing slides" : "Writing slides" });
+    ctx.progress(0.1);
+
+    // Custom 3D scenes are written in the background, starting as soon as each
+    // slide's text is known, so they overlap with the rest of the deck being written.
+    let scanned = 0;
+    const onText = existing
+      ? undefined // edits reuse unchanged scenes; changed slides are known only once the edit is complete
+      : (text: string) => {
+          if (text.length - scanned < 120) return; // scan in steps, not on every token
+          scanned = text.length;
+          const { head, slides } = completedSlides(text);
+          if (!head) return;
+          slides.forEach((raw, i) => {
+            if (writer.has(i)) return;
+            const slide = asSceneSlide(raw);
+            if (!slide) return;
+            if (writer.started === 0) log(`Designing custom 3D scenes with ${provider.model} while the slides are written`);
+            writer.start(head, slide, i);
+          });
+        };
+
+    const brief = designBrief();
+    const ask = async (extra: string) =>
+      (
+        await provider.structured({
+          operation: existing ? "deck.edit" : "deck.generate",
+          schema: DeckSpecSchema,
+          schemaName: "deck_spec",
+          system: existing ? `${DECK_SYSTEM}\n\n${DECK_EDIT_RULES}` : DECK_SYSTEM,
+          input: [
+            history ? `Conversation so far:\n${history}` : "",
+            // Scene code is left out: it is large and the model does not need it to edit slides.
+            existing ? `Current deck (JSON):\n${JSON.stringify(deckForPrompt(existing))}` : "",
+            `User request:\n${input.prompt}`,
+            // For edits the brief is used only if the request turns out to be a new topic (see DECK_EDIT_RULES).
+            existing ? `${brief}\n(Use this brief only if you are replacing the deck with a new topic.)` : brief,
+            extra,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          maxOutputTokens: 16_000,
+          // Writing slide copy needs little deliberation; low effort roughly halves generation time.
+          reasoningEffort: "low",
+          signal: ctx.signal,
+          userId: input.userId,
+          jobId: ctx.jobId,
+          onProgress: (chars) => ctx.emit({ type: "stream", taskId: "deck", chars }),
+          onText,
+        })
+      ).data;
+
+    log(`Asking ${provider.name} · ${provider.model} to ${existing ? "edit the slides" : "write the story and slides"}`);
+    let raw: unknown;
+    try {
+      raw = await ask("");
+    } catch (err) {
+      if (err instanceof AIError && err.retryable && !ctx.signal.aborted) {
+        ctx.emit({ type: "log", level: "warn", message: `${err.message}. Retrying once.` });
+        raw = await ask("");
+      } else throw err;
+    }
+    let v = validateDeck(raw);
+    if (!v.ok) {
+      ctx.emit({ type: "stage", stage: "repair", state: "start", detail: v.errors[0] });
+      raw = await ask(`Your previous answer was invalid:\n${v.errors.join("\n")}\nReturn a corrected, complete deck.`);
+      v = validateDeck(raw);
+      if (!v.ok) throw new Error(`The presentation could not be generated: ${v.errors.slice(0, 3).join("; ")}`);
+      ctx.emit({ type: "stage", stage: "repair", state: "done" });
+    }
+    // No two slides may look alike, whatever the model chose.
+    const reused = reuseScenes(diversifyDeck(v.deck), existing);
+    const deck = reused.deck;
+    log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${deck.theme.transition} transition · ${deck.theme.font} font`);
+    ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
+    ctx.progress(0.4);
+
+    // Show the presentation right away: slides whose custom scene is still being written show only the world until it arrives.
+    log(`Building the 3D presentation and uploading it to ${storage().driver === "s3" ? "S3" : "local storage"}`);
+    const missing = new Set(reused.missing);
+    const pendingDeck = { ...deck, slides: deck.slides.map((s, i) => (missing.has(i) ? { ...s, scene: { ...s.scene, pending: true } } : s)) };
+    const first = await saveAndBuild(pendingDeck, meta(project.name, deck));
+    log(first.build.status === "succeeded" ? (missing.size ? "Preview is ready — custom 3D scenes are added as they finish" : "Preview is ready") : `Preview build failed: ${formatDiagnostic(first.build.errors[0])}`);
+    ctx.progress(0.55);
+    cp = {
+      v: 1,
+      t0,
+      deckAttempts,
+      deck,
+      missing: reused.missing,
+      rounds: 0,
+      existing: Boolean(existing),
+      preVersionId: pre?.id ?? null,
+      before: Object.fromEntries(files),
+      rebuild: missing.size > 0,
+      firstBuild: first.build,
+    };
+    // From here on, a cut-off step resumes with the slides already written.
+    if (stepped) await saveCheckpoint(ctx.jobId, cp);
+  }
+
+  // ─── Custom 3D scenes (resumable) ─────────────────────────────────────
+  let deck = cp.deck!;
+  const total = deck.slides.length;
+  if (cp.missing?.length) {
+    const info = { title: deck.title, theme: deck.theme, slideCount: total };
+    const inFlight = cp.missing.filter((i) => writer.has(i)); // started while the slides were streaming
+    if (!inFlight.length && left() < MIN_SCENE_WINDOW_MS) return pause(cp);
     ctx.emit({ type: "stage", stage: "review", state: "start", detail: "one per slide" });
-    const codes = await writer.results();
-    ctx.emit({ type: "stage", stage: "review", state: "done", detail: `${codes.size + deck.slides.length - reused.missing.length}/${deck.slides.length} custom` });
-    // Always rebuild: slides marked pending get their custom scene, or their catalog scene if writing it failed.
-    {
-      const withCustom = withScenes(deck, codes);
-      log("Adding the custom 3D scenes to the presentation");
-      try {
-        ({ files: nextFiles, build } = await saveAndBuild(withCustom, false));
-      } catch (err) {
-        if (ctx.signal.aborted) throw err;
-        // A transient database error: try once more, the scenes are already written.
-        ctx.emit({ type: "log", level: "warn", message: `Saving the scenes failed (${(err as Error).message.split("\n").find(Boolean)?.slice(0, 120)}); retrying` });
-        ({ files: nextFiles, build } = await saveAndBuild(withCustom, false));
+    const toStart = cp.missing.filter((i) => !writer.has(i));
+    if (toStart.length) log(`Designing ${toStart.length} custom 3D scene${toStart.length > 1 ? "s" : ""} with ${provider.model}${cp.rounds ? ` (round ${cp.rounds + 1})` : ""}`);
+    for (const i of toStart) writer.start(info, deck.slides[i], i);
+    // Leave a little time to save the checkpoint before the step's deadline.
+    await writer.until(ctx.deadline - 2_000);
+    if (ctx.signal.aborted) throw new DOMException("cancelled", "AbortError");
+    const settled = writer.settled();
+    deck = withScenes(deck, new Map([...settled].filter((e): e is [number, string] => Boolean(e[1]))));
+    const unfinished = cp.missing.filter((i) => !settled.has(i));
+    cp = { ...cp, deck, missing: unfinished, rounds: (cp.rounds ?? 0) + 1 };
+    if (unfinished.length) {
+      stopScenes.abort();
+      if (cp.rounds! < MAX_SCENE_ROUNDS) {
+        log(`${total - unfinished.length}/${total} custom 3D scenes ready; continuing with the rest`);
+        return pause(cp);
       }
-      deck = withCustom;
+      ctx.emit({ type: "log", level: "warn", message: `${unfinished.length} custom 3D scene${unfinished.length > 1 ? "s" : ""} took too long; using the catalog scene instead` });
+      cp = { ...cp, missing: [] };
+    }
+    const custom = deck.slides.filter((s) => s.scene.code).length;
+    ctx.emit({ type: "stage", stage: "review", state: "done", detail: `${custom}/${total} custom` });
+  }
+  ctx.progress(0.8);
+
+  // ─── Final: build with the scenes, save a version and the chat reply ──
+  if (left() < MIN_FINAL_WINDOW_MS) return pause(cp);
+  let nextFiles = deckToProjectFiles(deck);
+  let build = cp.firstBuild!;
+  if (cp.rebuild) {
+    // Slides marked pending get their custom scene, or their catalog scene if writing it failed.
+    log("Adding the custom 3D scenes to the presentation");
+    try {
+      ({ files: nextFiles, build } = await saveAndBuild(deck, {}));
+    } catch (err) {
+      if (ctx.signal.aborted) throw err;
+      // A transient database error: try once more, the scenes are already written.
+      ctx.emit({ type: "log", level: "warn", message: `Saving the scenes failed (${(err as Error).message.split("\n").find(Boolean)?.slice(0, 120)}); retrying` });
+      ({ files: nextFiles, build } = await saveAndBuild(deck, {}));
     }
   }
   ctx.progress(0.9);
 
   // Changed files relative to before this request.
+  const before = new Map(Object.entries(cp.before ?? {}));
   const changed: { path: string; kind: "created" | "modified" | "deleted"; added: number; removed: number }[] = [];
   for (const f of nextFiles) {
-    const before = files.get(f.path) ?? null;
-    if (before === f.content) continue;
-    const c = { path: f.path, kind: before === null ? ("created" as const) : ("modified" as const), ...diffStats(before, f.content) };
+    const prev = before.get(f.path) ?? null;
+    if (prev === f.content) continue;
+    const c = { path: f.path, kind: prev === null ? ("created" as const) : ("modified" as const), ...diffStats(prev, f.content) };
     changed.push(c);
     ctx.emit({ type: "file", ...c });
   }
 
   ctx.emit({ type: "stage", stage: "finalize", state: "start" });
   log("Saving a version and the chat reply");
+  await ctx.ensureLease();
   // Retried once: by now the presentation is built, a transient database error must not lose it.
   const post = changed.length ? await retryOnce(() => snapshot(input.projectId, "ai", { summary: `${deck.title} (${deck.slides.length} slides)`, files: nextFiles })) : null;
   if (post && build.status === "succeeded") await retryOnce(() => markWorkingVersion(input.projectId, post.id));
   const buildStatus = build.status === "succeeded" ? ("succeeded" as const) : ("failed" as const);
-  const summary = existing
+  const summary = cp.existing
     ? `Updated “${deck.title}” — ${deck.slides.length} slides.`
     : `Created “${deck.title}” — ${deck.slides.length} slides with 3D scenes. Use the arrow keys or click to move through it.`;
-  const [message] = await retryOnce(() => Promise.all([
-    db.chatMessage.create({
-      data: {
-        conversationId: input.conversationId,
-        role: "assistant",
-        content: buildStatus === "failed" ? `${summary} The preview could not be built: ${formatDiagnostic(build.errors[0])}` : summary,
-        meta: { jobId: ctx.jobId, changedFiles: changed, preVersionId: pre?.id ?? null, postVersionId: post?.id ?? null, buildStatus, buildId: build.buildId, slides: deck.slides.length } as Prisma.InputJsonValue,
-      },
-    }),
-    db.conversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } }),
-  ]));
+  const preVersionId = cp.preVersionId ?? null;
+  const [message] = await retryOnce(() =>
+    Promise.all([
+      db.chatMessage.create({
+        data: {
+          conversationId: input.conversationId,
+          role: "assistant",
+          content: buildStatus === "failed" ? `${summary} The preview could not be built: ${formatDiagnostic(build.errors[0])}` : summary,
+          meta: { jobId: ctx.jobId, changedFiles: changed, preVersionId, postVersionId: post?.id ?? null, buildStatus, buildId: build.buildId, slides: deck.slides.length } as Prisma.InputJsonValue,
+        },
+      }),
+      db.conversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } }),
+    ]),
+  );
   const result: PipelineResult = {
     summary,
     changedFiles: changed.map((c) => c.path),
-    preVersionId: pre?.id ?? null,
+    preVersionId,
     postVersionId: post?.id ?? null,
     buildStatus,
     buildId: build.buildId,
@@ -300,5 +414,6 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
   };
   ctx.emit({ type: "result", ...result });
   ctx.emit({ type: "stage", stage: "finalize", state: "done" });
+  if (stepped) void storage().deletePrefix(`jobs/${ctx.jobId}/`).catch(() => {});
   return result;
 }

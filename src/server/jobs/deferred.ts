@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/server/db/client";
 import { getTextProvider } from "@/server/ai/provider";
 import { runDeckPipeline } from "@/server/deck/pipeline";
-import { claimJob } from "./runner";
+import { claimJob, type RunOutcome } from "./runner";
 
 /** Everything a deferred deck job needs, persisted in GenerationJob.input. */
 export const DeckJobInput = z.object({
@@ -19,11 +19,13 @@ export type DeckJobInput = z.infer<typeof DeckJobInput>;
 type JobRow = { id: string; userId: string; projectId: string | null; status: string; input: unknown };
 
 /**
- * If `job` is a queued deferred job, claim it and run it in this process.
- * Returns `{ done }` when this call started it, otherwise null.
+ * Claim the next step of an unfinished deferred job (queued, between steps, or
+ * whose step was cut off) and run it in this process. Returns `{ done }`
+ * (resolves to "continue" when more steps are needed) when this call started
+ * a step, otherwise null.
  */
-export async function startDeferredJob(job: JobRow): Promise<{ done: Promise<void> } | null> {
-  if (job.status !== "queued" || !job.projectId) return null;
+export async function startDeferredJob(job: JobRow, opts: { budgetMs?: number } = {}): Promise<{ done: Promise<RunOutcome> } | null> {
+  if ((job.status !== "queued" && job.status !== "running") || !job.projectId) return null;
   const parsed = DeckJobInput.safeParse(job.input);
   if (!parsed.success) return null;
   const input = parsed.data;
@@ -38,6 +40,8 @@ export async function startDeferredJob(job: JobRow): Promise<{ done: Promise<voi
       mode: input.mode,
       runtimeErrors: input.runtimeErrors,
     }).catch(async (err) => {
+      // Cancelled, or taken over by another step after this instance was frozen: nothing to report here.
+      if (ctx.signal.aborted) throw err;
       // Record the failure in the conversation so it is visible after reload.
       const message = err instanceof Error ? err.message : "Generation failed";
       const pre = await db.projectVersion.findFirst({
@@ -50,5 +54,5 @@ export async function startDeferredJob(job: JobRow): Promise<{ done: Promise<voi
         .catch(() => {});
       throw err;
     });
-  });
+  }, opts);
 }
