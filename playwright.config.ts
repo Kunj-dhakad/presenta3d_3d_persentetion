@@ -11,8 +11,8 @@ const PORT = 3200;
 const database = process.env.E2E_MYSQL_DATABASE;
 if (!database) throw new Error("Set E2E_MYSQL_DATABASE to a separate disposable RDS database before running Playwright.");
 const env = {
-  // Each test signs up its own account (the default local mode has a single user and no sign-up).
-  AUTH_MODE: "accounts",
+  // The app runs inside the PHP app's iframe; tests/e2e/support.ts plays that page and makes its tokens.
+  PHP_TOKEN_KEY: "e2e-php-token-key",
   AI_PROVIDER: "mock",
   ALLOW_MOCK_AI: "1",
   APP_ORIGIN: `http://localhost:${PORT}`,
