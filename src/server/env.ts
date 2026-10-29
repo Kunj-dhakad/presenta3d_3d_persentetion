@@ -53,7 +53,7 @@ const schema = z.object({
   S3_ENDPOINT: optionalString,
   S3_ACCESS_KEY_ID: optionalString,
   S3_SECRET_ACCESS_KEY: optionalString,
-  /** Folder inside the PHP app's bucket (pitchoraai) that holds this app's files. */
+  /** Folder inside the PHP app's bucket (cdn.present3d.com) that holds this app's files. */
   S3_ROOT_PREFIX: z.string().default("assets/uploads/3d_presentations/"),
   KD_AWS_REGION: optionalString,
   KD_AWS_S3_BUCKET_NAME: optionalString,
