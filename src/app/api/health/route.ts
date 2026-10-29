@@ -43,7 +43,23 @@ export async function GET() {
       "SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'p3d\\_%'",
     );
     const found = new Set(rows.map((r) => r.t));
-    report.database = { ok: true, ms: Date.now() - started, mysql: version?.v, missingTables: TABLES.filter((t) => !found.has(t)) };
+    // Text with "→" and an emoji must come back unchanged, and text columns must be utf8mb4 (error 1366 otherwise).
+    const sample = "→ · ✓ 🚀";
+    const [charset] = await db.$queryRawUnsafe<{ client: string; connection: string; results: string; echo: string }[]>(
+      "SELECT @@character_set_client AS client, @@character_set_connection AS connection, @@character_set_results AS results, ? AS echo",
+      sample,
+    );
+    const badColumns = await db.$queryRawUnsafe<{ c: string }[]>(
+      "SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME, ' ', CHARACTER_SET_NAME) AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'p3d\\_%' AND CHARACTER_SET_NAME IS NOT NULL AND CHARACTER_SET_NAME <> 'utf8mb4'",
+    );
+    report.database = {
+      ok: true,
+      ms: Date.now() - started,
+      mysql: version?.v,
+      missingTables: TABLES.filter((t) => !found.has(t)),
+      charset: { client: charset?.client, connection: charset?.connection, results: charset?.results, roundTrip: charset?.echo === sample },
+      nonUtf8mb4Columns: badColumns.map((r) => r.c),
+    };
   } catch (err) {
     const e = err as { code?: string; errno?: number; name?: string; message?: string; cause?: { code?: string; errno?: number } };
     report.database = {

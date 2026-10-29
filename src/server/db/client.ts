@@ -19,6 +19,10 @@ function createClient(): PrismaClient {
       user: e.MYSQL_USER!,
       password: e.MYSQL_PASSWORD!,
       database: e.MYSQL_DATABASE!,
+      // Always talk UTF-8 (4-byte) to the server. The core database is MySQL 5.6 with a latin1
+      // default; slides contain "→", "·" and emoji, which failed with error 1366 otherwise.
+      collation: "UTF8MB4_UNICODE_CI",
+      initSql: "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
       // The workspace opens ~7 requests at once; a small pool makes them queue behind each other.
       // A serverless instance (Amplify/Lambda) serves one request at a time, so it needs far fewer:
       // with many instances, 10 each would use up the database's max_connections.
