@@ -1,6 +1,5 @@
+import { connection } from "next/server";
 import { env } from "@/server/env";
-
-export const dynamic = "force-dynamic";
 
 // Every table in prisma/mysql/schema.prisma (application/sql/p3d_tables.sql in CI_Core).
 const TABLES = [
@@ -15,6 +14,7 @@ const TABLES = [
  * codes, never values, hosts or passwords.
  */
 export async function GET() {
+  await connection(); // check on every request, never at build time
   const report: Record<string, unknown> = {};
   try {
     const e = env();
