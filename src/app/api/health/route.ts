@@ -19,9 +19,17 @@ export async function GET() {
   try {
     const e = env();
     report.settings = Object.fromEntries(
-      ["MYSQL_HOST", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD", "OPENAI_API_KEY", "PHP_TOKEN_KEY", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]
+      ["MYSQL_HOST", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD", "OPENAI_API_KEY", "PHP_TOKEN_KEY", "KD_AWS_S3_BUCKET_NAME", "KD_AWS_ACCESS_KEY_ID", "S3_BUCKET", "S3_ACCESS_KEY_ID"]
         .map((name) => [name, Boolean(e[name as keyof typeof e])]),
     );
+    // Which database and bucket are in use, without revealing hosts or keys.
+    report.target = {
+      mysqlHostIsPresent3d: /(^|\.)present3d\.com$/i.test(e.MYSQL_HOST ?? ""),
+      mysqlDatabase: e.MYSQL_DATABASE ?? null,
+      storage: e.STORAGE_DRIVER,
+      bucket: e.KD_AWS_S3_BUCKET_NAME ?? e.S3_BUCKET ?? null,
+      prefix: e.S3_ROOT_PREFIX,
+    };
   } catch (err) {
     report.settings = { error: err instanceof Error ? err.message.slice(0, 300) : "invalid settings" };
     return Response.json(report, { status: 500 });
