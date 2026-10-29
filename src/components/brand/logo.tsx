@@ -1,27 +1,22 @@
 import { cn } from "@/lib/utils";
 
-/** Present 3D mark: three offset layers forming a rising stack. */
+/**
+ * Present 3D brand images (public/brand/): the P mark, and the full logo with
+ * white text for this app's dark UI (present3d-logo.png has black text).
+ */
+
+/** The Present 3D "P" mark. Size it with a size-* class. */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={cn("size-6", className)} aria-hidden="true">
-      <defs>
-        <linearGradient id="deck3d-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="oklch(0.82 0.1 275)" />
-          <stop offset="1" stopColor="oklch(0.62 0.15 285)" />
-        </linearGradient>
-      </defs>
-      <path d="M6 22.5 L16 27 L26 22.5 L16 18 Z" fill="currentColor" opacity="0.28" />
-      <path d="M6 16 L16 20.5 L26 16 L16 11.5 Z" fill="currentColor" opacity="0.55" />
-      <path d="M6 9.5 L16 14 L26 9.5 L16 5 Z" fill="url(#deck3d-g)" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element -- small static brand image
+    <img src="/brand/present3d-icon.png" alt="" aria-hidden="true" className={cn("size-6 object-contain", className)} />
   );
 }
 
 export function Logo({ className, withWordmark = true }: { className?: string; withWordmark?: boolean }) {
+  if (!withWordmark) return <LogoMark className={className} />;
   return (
-    <span className={cn("inline-flex items-center gap-2 text-foreground", className)}>
-      <LogoMark />
-      {withWordmark && <span className="text-[15px] font-semibold tracking-[-0.02em]">Present 3D</span>}
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element -- small static brand image
+    <img src="/brand/present3d-logo-white.png" alt="Present 3D" className={cn("h-6 w-auto object-contain", className)} />
   );
 }

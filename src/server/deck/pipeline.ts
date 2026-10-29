@@ -158,6 +158,9 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
   // Live log lines shown while the presentation is being made (and saved with the job).
   const log = (message: string) => ctx.emit({ type: "log", level: "info", message: `${((Date.now() - t0) / 1000).toFixed(1)}s · ${message}` });
   const left = () => ctx.deadline - Date.now();
+  // A step pauses for lack of time only after doing some work: a step that paused straight away
+  // (budget nearly used up by a slow start) would hand an unchanged checkpoint to the next one forever.
+  let progressed = false;
   const pause = async (cp: Checkpoint): Promise<typeof CONTINUE> => {
     await saveCheckpoint(ctx.jobId, cp);
     return CONTINUE;
@@ -315,6 +318,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     };
     // From here on, a cut-off step resumes with the slides already written.
     if (stepped) await saveCheckpoint(ctx.jobId, cp);
+    progressed = true;
   }
 
   // ─── Custom 3D scenes (resumable) ─────────────────────────────────────
@@ -323,7 +327,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
   if (cp.missing?.length) {
     const info = { title: deck.title, theme: deck.theme, slideCount: total };
     const inFlight = cp.missing.filter((i) => writer.has(i)); // started while the slides were streaming
-    if (!inFlight.length && left() < MIN_SCENE_WINDOW_MS) return pause(cp);
+    if (progressed && !inFlight.length && left() < MIN_SCENE_WINDOW_MS) return pause(cp);
     ctx.emit({ type: "stage", stage: "review", state: "start", detail: "one per slide" });
     const toStart = cp.missing.filter((i) => !writer.has(i));
     if (toStart.length) log(`Designing ${toStart.length} custom 3D scene${toStart.length > 1 ? "s" : ""} with ${provider.model}${cp.rounds ? ` (round ${cp.rounds + 1})` : ""}`);
@@ -335,6 +339,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     deck = withScenes(deck, new Map([...settled].filter((e): e is [number, string] => Boolean(e[1]))));
     const unfinished = cp.missing.filter((i) => !settled.has(i));
     cp = { ...cp, deck, missing: unfinished, rounds: (cp.rounds ?? 0) + 1 };
+    progressed = true;
     if (unfinished.length) {
       stopScenes.abort();
       if (cp.rounds! < MAX_SCENE_ROUNDS) {
@@ -350,7 +355,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
   ctx.progress(0.8);
 
   // ─── Final: build with the scenes, save a version and the chat reply ──
-  if (left() < MIN_FINAL_WINDOW_MS) return pause(cp);
+  if (progressed && left() < MIN_FINAL_WINDOW_MS) return pause(cp);
   let nextFiles = deckToProjectFiles(deck);
   let build = cp.firstBuild!;
   if (cp.rebuild) {

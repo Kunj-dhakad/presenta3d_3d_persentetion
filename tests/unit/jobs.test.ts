@@ -112,6 +112,19 @@ describe("deck jobs in steps (serverless requests are cut off after about a minu
     expect(deck.slides.every((s) => s.scene.code && !s.scene.pending)).toBe(true);
   });
 
+  it("always finishes, even when every step is shorter than the time a phase asks for", async () => {
+    const { jobId } = await deckJob();
+    // A slow start (remote database, cold instance) can use up most of a step before it begins.
+    const outcomes: string[] = [];
+    for (let i = 0; i < 8 && outcomes.at(-1) !== "finished"; i++) {
+      const step = await startDeferredJob(await row(jobId), { budgetMs: 5_000 });
+      outcomes.push(await step!.done);
+    }
+    expect(outcomes.at(-1)).toBe("finished");
+    expect(outcomes.length).toBeLessThanOrEqual(4);
+    expect((await row(jobId)).status).toBe("succeeded");
+  });
+
   it("takes over a step whose instance was frozen, once its lease has gone silent", async () => {
     const { jobId } = await deckJob();
     // A step started on an instance that was then frozen: it holds the lease but stopped heartbeating.
