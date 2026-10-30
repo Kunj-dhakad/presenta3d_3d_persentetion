@@ -6,7 +6,8 @@
  * window.postMessage, like the slide editor does:
  *
  *   iframe → PHP   REACT_READY          the page is listening
- *   PHP → iframe   INIT_DATA            { token, URL }  (the user's access token, PHP base URL)
+ *   PHP → iframe   INIT_DATA            { token, URL, branding? }  (the user's access token, PHP base URL,
+ *                                       the business's whitelabel { logo, name, link } for footer branding)
  *   iframe → PHP   LOADER_OFF           the page is up; PHP hides its loader
  *   iframe → PHP   P3D_OPENED           { projectId }  a presentation was created or opened
  *   iframe → PHP   P3D_BACK             back to PHP's list of 3D presentations
@@ -18,6 +19,21 @@
 let parentOrigin = "*";
 /** The PHP app's base URL (INIT_DATA's URL), ending with "/". */
 let parentSite = "";
+
+export type ParentBranding = { logo: string; name: string; link: string };
+/** The business's whitelabel branding (INIT_DATA's branding): the Design panel's default footer. */
+let parentBranding: ParentBranding | null = null;
+
+export function setParentBranding(value: unknown) {
+  if (!value || typeof value !== "object") return;
+  const b = value as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 1000) : "");
+  parentBranding = { logo: str(b.logo), name: str(b.name), link: str(b.link) };
+}
+
+export function getParentBranding(): ParentBranding | null {
+  return parentBranding;
+}
 
 /** In-app paths of the embedded pages. */
 export const paths = {

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, errorMessage, timeAgo } from "@/lib/api-client";
 import { publicLink } from "@/components/embed/parent-bridge";
+import { ShareLinks } from "./share-links";
 
 type Deployment = { id: string; status: string; url: string | null; provider: string; isPublic: boolean; error: string | null; createdAt: string; updatedAt: string };
 type PublishInfo = { provider: { id: string; isPublic: boolean; storage?: string; ok: boolean; reason: string | null }; deployments: Deployment[] };
@@ -21,7 +22,7 @@ function copy(text: string) {
   void navigator.clipboard.writeText(text).then(() => toast.success("Copied"), () => toast.error("Could not copy"));
 }
 
-export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: { projectId: string; open: boolean; onOpenChange: (o: boolean) => void; hasWorkingBuild: boolean }) {
+export function ShareDialog({ projectId, projectName, open, onOpenChange, hasWorkingBuild }: { projectId: string; projectName: string; open: boolean; onOpenChange: (o: boolean) => void; hasWorkingBuild: boolean }) {
   const [info, setInfo] = useState<PublishInfo | null>(null);
   const [links, setLinks] = useState<Link[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -149,6 +150,14 @@ export function ShareDialog({ projectId, open, onOpenChange, hasWorkingBuild }: 
                       <a href={absolute(live.url) ?? "#"} target="_blank" rel="noopener noreferrer" aria-label="Open site" className="shrink-0"><ExternalLink className="size-3.5 text-muted-foreground" /></a>
                     </div>
                   </div>
+                )}
+                {live?.url && (
+                  <ShareLinks
+                    url={absolute(live.url)!}
+                    // The deck itself, not the PHP page around it: it can be framed by any website.
+                    embedUrl={live.url.startsWith("/") ? `${window.location.origin}${live.url}` : live.url}
+                    title={projectName}
+                  />
                 )}
                 {latest?.status === "failed" && (
                   <p className="flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"><TriangleAlert className="size-4 shrink-0" />Last deployment failed: {latest.error}</p>

@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/mysql-prisma/client";
 import { CONTINUE, type JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import { randomInt } from "node:crypto";
-import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, diversifyDeck, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
+import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, defaultDeckSettings, diversifyDeck, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
 import { SCENE_PRESETS, presetCatalog } from "@/lib/deck-presets";
 import { diffStats, toFileMap } from "@/lib/vfs/apply";
 import { getFiles, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
@@ -18,7 +18,8 @@ import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 export const DECK_SYSTEM = `You are the presentation designer of Present 3D. You create cinematic 3D presentations.
 You do not write code. You write a DeckSpec: the content and art direction of each slide. A fixed three.js engine renders it with animated 3D scenes, glow and smooth transitions.
 
-Write a strong story: an opening hero slide, a clear arc, and a closing slide. Use 5-10 slides unless the user asks otherwise.
+Write a strong story: an opening hero slide, a clear arc, and a closing slide (a key takeaway or call to action). Use 5-10 slides unless the user asks otherwise.
+Do not write a "Thank you" slide: the engine adds its own Thank You slide after yours.
 Content rules: titles at most ~8 words; at most 4 bullets per slide, each at most ~12 words; real, specific copy (no lorem ipsum, no placeholders). Write in the language the user writes in.
 Layouts: "hero" for the opening (and optionally the closing), "left"/"right" for explanatory slides (alternate them), "center" for a single big statement, "stats" for 2-4 headline numbers.
 Each slide gets its own 3D scene: set scene.preset to the preset from this catalog (name: tags) whose tags best express that slide's specific idea:
@@ -291,7 +292,8 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     }
     // No two slides may look alike, whatever the model chose.
     const reused = reuseScenes(diversifyDeck(v.deck), existing);
-    const deck = reused.deck;
+    // Settings are the owner's (Design panel); the model never writes them.
+    const deck: DeckSpec = { ...reused.deck, settings: existing?.settings ?? defaultDeckSettings() };
     log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${deck.theme.transition} transition · ${deck.theme.font} font`);
     ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
     ctx.progress(0.4);

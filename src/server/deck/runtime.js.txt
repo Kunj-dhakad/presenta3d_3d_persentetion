@@ -10,7 +10,25 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const deck = await fetch("./deck.json").then((r) => r.json());
-const slides = deck.slides;
+// Older decks have no settings; the server validates links, this only guards the engine.
+const settings = deck.settings || {};
+const webLink = (u, schemes = /^https?:\/\//i) => (typeof u === "string" && schemes.test(u) ? u : "");
+const slides = [...deck.slides];
+// The owner's Thank You slide closes the deck, with its call-to-action buttons.
+const thankYou = settings.thankYou;
+if (thankYou?.enabled) {
+  slides.push({
+    layout: "hero",
+    kicker: "",
+    title: thankYou.title || "Thank you",
+    subtitle: thankYou.message || "",
+    bullets: [],
+    stats: [],
+    notes: "",
+    buttons: (thankYou.buttons || []).filter((b) => b && b.label && webLink(b.url, /^(https?:\/\/|mailto:|tel:)/i)),
+    scene: { kind: "particles", primary: deck.theme.accent, secondary: deck.slides[0]?.scene.secondary || deck.theme.accent, speed: 0.7, density: 0.6, values: [] },
+  });
+}
 document.title = deck.title;
 
 // ─── Theme ──────────────────────────────────────────────────────────────
@@ -990,6 +1008,18 @@ function renderSlide(slide, delay, dir = 1) {
     }
     box.append(grid);
   }
+  if (slide.buttons?.length) {
+    const row = el("div", "cta");
+    slide.buttons.forEach((b, i) => {
+      const a = el("a", i === 0 ? "cta-btn primary" : "cta-btn", b.label);
+      a.href = b.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.addEventListener("click", (e) => e.stopPropagation());
+      row.append(a);
+    });
+    box.append(row);
+  }
   page.append(box);
   slideEl.append(page);
   notesEl.textContent = slide.notes || "No speaker notes for this slide.";
@@ -1070,6 +1100,8 @@ function go(next, instant = false) {
   } catch {
     /* no parent */
   }
+  // Auto-play counts down again from every slide, however it was reached.
+  schedulePlay();
 }
 
 const next = () => go(index + 1);
@@ -1090,6 +1122,7 @@ window.addEventListener("keydown", (e) => {
   else if (e.key === "End") go(slides.length - 1);
   else if (e.key.toLowerCase() === "f") toggleFullscreen();
   else if (e.key.toLowerCase() === "n") document.body.classList.toggle("show-notes");
+  else if (e.key.toLowerCase() === "p") setPlaying(!playing);
 });
 document.getElementById("stage").addEventListener("click", (e) => {
   if (e.target.closest("button, a")) return;
@@ -1146,6 +1179,63 @@ window.addEventListener("hashchange", () => {
 // The "← → or scroll to travel" hint fades after a few seconds.
 setTimeout(() => hintEl?.classList.add("hidden"), 5000);
 
+// ─── Auto-play ──────────────────────────────────────────────────────────
+// Moves on by itself every few seconds (no narration) and stops on the last slide.
+const playBtn = document.getElementById("play");
+const autoplaySeconds = Math.min(60, Math.max(3, Number(settings.autoplay?.seconds) || 7));
+let playing = false;
+let playTimer = null;
+
+function schedulePlay() {
+  clearTimeout(playTimer);
+  playTimer = null;
+  if (!playing) return;
+  if (index >= slides.length - 1) {
+    setPlaying(false);
+    return;
+  }
+  playTimer = setTimeout(next, autoplaySeconds * 1000);
+}
+
+function setPlaying(on) {
+  playing = on;
+  playBtn.classList.toggle("playing", on);
+  playBtn.setAttribute("aria-label", on ? "Pause auto-play (P)" : "Auto-play (P)");
+  playBtn.title = on ? "Pause (P)" : "Auto-play (P)";
+  playBtn.innerHTML = on ? "&#10074;&#10074;" : "&#9654;";
+  schedulePlay();
+}
+playBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  // Playing from the last slide starts again from the first.
+  if (!playing && index >= slides.length - 1) go(0);
+  setPlaying(!playing);
+});
+
+// ─── Footer branding ────────────────────────────────────────────────────
+const footer = settings.footer;
+const brandEl = document.getElementById("brand");
+const brandLogo = webLink(footer?.logoUrl, /^https:\/\//i);
+if (footer?.enabled && (footer.name || brandLogo)) {
+  const link = webLink(footer.link);
+  const wrap = el(link ? "a" : "span", "brand-link");
+  if (link) {
+    wrap.href = link;
+    wrap.target = "_blank";
+    wrap.rel = "noopener noreferrer";
+  }
+  if (brandLogo) {
+    const img = el("img");
+    img.src = brandLogo;
+    img.alt = footer.name || "";
+    img.addEventListener("error", () => img.remove());
+    wrap.append(img);
+  }
+  if (footer.name) wrap.append(el("span", "", footer.name));
+  brandEl.append(wrap);
+  brandEl.hidden = false;
+}
+
 // ─── Render loop ────────────────────────────────────────────────────────
 const mouse = { x: 0, y: 0 };
 window.addEventListener("pointermove", (e) => {
@@ -1190,3 +1280,4 @@ renderer.setAnimationLoop(() => {
 
 const start = parseInt(location.hash.slice(1), 10);
 go(Number.isFinite(start) ? start - 1 : 0, true);
+if (settings.autoplay?.enabled) setPlaying(true);

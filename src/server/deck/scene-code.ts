@@ -321,8 +321,9 @@ export function reuseScenes(deck: DeckSpec, previous: DeckSpec | null): { deck: 
 }
 
 /** The deck as context for the model when editing: scene code is left out (it is large and not needed). */
-export function deckForPrompt(deck: DeckSpec): DeckSpec {
-  return { ...deck, slides: deck.slides.map((s) => ({ ...s, scene: { ...s.scene, code: undefined, compose: undefined } })) };
+export function deckForPrompt(deck: DeckSpec): Omit<DeckSpec, "settings"> {
+  // Settings are the owner's, not the model's (see the deck pipeline).
+  return { title: deck.title, theme: deck.theme, slides: deck.slides.map((s) => ({ ...s, scene: { ...s.scene, code: undefined, compose: undefined } })) };
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { setAccessToken } from "@/lib/api-client";
-import { allowedParentOrigin, inIframe, notifyParent, setParentOrigin, setParentSite } from "./parent-bridge";
+import { allowedParentOrigin, inIframe, notifyParent, setParentBranding, setParentOrigin, setParentSite } from "./parent-bridge";
 
 type State = "waiting" | "ready" | "no-parent";
 
@@ -28,6 +28,7 @@ export function EmbedGate({ children }: { children: React.ReactNode }) {
       if (message?.type !== "INIT_DATA" || typeof message.token !== "string" || !message.token) return;
       setParentOrigin(event.origin);
       if (typeof message.URL === "string") setParentSite(message.URL);
+      setParentBranding(message.branding);
       setAccessToken(message.token);
       setState("ready");
     };

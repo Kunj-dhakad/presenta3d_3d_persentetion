@@ -103,13 +103,71 @@ const ThemeSchema = z.object({
 /** What the model writes (OpenAI strict structured output). */
 export const DeckSlideSchema = z.object({ ...slideFields, scene: AiSceneSchema });
 export const DeckSpecSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(DeckSlideSchema) });
+/**
+ * Settings the owner edits by hand (the Design panel), never the model: the
+ * Thank You slide the engine appends, footer branding and auto-play. Edits by
+ * chat keep them (see the deck pipeline). Every part is optional in deck.json.
+ */
+const CtaSchema = z.object({ label: z.string(), url: z.string() });
+const DeckSettingsInput = z
+  .object({
+    thankYou: z.object({ enabled: z.boolean(), title: z.string(), message: z.string(), buttons: z.array(CtaSchema) }).partial(),
+    footer: z.object({ enabled: z.boolean(), logoUrl: z.string(), name: z.string(), link: z.string() }).partial(),
+    autoplay: z.object({ enabled: z.boolean(), seconds: z.number() }).partial(),
+  })
+  .partial();
+export type DeckCta = z.infer<typeof CtaSchema>;
+export type DeckSettings = {
+  thankYou: { enabled: boolean; title: string; message: string; buttons: DeckCta[] };
+  footer: { enabled: boolean; logoUrl: string; name: string; link: string };
+  autoplay: { enabled: boolean; seconds: number };
+};
+
 /** What is stored in deck.json and read by the engine: presets expanded into scene descriptions. */
 const StoredSlideSchema = z.object({ ...slideFields, scene: StoredSceneSchema });
-const StoredDeckSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(StoredSlideSchema) });
-export type DeckSpec = z.infer<typeof StoredDeckSchema>;
+const StoredDeckSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(StoredSlideSchema), settings: DeckSettingsInput.optional() });
+export type DeckSpec = Omit<z.infer<typeof StoredDeckSchema>, "settings"> & { settings: DeckSettings };
 export type DeckSlide = DeckSpec["slides"][number];
 
-export const DECK_LIMITS = { minSlides: 1, maxSlides: 20, maxBullets: 5, maxStats: 4, maxValues: 12, maxCount: 160 } as const;
+export const DECK_LIMITS = { minSlides: 1, maxSlides: 20, maxBullets: 5, maxStats: 4, maxValues: 12, maxCount: 160, maxButtons: 3 } as const;
+
+/** Settings of a new deck: it ends on a Thank You slide. */
+export function defaultDeckSettings(): DeckSettings {
+  return {
+    thankYou: { enabled: true, title: "Thank you", message: "", buttons: [] },
+    footer: { enabled: false, logoUrl: "", name: "", link: "" },
+    autoplay: { enabled: false, seconds: 7 },
+  };
+}
+
+/** Links the engine may open: web pages, plus e-mail and phone for buttons. Anything else (javascript: …) is dropped. */
+function safeUrl(url: string | undefined, schemes: RegExp = /^https?:\/\//i): string {
+  const u = (url ?? "").trim().slice(0, 1000);
+  return schemes.test(u) ? u : "";
+}
+
+function normalizeSettings(input: z.infer<typeof DeckSettingsInput> | undefined): DeckSettings {
+  const base = defaultDeckSettings();
+  // Decks saved before settings existed often end with their own closing slide: no second Thank You slide for them.
+  if (!input) base.thankYou.enabled = false;
+  const t = { ...base.thankYou, ...input?.thankYou };
+  const f = { ...base.footer, ...input?.footer };
+  const a = { ...base.autoplay, ...input?.autoplay };
+  return {
+    thankYou: {
+      enabled: t.enabled,
+      title: t.title.trim().slice(0, 120) || base.thankYou.title,
+      message: t.message.slice(0, 400),
+      buttons: t.buttons
+        .map((b) => ({ label: b.label.trim().slice(0, 40), url: safeUrl(b.url, /^(https?:\/\/|mailto:|tel:)/i) }))
+        .filter((b) => b.label && b.url)
+        .slice(0, DECK_LIMITS.maxButtons),
+    },
+    // The logo must be https: the presentation's CSP loads images only over https.
+    footer: { enabled: f.enabled, logoUrl: safeUrl(f.logoUrl, /^https:\/\//i), name: f.name.trim().slice(0, 80), link: safeUrl(f.link) },
+    autoplay: { enabled: a.enabled, seconds: Math.round(clamp(a.seconds, 3, 60, 7)) },
+  };
+}
 
 const DEFAULT_COMPOSE: ComposeSpec = { shape: "icosahedron", arrangement: "ring", motion: "rotate", material: "glow", count: 12 };
 
@@ -169,6 +227,7 @@ export function validateDeck(input: unknown): DeckValidation {
         ...(s.scene.compose ? { compose: { ...s.scene.compose, count: Math.round(clamp(s.scene.compose.count, 1, DECK_LIMITS.maxCount, 12)) } } : {}),
       },
     })),
+    settings: normalizeSettings(d.settings),
   };
   return { ok: true, deck };
 }
@@ -215,5 +274,7 @@ export function sampleDeck(topic = "Present 3D"): DeckSpec {
       { layout: "stats", kicker: "IMPACT", title: "Numbers that matter", subtitle: "", bullets: [], stats: [{ value: "3.2x", label: "longer viewing time" }, { value: "87%", label: "recall after a week" }, { value: "0", label: "plugins to install" }], scene: scene("bar-chart", "#8b9cff", "#5be0c3", [3, 5, 4, 7, 9]), notes: "" },
       { layout: "center", kicker: "THANK YOU", title: "Let's build the future together", subtitle: "", bullets: [], stats: [], scene: scene("warp-tunnel", "#ff7ad9", "#8b9cff"), notes: "" },
     ],
+    // Its last slide is already a closing slide.
+    settings: { ...defaultDeckSettings(), thankYou: { ...defaultDeckSettings().thankYou, enabled: false } },
   };
 }

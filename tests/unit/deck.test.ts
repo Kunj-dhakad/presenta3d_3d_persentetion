@@ -52,6 +52,8 @@ describe("3D presentation generation", () => {
     expect(project.category).toBe("presentation");
     expect(project.lastWorkingVersionId).toBe(first.result.postVersionId);
     const deck1 = JSON.parse((await getFiles(p.id)).find((f) => f.path === "deck.json")!.content) as DeckSpec;
+    // A new deck ends on the engine's Thank You slide.
+    expect(deck1.settings.thankYou.enabled).toBe(true);
 
     const second = await run(u.id, p.id, 'Change the title of slide 2 to "Why the ocean matters"');
     expect(second.result.buildStatus).toBe("succeeded");
@@ -59,6 +61,8 @@ describe("3D presentation generation", () => {
     const deck2 = JSON.parse((await getFiles(p.id)).find((f) => f.path === "deck.json")!.content) as DeckSpec;
     expect(deck2.slides[1].title).toBe("Why the ocean matters");
     expect(deck2.slides.filter((_, i) => i !== 1)).toEqual(deck1.slides.filter((_, i) => i !== 1));
+    // The owner's settings survive chat edits.
+    expect(deck2.settings).toEqual(deck1.settings);
     // The pre-edit checkpoint still holds the original title, so the edit can be undone.
     const pre = await db.projectVersion.findUniqueOrThrow({ where: { id: second.result.preVersionId! } });
     expect(JSON.stringify(pre.files)).toContain(deck1.slides[1].title);

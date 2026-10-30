@@ -58,8 +58,19 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 #progress { height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform 0.9s cubic-bezier(.2,.8,.2,1); }
 #notes { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); padding: 14px 18px; border-radius: 14px; background: rgba(8, 8, 12, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); font-size: 14px; line-height: 1.5; display: none; }
 body.show-notes #notes { display: block; }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#play.playing { color: var(--accent); }
+.cta { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.cta-btn { display: inline-flex; align-items: center; padding: 12px 22px; border-radius: 999px; font-size: 15px; font-weight: 600; text-decoration: none; color: var(--text); border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(12, 13, 20, 0.5); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: transform 0.2s, background 0.2s; }
+.cta-btn:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.1); }
+.cta-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+#brand { position: fixed; left: 18px; bottom: 20px; max-width: min(260px, 30vw); }
+#brand .brand-link { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: var(--text); font-size: 13px; text-decoration: none; max-width: 100%; }
+#brand img { height: 28px; max-width: 110px; object-fit: contain; border-radius: 6px; }
+#brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.9; }
 @media (max-width: 760px) {
+  #brand { left: auto; right: 12px; bottom: auto; top: 14px; max-width: 50vw; }
+  #brand img { height: 22px; }
   .slide { align-items: flex-end !important; justify-content: center !important; text-align: center; padding-bottom: 96px; }
   .layout-left .content, .layout-right .content { max-width: 100%; }
   .bullets { justify-items: center; }
@@ -103,10 +114,12 @@ ${STYLE}  </style>
   <div id="chip" class="pill"><span id="counter"></span><span class="sep"></span><span id="chip-title"></span></div>
   <div id="hint" class="pill">&#8592; &#8594; or scroll to travel</div>
   <div id="notes" role="note"></div>
+  <footer id="brand" hidden></footer>
   <nav class="hud pill" aria-label="Slides">
     <button id="prev" class="nav-btn" aria-label="Previous slide">&#8249;</button>
     <div id="dots"></div>
     <button id="next" class="nav-btn" aria-label="Next slide">&#8250;</button>
+    <button id="play" class="nav-btn" aria-label="Auto-play (P)" title="Auto-play (P)">&#9654;</button>
     <button id="fs" class="nav-btn" aria-label="Toggle fullscreen (F)" title="Fullscreen (F)">&#x26F6;</button>
   </nav>
   <script type="module" src="./main.js"></script>
