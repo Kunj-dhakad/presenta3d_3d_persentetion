@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, ArrowLeft, Eye, MessageSquare, Palette, Pencil, Play, Rocket } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, MessageSquare, Palette, Pencil, Play, Rocket, RotateCcw } from "lucide-react";
 import { useWorkspace, type ChatMessageRow, type ProjectMeta } from "@/stores/workspace";
 import { api, ApiError, errorMessage, streamJob } from "@/lib/api-client";
 import type { BuildSummary } from "@/lib/build-types";
@@ -220,7 +220,22 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   }
 
   const hasPreview = Boolean(project?.lastWorkingBuildId);
+  // The last request got no answer and nothing is running: its job was lost (the tab was closed
+  // before it started, or the server stopped it). Offer to send it again.
+  const last = messages[messages.length - 1];
+  const unanswered = loaded && !jobRunning && !sending && last?.role === "user" ? last : null;
   const chat = (
+    <div className="flex h-full min-h-0 flex-col">
+      {unanswered && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning" role="status">
+          <AlertCircle className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1">This request did not finish.</span>
+          <Button size="xs" variant="secondary" onClick={() => void send(unanswered.content)}>
+            <RotateCcw /> Try again
+          </Button>
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
     <ChatPanel
       messages={messages}
       job={job}
@@ -234,6 +249,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       variant="presentation"
       loading={!loaded}
     />
+      </div>
+    </div>
   );
   const preview = <PreviewPane busy={jobRunning} onFixWithAI={() => void send("The presentation preview shows errors. Regenerate the deck so it renders correctly.")} />;
 

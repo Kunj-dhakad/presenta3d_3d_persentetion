@@ -157,7 +157,7 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
               <>
                 <Monitor className="size-6 text-muted-foreground" />
                 <p className="text-sm font-medium">No preview yet</p>
-                <p className="max-w-xs text-xs text-muted-foreground">{build.status === "failed" ? "The build failed. Fix the errors below or ask the AI to repair them." : "Describe what to build in the chat, or add files and press Build."}</p>
+                <p className="max-w-xs text-xs text-muted-foreground">{build.status === "failed" ? "The presentation could not be built. Ask for the change again in the chat." : "Describe your presentation in the chat. It appears here as soon as the slides are written."}</p>
               </>
             )}
           </div>

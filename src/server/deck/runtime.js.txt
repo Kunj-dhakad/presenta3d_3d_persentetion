@@ -1001,6 +1001,7 @@ function renderSlide(slide, delay, dir = 1) {
   }
   if (slide.layout === "stats" && slide.stats.length) {
     const grid = el("div", "stats");
+    grid.style.setProperty("--n", String(Math.min(4, slide.stats.length)));
     for (const s of slide.stats) {
       const card = el("div", "stat");
       card.append(el("strong", "", s.value), el("span", "", s.label));

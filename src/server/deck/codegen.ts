@@ -19,7 +19,9 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #slide { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .slide { position: absolute; inset: 0; display: flex; padding: clamp(24px, 6vw, 96px); pointer-events: none; }
-.slide .content { max-width: min(46rem, 100%); pointer-events: auto; }
+.slide .content { max-width: min(46rem, 100%); pointer-events: auto; position: relative; isolation: isolate; }
+/* A soft shade of the background behind centred text keeps it readable over bright 3D scenes. */
+.layout-hero .content::before, .layout-center .content::before, .layout-stats .content::before { content: ""; position: absolute; inset: -14% -12%; z-index: -1; pointer-events: none; background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 62%, transparent), transparent); }
 .layout-hero, .layout-center, .layout-stats { align-items: center; justify-content: center; text-align: center; }
 .layout-hero .content, .layout-center .content { max-width: 60rem; }
 .layout-left { align-items: center; justify-content: flex-start; }
@@ -36,9 +38,10 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 .bullets li { position: relative; padding-left: 26px; font-size: clamp(15px, 1.35vw, 19px); line-height: 1.45; opacity: 0.92; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6); }
 .bullets li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 12px; height: 2px; background: var(--accent); border-radius: 2px; }
 .layout-center .bullets, .layout-hero .bullets { justify-items: center; }
-.stats { margin-top: 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+/* All stats on one row (--n is their count); two per row on phones. */
+.stats { margin-top: 32px; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 16px; }
 .stat { padding: 20px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 62%, transparent); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); text-align: left; }
-.stat strong { display: block; font-size: clamp(30px, 3.6vw, 52px); letter-spacing: -0.03em; color: var(--accent); }
+.stat strong { display: block; font-size: clamp(26px, 3vw, 46px); line-height: 1.1; letter-spacing: -0.03em; color: var(--accent); }
 .stat span { display: block; margin-top: 4px; font-size: 14px; opacity: 0.75; }
 .pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); font-size: 13px; }
 #chip { position: fixed; top: 18px; left: 18px; max-width: calc(100% - 36px); }
