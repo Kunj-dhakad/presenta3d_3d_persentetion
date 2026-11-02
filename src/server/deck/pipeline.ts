@@ -28,6 +28,7 @@ Use a different preset on every slide; never repeat one within a deck, and vary 
 theme.environment is the world the camera travels through:
 ${ENVIRONMENTS.map((e) => `- ${e}: ${ENVIRONMENT_HINTS[e]}`).join("\n")}
 theme.transition: always "side".
+Motion: every slide sets transition (how the camera travels into it) and textEffect (how its text appears). Match them to the slide: e.g. hero "rise" + "letters", a numbers slide "push" + "zoom", a big statement "orbit" + "blur". Neighbouring slides never share a transition or a textEffect; use at least 4 different transitions per deck; "spin" at most once.
 Art direction: a dark theme.background (near black, tinted toward the palette), light theme.text, one vivid theme.accent. Pick scene.primary/secondary colours that harmonise with the accent; keep the palette consistent across the deck.
 Every deck must feel designed for its own topic: derive the palette, environment, font and scenes from the subject, not from habit. Do not default to cyan/blue or the grid environment.
 Names: use the names the user gives. If you must invent a product or company name, make it specific to the topic; avoid generic names like "Pulse", "Nova", "Nexus", "Aura" or "Vertex".
@@ -294,7 +295,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     const reused = reuseScenes(diversifyDeck(v.deck), existing);
     // Settings are the owner's (Design panel); the model never writes them.
     const deck: DeckSpec = { ...reused.deck, settings: existing?.settings ?? defaultDeckSettings() };
-    log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${deck.theme.transition} transition · ${deck.theme.font} font`);
+    log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${new Set(deck.slides.map((s) => s.transition)).size} transitions · ${deck.theme.font} font`);
     ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
     ctx.progress(0.4);
 

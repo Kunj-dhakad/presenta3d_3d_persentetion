@@ -31,6 +31,8 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 .layout-stats .content { max-width: 64rem; }
 .kicker { margin: 0 0 14px; font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .title { margin: 0; font-weight: 700; line-height: 1.02; letter-spacing: -0.035em; font-size: clamp(36px, 5.2vw, 76px); text-wrap: balance; text-shadow: 0 2px 30px rgba(0, 0, 0, 0.55); }
+.title .word { display: inline-block; white-space: nowrap; }
+.title .char { display: inline-block; }
 .layout-hero .title { font-size: clamp(44px, 8vw, 120px); }
 .subtitle { margin: 18px 0 0; font-size: clamp(16px, 1.6vw, 22px); line-height: 1.5; opacity: 0.78; text-wrap: pretty; text-shadow: 0 1px 18px rgba(0, 0, 0, 0.6); }
 .layout-hero .subtitle, .layout-center .subtitle { margin-left: auto; margin-right: auto; max-width: 42rem; }

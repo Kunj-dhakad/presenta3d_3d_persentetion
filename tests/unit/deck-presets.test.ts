@@ -55,6 +55,16 @@ describe("no two slides alike", () => {
     }
   });
 
+  it("never gives neighbouring slides the same transition or text effect", () => {
+    // Every slide of deckWith() copies one sample slide, so all ask for the same motion.
+    const deck = diversifyDeck(deckWith(["dna-helix", "satellite-ring", "crown-of-cubes", "crystal-circle", "torus-halo", "city-blocks", "pixel-field"]));
+    for (let i = 1; i < deck.slides.length; i++) {
+      expect(deck.slides[i].transition).not.toBe(deck.slides[i - 1].transition);
+      expect(deck.slides[i].textEffect).not.toBe(deck.slides[i - 1].textEffect);
+    }
+    expect(new Set(deck.slides.map((s) => s.transition)).size).toBeGreaterThanOrEqual(2);
+  });
+
   it("picks replacements by shared tags", () => {
     const pick = closestUnusedPreset("solar-system", new Set(["solar-system"]));
     expect(pick.name).not.toBe("solar-system");

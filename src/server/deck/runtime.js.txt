@@ -977,7 +977,69 @@ const TEXT_OUT = 0.32;
 // Each slide's text lives in its own page element. On a change, every page on
 // screen leaves (in the travel direction) before the new text comes in, so two
 // slides' text are never visible together, even when navigating quickly.
-function renderSlide(slide, delay, dir = 1) {
+// ─── Text effects (slide.textEffect) ────────────────────────────────────
+// How a slide's text comes in. "letters" is built separately (title letter by letter).
+const TEXT_FROM = {
+  slide: (dir) => ({ x: 70 * dir }),
+  rise: () => ({ y: 46 }),
+  drop: () => ({ y: -46 }),
+  zoom: () => ({ scale: 0.86 }),
+  blur: () => ({ filter: "blur(14px)", scale: 1.04 }),
+  flip: () => ({ rotationX: -75, y: 20, transformPerspective: 700, transformOrigin: "50% 100%" }),
+};
+const TEXT_RESET = { x: 0, y: 0, scale: 1, rotationX: 0, filter: "blur(0px)" };
+
+/** Splits the title into letter spans (words kept whole, so lines still wrap between words). */
+function splitLetters(title) {
+  const text = title.textContent;
+  title.textContent = "";
+  title.setAttribute("aria-label", text);
+  const chars = [];
+  for (const part of text.split(/(\s+)/)) {
+    if (!part) continue;
+    if (/^\s+$/.test(part)) {
+      title.append(part);
+      continue;
+    }
+    const word = el("span", "word");
+    word.setAttribute("aria-hidden", "true");
+    for (const ch of part) {
+      const c = el("span", "char", ch);
+      word.append(c);
+      chars.push(c);
+    }
+    title.append(word);
+  }
+  return chars;
+}
+
+function animateText(box, effect, dir, start) {
+  if (effect === "letters") {
+    const title = box.querySelector(".title");
+    const chars = title ? splitLetters(title) : [];
+    const rest = [...box.children].filter((c) => c !== title);
+    gsap.set(chars, { opacity: 0, y: 28 });
+    gsap.set(rest, { opacity: 0, y: 24 });
+    return gsap
+      .timeline({ delay: start })
+      .to(chars, { opacity: 1, y: 0, duration: 0.5, stagger: Math.min(0.035, 0.9 / Math.max(1, chars.length)), ease: "power3.out" })
+      .to(rest, { opacity: 1, y: 0, duration: 0.6, stagger: 0.07, ease: "power3.out" }, "-=0.3");
+  }
+  const from = (TEXT_FROM[effect] ?? TEXT_FROM.slide)(dir);
+  const to = Object.fromEntries(Object.keys(from).filter((k) => k in TEXT_RESET).map((k) => [k, TEXT_RESET[k]]));
+  gsap.set(box.children, { opacity: 0, ...from });
+  return gsap.to(box.children, {
+    opacity: 1,
+    ...to,
+    duration: effect === "blur" ? 0.9 : 0.8,
+    stagger: 0.07,
+    ease: effect === "zoom" ? "back.out(1.6)" : "power3.out",
+    delay: start,
+    clearProps: "filter",
+  });
+}
+
+function renderSlide(slide, delay, dir = 1, effect = "slide") {
   textTween?.kill();
   for (const old of [...slideEl.children]) {
     gsap.killTweensOf([old, ...old.querySelectorAll("*")]);
@@ -1024,9 +1086,8 @@ function renderSlide(slide, delay, dir = 1) {
   page.append(box);
   slideEl.append(page);
   notesEl.textContent = slide.notes || "No speaker notes for this slide.";
-  gsap.set(box.children, { opacity: 0, x: 70 * dir });
   // The new text starts only after the old text has left.
-  textTween = gsap.to(box.children, { opacity: 1, x: 0, duration: 0.8, stagger: 0.07, ease: "power3.out", delay: Math.max(delay, TEXT_OUT + 0.05) });
+  textTween = animateText(box, effect, dir, Math.max(delay, TEXT_OUT + 0.05));
 }
 
 slides.forEach((_, i) => {
@@ -1040,7 +1101,7 @@ slides.forEach((_, i) => {
 });
 
 // ─── Camera travel ──────────────────────────────────────────────────────
-const rig = { x: 0, y: 0.6, z: 11, lookX: 0, lookY: 0.2, lookZ: 0, fov: 45 };
+const rig = { x: 0, y: 0.6, z: 11, lookX: 0, lookY: 0.2, lookZ: 0, fov: 45, roll: 0 };
 let index = -1;
 let lastNav = 0;
 
@@ -1056,6 +1117,60 @@ function arrive(i) {
     const tl = gsap.timeline();
     st.built.enter(tl);
   }
+}
+
+// ─── Slide transitions (slide.transition) ───────────────────────────────
+// How the camera travels into a slide. Every move ends at the same resting
+// pose, so a new move can start from any point of the previous one. Decks made
+// before slides had a transition / text effect rotate through these lists, so
+// neighbouring slides still differ.
+const TRANSITION_ORDER = ["glide", "orbit", "rise", "push", "swoop", "spin"];
+const TEXT_ORDER = ["slide", "rise", "zoom", "letters", "blur", "flip", "drop"];
+const transitionFor = (i) => slides[i]?.transition || TRANSITION_ORDER[i % TRANSITION_ORDER.length];
+const textEffectFor = (i) => slides[i]?.textEffect || TEXT_ORDER[i % TEXT_ORDER.length];
+
+/** Starts the camera move to station `st`; returns its length in seconds. */
+function travel(kind, st, camZ, distance, dir, done) {
+  let duration = Math.min(2.6, 1.6 + 0.25 * (distance - 1));
+  const pull = 7 + Math.min(6, (distance - 1) * 2);
+  const rest = { z: camZ, y: 0.6, lookY: 0.2, fov: 45, roll: 0 };
+  const tl = gsap.timeline({ defaults: { overwrite: "auto" } });
+  const glide = (ease = "power3.inOut") => gsap.to(rig, { x: st.x, lookX: st.x, duration, ease, overwrite: "auto", onComplete: done });
+  switch (kind) {
+    case "rise": // lift high above the world, then come down onto the slide
+      glide();
+      tl.to(rig, { y: 9, lookY: -1.5, z: camZ + 4, fov: 50, roll: 0, duration: duration * 0.45, ease: "power2.out" })
+        .to(rig, { ...rest, duration: duration * 0.55, ease: "power3.inOut" });
+      break;
+    case "swoop": // dip low over the floor, then rise into place
+      glide();
+      tl.to(rig, { y: -1.6, lookY: 1.4, z: camZ + 3, fov: 52, roll: 0, duration: duration * 0.45, ease: "sine.inOut" })
+        .to(rig, { ...rest, duration: duration * 0.55, ease: "power2.out" });
+      break;
+    case "orbit": // swing out past the slide in an arc, looking at it, and settle back
+      duration *= 1.1;
+      tl.to(rig, { lookX: st.x, duration, ease: "power2.inOut" }, 0)
+        .to(rig, { x: st.x + dir * 6, z: camZ + pull * 0.8, y: 1.6, lookY: 0.6, fov: 52, roll: 0, duration: duration * 0.6, ease: "power2.inOut" }, 0)
+        .to(rig, { x: st.x, ...rest, duration: duration * 0.4, ease: "power2.out", onComplete: done }, duration * 0.6);
+      break;
+    case "push": // a quick straight dash with a speed punch of the lens
+      duration = Math.max(0.9, duration * 0.6);
+      glide("expo.inOut");
+      tl.to(rig, { z: camZ + 2, y: 0.6, lookY: 0.2, fov: 62, roll: 0, duration: duration * 0.5, ease: "power2.in" })
+        .to(rig, { ...rest, duration: duration * 0.5, ease: "power2.out" });
+      break;
+    case "spin": // the zoom-out glide with a full barrel roll
+      glide();
+      gsap.fromTo(rig, { roll: 0 }, { roll: dir * Math.PI * 2, duration, ease: "power2.inOut", overwrite: "auto", onComplete: () => (rig.roll = 0) });
+      tl.to(rig, { z: camZ + pull, y: 2.2, lookY: 0.9, fov: 55, duration: duration * 0.42, ease: "power2.out" })
+        .to(rig, { z: camZ, y: 0.6, lookY: 0.2, fov: 45, duration: duration * 0.58, ease: "power3.inOut" });
+      break;
+    default: // "glide": zoom out, glide sideways to the next slide, zoom back in
+      glide();
+      tl.to(rig, { z: camZ + pull, y: 2.2, lookY: 0.9, fov: 55, roll: 0, duration: duration * 0.42, ease: "power2.out" })
+        .to(rig, { ...rest, duration: duration * 0.58, ease: "power3.inOut" });
+  }
+  return duration;
 }
 
 function go(next, instant = false) {
@@ -1074,18 +1189,12 @@ function go(next, instant = false) {
   const st = stations[next];
   const camZ = st.z + baseZ();
   if (instant || distance === 0) {
-    Object.assign(rig, { x: st.x, lookX: st.x, z: camZ, lookZ: st.z, y: 0.6 });
+    Object.assign(rig, { x: st.x, lookX: st.x, z: camZ, lookZ: st.z, y: 0.6, roll: 0 });
     arrive(next);
     renderSlide(slide, 0.1, dir);
   } else {
-    // Zoom out, glide sideways to the next slide, zoom back in (Omma-style travel).
-    const duration = Math.min(2.6, 1.6 + 0.25 * (distance - 1));
-    const pull = 7 + Math.min(6, (distance - 1) * 2);
-    gsap.to(rig, { x: st.x, lookX: st.x, duration, ease: "power3.inOut", overwrite: "auto", onComplete: () => { arrive(next); prune(next); } });
-    gsap.timeline({ overwrite: "auto" })
-      .to(rig, { z: camZ + pull, y: 2.2, lookY: 0.9, fov: 55, duration: duration * 0.42, ease: "power2.out" })
-      .to(rig, { z: camZ, y: 0.6, lookY: 0.2, fov: 45, duration: duration * 0.58, ease: "power3.inOut" });
-    renderSlide(slide, duration * 0.5, dir);
+    const duration = travel(transitionFor(next), st, camZ, distance, dir, () => { arrive(next); prune(next); });
+    renderSlide(slide, duration * 0.5, dir, textEffectFor(next));
   }
   accentLight.color = new THREE.Color(slide.scene.secondary);
   // Custom scenes use lit materials: a softer, higher-threshold bloom keeps their detail.
@@ -1275,6 +1384,7 @@ renderer.setAnimationLoop(() => {
     camera.updateProjectionMatrix();
   }
   camera.lookAt(rig.lookX, rig.lookY, rig.lookZ);
+  if (rig.roll) camera.rotateZ(rig.roll);
   sky.position.set(camera.position.x, 0, camera.position.z);
   composer.render();
 });

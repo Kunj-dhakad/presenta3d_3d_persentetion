@@ -101,7 +101,23 @@ const ThemeSchema = z.object({
 });
 
 /** What the model writes (OpenAI strict structured output). */
-export const DeckSlideSchema = z.object({ ...slideFields, scene: AiSceneSchema });
+/** How the camera travels into a slide, and how its text appears (runtime: travel() / animateText()). */
+export const SLIDE_TRANSITIONS = ["glide", "orbit", "rise", "push", "swoop", "spin"] as const;
+export const TEXT_EFFECTS = ["slide", "rise", "drop", "zoom", "blur", "flip", "letters"] as const;
+const motionFields = {
+  transition: z
+    .enum(SLIDE_TRANSITIONS)
+    .describe(
+      "How the camera travels INTO this slide. Vary it: neighbouring slides never share one, and use at least 4 different ones in a deck. glide = zoom out, glide sideways, zoom in; orbit = swing round the slide in an arc; rise = lift high above the world and come down; push = quick straight dash; swoop = dip low over the floor and rise; spin = barrel roll (sparingly, at most once).",
+    ),
+  textEffect: z
+    .enum(TEXT_EFFECTS)
+    .describe(
+      "How this slide's text appears. Vary it: neighbouring slides never share one. slide = in from the side; rise = up from below; drop = down from above; zoom = grows in; blur = sharpens from a blur; flip = flips up in 3D; letters = title letter by letter (best on hero and short titles).",
+    ),
+};
+
+export const DeckSlideSchema = z.object({ ...slideFields, ...motionFields, scene: AiSceneSchema });
 export const DeckSpecSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(DeckSlideSchema) });
 /**
  * Settings the owner edits by hand (the Design panel), never the model: the
@@ -124,7 +140,13 @@ export type DeckSettings = {
 };
 
 /** What is stored in deck.json and read by the engine: presets expanded into scene descriptions. */
-const StoredSlideSchema = z.object({ ...slideFields, scene: StoredSceneSchema });
+// Optional: decks saved before slides had them rotate through the runtime's defaults.
+const StoredSlideSchema = z.object({
+  ...slideFields,
+  transition: motionFields.transition.optional(),
+  textEffect: motionFields.textEffect.optional(),
+  scene: StoredSceneSchema,
+});
 const StoredDeckSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(StoredSlideSchema), settings: DeckSettingsInput.optional() });
 export type DeckSpec = Omit<z.infer<typeof StoredDeckSchema>, "settings"> & { settings: DeckSettings };
 export type DeckSlide = DeckSpec["slides"][number];
@@ -254,11 +276,20 @@ export function diversifyDeck(deck: DeckSpec): DeckSpec {
       }
       used.add(scene.preset!);
     }
-    const s: DeckSlide = { ...slide, scene };
+    // Neighbouring slides never move in the same way: a repeated (or missing)
+    // transition / text effect takes the next one in the list after the previous slide's.
+    const transition = varied(SLIDE_TRANSITIONS, slide.transition, prev?.transition);
+    const textEffect = varied(TEXT_EFFECTS, slide.textEffect, prev?.textEffect);
+    const s: DeckSlide = { ...slide, transition, textEffect, scene };
     prev = s;
     return s;
   });
   return { ...deck, slides };
+}
+
+function varied<T extends string>(list: readonly T[], value: T | undefined, previous: T | undefined): T {
+  if (value && value !== previous) return value;
+  return list[(list.indexOf(previous ?? list[list.length - 1]) + 1) % list.length];
 }
 
 /** Starter deck used when a presentation is created without AI (and by tests). */
@@ -269,10 +300,10 @@ export function sampleDeck(topic = "Present 3D"): DeckSpec {
     title: `${topic} — 3D presentation`,
     theme: { background: "#05060a", text: "#f2f3f7", accent: "#8b9cff", font: "display", environment: "grid", transition: "side" },
     slides: [
-      { layout: "hero", kicker: "INTRODUCING", title: topic, subtitle: "Ideas that move in three dimensions.", bullets: [], stats: [], scene: scene("spiral-galaxy", "#8b9cff", "#ff7ad9"), notes: "" },
-      { layout: "left", kicker: "WHY NOW", title: "Attention is the new currency", subtitle: "Flat slides blend together. Spatial stories are remembered.", bullets: ["Immersive visuals hold attention", "Motion guides the narrative", "Works in any browser"], stats: [], scene: scene("hero-crystal", "#7fe7ff", "#8b9cff"), notes: "" },
-      { layout: "stats", kicker: "IMPACT", title: "Numbers that matter", subtitle: "", bullets: [], stats: [{ value: "3.2x", label: "longer viewing time" }, { value: "87%", label: "recall after a week" }, { value: "0", label: "plugins to install" }], scene: scene("bar-chart", "#8b9cff", "#5be0c3", [3, 5, 4, 7, 9]), notes: "" },
-      { layout: "center", kicker: "THANK YOU", title: "Let's build the future together", subtitle: "", bullets: [], stats: [], scene: scene("warp-tunnel", "#ff7ad9", "#8b9cff"), notes: "" },
+      { layout: "hero", transition: "rise", textEffect: "letters", kicker: "INTRODUCING", title: topic, subtitle: "Ideas that move in three dimensions.", bullets: [], stats: [], scene: scene("spiral-galaxy", "#8b9cff", "#ff7ad9"), notes: "" },
+      { layout: "left", transition: "glide", textEffect: "slide", kicker: "WHY NOW", title: "Attention is the new currency", subtitle: "Flat slides blend together. Spatial stories are remembered.", bullets: ["Immersive visuals hold attention", "Motion guides the narrative", "Works in any browser"], stats: [], scene: scene("hero-crystal", "#7fe7ff", "#8b9cff"), notes: "" },
+      { layout: "stats", transition: "push", textEffect: "zoom", kicker: "IMPACT", title: "Numbers that matter", subtitle: "", bullets: [], stats: [{ value: "3.2x", label: "longer viewing time" }, { value: "87%", label: "recall after a week" }, { value: "0", label: "plugins to install" }], scene: scene("bar-chart", "#8b9cff", "#5be0c3", [3, 5, 4, 7, 9]), notes: "" },
+      { layout: "center", transition: "orbit", textEffect: "blur", kicker: "THANK YOU", title: "Let's build the future together", subtitle: "", bullets: [], stats: [], scene: scene("warp-tunnel", "#ff7ad9", "#8b9cff"), notes: "" },
     ],
     // Its last slide is already a closing slide.
     settings: { ...defaultDeckSettings(), thankYou: { ...defaultDeckSettings().thankYou, enabled: false } },
