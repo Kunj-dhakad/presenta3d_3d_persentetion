@@ -5,7 +5,8 @@
 > * **Pages:** the PHP app opens `/embed/new`, `/embed/p/<id>` and `/embed/present/<id>` in an iframe
 >   (`application/controllers/default/Presentation3d_controller.php`, routes `3d-presentation/*`). After
 >   `REACT_READY` it sends `INIT_DATA { token, URL }`; the page answers `LOADER_OFF`, `P3D_OPENED` and `P3D_BACK`
->   (`src/components/embed/`). Opened directly: `?token=<access token>` for development.
+>   (`src/components/embed/`). Opened directly (Amplify URL, localhost) the pages work
+>   without a token, as the guest user `"0_0"`; `?token=<access token>` opens them as that user.
 > * **Login:** every API request carries the business's access token (`x-access-token`), decrypted like PHP's
 >   `decript_user_token()` (`src/server/auth/php-token.ts`). A presentation belongs to `"<business_id>_<user_id>"`.
 > * **Database:** the PHP app's MySQL database; this app's tables are prefixed `p3d_`

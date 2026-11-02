@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { setAccessToken } from "@/lib/api-client";
 import { allowedParentOrigin, inIframe, notifyParent, setParentBranding, setParentOrigin, setParentSite } from "./parent-bridge";
 
-type State = "waiting" | "ready" | "no-parent";
+type State = "waiting" | "ready";
 
 /**
  * Renders the embedded pages once the PHP page has handed over the user's
  * access token (INIT_DATA); every API call carries it from then on.
+ * Opened directly (not in an iframe), the pages run at once: with ?token=
+ * as that user, otherwise as the guest user (see src/server/auth/php-token.ts).
  */
 export function EmbedGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>("waiting");
@@ -19,7 +21,7 @@ export function EmbedGate({ children }: { children: React.ReactNode }) {
       if (token) setAccessToken(token);
       // Reading the URL once on mount is the only way to get it on the client.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState(token ? "ready" : "no-parent");
+      setState("ready");
       return;
     }
     const onMessage = (event: MessageEvent) => {
@@ -42,16 +44,6 @@ export function EmbedGate({ children }: { children: React.ReactNode }) {
     if (state === "ready") notifyParent("LOADER_OFF");
   }, [state]);
 
-  if (state === "no-parent") {
-    return (
-      <main className="flex h-dvh items-center justify-center p-6 text-center">
-        <div className="max-w-md space-y-2">
-          <h1 className="text-lg font-semibold">Open 3D presentations from your dashboard</h1>
-          <p className="text-sm text-muted-foreground">This page opens inside the presentation app, which signs you in. For development, add ?token=&lt;access token&gt; to this address.</p>
-        </div>
-      </main>
-    );
-  }
   // The PHP page shows its own loader until LOADER_OFF.
   if (state === "waiting") return null;
   return <>{children}</>;

@@ -50,8 +50,12 @@ export function ownerIdFor(identity: PhpIdentity): string {
 // Rows are created once per user; remember them for the life of the process.
 const known = new Map<string, Promise<SessionUser>>();
 
+/** Who the app runs as when opened directly (Amplify URL, localhost) without the PHP app's token. */
+const GUEST: PhpIdentity = { userId: "0", businessId: "0" };
+
 export function userForToken(token: string | null | undefined): Promise<SessionUser> | null {
-  const identity = token ? decodePhpToken(token) : null;
+  // No token: opened on its own, run as the guest. A token that does not decode is still refused.
+  const identity = token ? decodePhpToken(token) : GUEST;
   if (!identity) return null;
   const id = ownerIdFor(identity);
   let user = known.get(id);
