@@ -21,6 +21,10 @@ let accessToken = "";
 export function setAccessToken(token: string) {
   accessToken = token;
 }
+/** The PHP access token, for the few calls made to the PHP app itself (src/lib/php-api.ts). */
+export function getAccessToken(): string {
+  return accessToken;
+}
 function authHeaders(): Record<string, string> {
   return accessToken ? { "x-access-token": accessToken } : {};
 }

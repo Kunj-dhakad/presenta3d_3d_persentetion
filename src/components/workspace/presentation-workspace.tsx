@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, ArrowLeft, Eye, MessageSquare, Palette, Pencil, Play, Rocket, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, MessageSquare, Mic, Palette, Pencil, Play, Rocket, RotateCcw } from "lucide-react";
 import { useWorkspace, type ChatMessageRow, type ProjectMeta } from "@/stores/workspace";
 import { api, ApiError, errorMessage, streamJob } from "@/lib/api-client";
 import type { BuildSummary } from "@/lib/build-types";
@@ -15,6 +15,7 @@ import { ChatPanel, type AiStatus } from "./chat-panel";
 import { PreviewPane } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 import { DesignDialog } from "./design-dialog";
+import { PresenterDialog } from "./presenter-dialog";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { inIframe, notifyParent, paths } from "@/components/embed/parent-bridge";
@@ -42,6 +43,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const [ai, setAi] = useState<AiStatus>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [designOpen, setDesignOpen] = useState(false);
+  const [presenterOpen, setPresenterOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
@@ -274,11 +276,21 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
           <Button size="sm" variant="secondary" onClick={() => setDesignOpen(true)} disabled={!hasPreview || jobRunning} title={jobRunning ? "Available when the presentation has finished generating" : "Templates, colours, Thank You slide, branding, auto-play"}>
             <Palette /> Design
           </Button>
-          <Button size="sm" variant="secondary" asChild disabled={!hasPreview}>
-            <Link href={hasPreview ? paths.present(projectId) : "#"} aria-disabled={!hasPreview} className={cn(!hasPreview && "pointer-events-none opacity-50")}>
-              <Play /> Present
-            </Link>
+          <Button size="sm" variant="secondary" onClick={() => setPresenterOpen(true)} title="Narration, subtitles, avatar and Q&A on the public link and in Present">
+            <Mic /> Presenter
           </Button>
+          {inIframe() ? (
+            // Inside the PHP app, Present opens its full-page viewer, with the presenter on top.
+            <Button size="sm" variant="secondary" disabled={!hasPreview} onClick={() => notifyParent("P3D_PRESENT", { projectId })}>
+              <Play /> Present
+            </Button>
+          ) : (
+            <Button size="sm" variant="secondary" asChild disabled={!hasPreview}>
+              <Link href={hasPreview ? paths.present(projectId) : "#"} aria-disabled={!hasPreview} className={cn(!hasPreview && "pointer-events-none opacity-50")}>
+                <Play /> Present
+              </Link>
+            </Button>
+          )}
           <Button size="sm" onClick={() => setShareOpen(true)} disabled={!hasPreview}>
             <Rocket /> Publish
           </Button>
@@ -310,6 +322,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
 
       <ShareDialog projectId={projectId} projectName={project?.name ?? "3D presentation"} open={shareOpen} onOpenChange={setShareOpen} hasWorkingBuild={hasPreview} />
       <DesignDialog projectId={projectId} open={designOpen} onOpenChange={setDesignOpen} onSaved={() => void loadProject().catch(() => {})} />
+      <PresenterDialog projectId={projectId} open={presenterOpen} onOpenChange={setPresenterOpen} />
     </div>
   );
 }

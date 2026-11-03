@@ -65,6 +65,11 @@ export function setParentSite(url: string) {
   parentSite = url && !url.endsWith("/") ? url + "/" : url;
 }
 
+/** The PHP app's base URL (ending with "/"), or "" when this page was not opened from it. */
+export function getParentSite(): string {
+  return parentSite;
+}
+
 /**
  * The link to share for a published site. A site published here
  * (/sites/<slug>/) is shown on the PHP app's own page, 3d-view/<slug>.
