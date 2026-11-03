@@ -80,3 +80,24 @@ describe("serverless deployment", () => {
     expect((await db.generationJob.findUniqueOrThrow({ where: { id: stale.id } })).status).toBe("failed");
   });
 });
+
+describe("files read from disk at runtime", () => {
+  // Serverless bundles contain only traced files: an engine read with fs at runtime
+  // (deck engines, scene runtime) must be listed in next.config.ts or it is missing in production.
+  it("ships every *.js.txt engine file the server reads", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const config = fs.readFileSync(path.join(process.cwd(), "next.config.ts"), "utf8");
+    const engines: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".js.txt")) engines.push("./" + path.relative(process.cwd(), p).split(path.sep).join("/"));
+      }
+    };
+    walk(path.join(process.cwd(), "src", "server"));
+    expect(engines.length).toBeGreaterThan(2);
+    for (const file of engines) expect(config, `${file} is not in outputFileTracingIncludes`).toContain(`"${file}"`);
+  });
+});

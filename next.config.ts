@@ -34,6 +34,7 @@ const nextConfig: NextConfig = {
       "./preview-runtime-dist/current.json",
       "./src/server/scene-codegen/runtime.js.txt",
       "./src/server/deck/runtime.js.txt",
+      "./src/server/deck/cine-runtime.js.txt",
     ],
     "/preview-runtime/[hash]/[...path]": ["./preview-runtime-dist/**/*"],
     "/api/**/*": ["./preview-runtime-dist/**/*", "./node_modules/esbuild/**/*", "./node_modules/@esbuild/**/*"],
