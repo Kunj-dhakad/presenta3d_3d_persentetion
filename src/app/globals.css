@@ -41,6 +41,9 @@
   --color-card: var(--card);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-brand-2: var(--brand-2);
+  --color-brand-3: var(--brand-3);
+  --color-brand-soft: var(--brand-soft);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-surface: var(--surface);
@@ -55,88 +58,52 @@
 }
 
 /*
- * Present 3D is dark-first. The `.dark` palette is the product palette; `:root`
- * keeps a light palette for third-party surfaces that opt out.
+ * Present 3D light theme: white + glass, with the logo blues
+ * (#0088CC primary, #00A6EE logo blue, #01C4F9 cyan).
  */
 :root {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.17 0.005 240);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.17 0.005 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.17 0.005 240);
-  --primary: oklch(0.2 0.005 240);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0.003 240);
-  --secondary-foreground: oklch(0.2 0.005 240);
-  --muted: oklch(0.96 0.003 240);
-  --muted-foreground: oklch(0.52 0.01 240);
-  --accent: oklch(0.95 0.004 240);
-  --accent-foreground: oklch(0.2 0.005 240);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.91 0.004 240);
-  --input: oklch(0.91 0.004 240);
-  --ring: oklch(0.6 0.141 241.6);
-  --brand: oklch(0.6 0.141 241.6);
-  --brand-foreground: oklch(0.99 0 0);
-  --success: oklch(0.62 0.14 160);
-  --warning: oklch(0.72 0.14 75);
-  --surface: oklch(0.97 0.003 240);
-  --surface-2: oklch(0.94 0.004 240);
-  --chart-1: oklch(0.6 0.141 241.6);
-  --chart-2: oklch(0.7 0.12 190);
-  --chart-3: oklch(0.72 0.14 75);
-  --chart-4: oklch(0.65 0.18 330);
-  --chart-5: oklch(0.6 0.14 160);
-  --radius: 0.6rem;
-  --sidebar: oklch(0.97 0.003 240);
-  --sidebar-foreground: oklch(0.17 0.005 240);
-  --sidebar-primary: oklch(0.2 0.005 240);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.94 0.004 240);
-  --sidebar-accent-foreground: oklch(0.2 0.005 240);
-  --sidebar-border: oklch(0.91 0.004 240);
-  --sidebar-ring: oklch(0.6 0.141 241.6);
-}
-
-.dark {
-  --background: oklch(0.145 0.004 240);
-  --foreground: oklch(0.95 0.003 240);
-  --card: oklch(0.175 0.005 240);
-  --card-foreground: oklch(0.95 0.003 240);
-  --popover: oklch(0.19 0.005 240);
-  --popover-foreground: oklch(0.95 0.003 240);
-  --primary: oklch(0.95 0.003 240);
-  --primary-foreground: oklch(0.17 0.005 240);
-  --secondary: oklch(0.23 0.006 240);
-  --secondary-foreground: oklch(0.95 0.003 240);
-  --muted: oklch(0.22 0.005 240);
-  --muted-foreground: oklch(0.66 0.012 240);
-  --accent: oklch(0.24 0.007 240);
-  --accent-foreground: oklch(0.96 0.003 240);
-  --destructive: oklch(0.68 0.19 22);
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 11%);
-  --ring: oklch(0.689 0.153 238.3);
-  --brand: oklch(0.689 0.153 238.3);
-  --brand-foreground: oklch(0.16 0.01 240);
-  --success: oklch(0.75 0.13 160);
-  --warning: oklch(0.8 0.13 80);
-  --surface: oklch(0.165 0.005 240);
-  --surface-2: oklch(0.195 0.006 240);
-  --chart-1: oklch(0.689 0.153 238.3);
-  --chart-2: oklch(0.76 0.1 190);
-  --chart-3: oklch(0.8 0.13 80);
-  --chart-4: oklch(0.72 0.15 330);
-  --chart-5: oklch(0.75 0.13 160);
-  --sidebar: oklch(0.155 0.004 240);
-  --sidebar-foreground: oklch(0.95 0.003 240);
-  --sidebar-primary: oklch(0.689 0.153 238.3);
-  --sidebar-primary-foreground: oklch(0.16 0.01 240);
-  --sidebar-accent: oklch(0.22 0.006 240);
-  --sidebar-accent-foreground: oklch(0.96 0.003 240);
-  --sidebar-border: oklch(1 0 0 / 7%);
-  --sidebar-ring: oklch(0.689 0.153 238.3);
+  --background: #f4f8fb;
+  --foreground: #0f1d2b;
+  --card: #ffffff;
+  --card-foreground: #0f1d2b;
+  --popover: #ffffff;
+  --popover-foreground: #0f1d2b;
+  --primary: #0088cc;
+  --primary-foreground: #ffffff;
+  --secondary: #ffffff;
+  --secondary-foreground: #0f1d2b;
+  --muted: #eef3f7;
+  --muted-foreground: #64788a;
+  --accent: #e6f6fe;
+  --accent-foreground: #0f1d2b;
+  --destructive: #e11d48;
+  --border: #e1e9f0;
+  --input: #d5e0e9;
+  --ring: #00a6ee;
+  --brand: #0088cc;
+  --brand-foreground: #ffffff;
+  --brand-2: #00a6ee;
+  --brand-3: #01c4f9;
+  --brand-soft: #e6f6fe;
+  --brand-gradient: linear-gradient(135deg, #0088cc 0%, #00a6ee 55%, #01c4f9 100%);
+  --success: #16a34a;
+  --warning: #b45309;
+  --surface: #f8fbfd;
+  --surface-2: #eef3f7;
+  --chart-1: #0088cc;
+  --chart-2: #01c4f9;
+  --chart-3: #d97706;
+  --chart-4: #db2777;
+  --chart-5: #16a34a;
+  --radius: 0.75rem;
+  --sidebar: #f8fbfd;
+  --sidebar-foreground: #0f1d2b;
+  --sidebar-primary: #0088cc;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6f6fe;
+  --sidebar-accent-foreground: #0f1d2b;
+  --sidebar-border: #e1e9f0;
+  --sidebar-ring: #00a6ee;
 }
 
 @layer base {
@@ -145,10 +112,14 @@
   }
   html {
     @apply font-sans;
-    color-scheme: dark;
+    color-scheme: light;
   }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(900px 520px at 100% -10%, rgb(0 166 238 / 0.1), transparent 60%),
+      radial-gradient(760px 480px at -10% 20%, rgb(0 136 204 / 0.06), transparent 60%);
+    background-attachment: fixed;
     font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
   }
@@ -164,18 +135,22 @@
 @layer components {
   /* Subtle glass panel used for floating toolbars and overlays. */
   .glass {
-    background: color-mix(in oklch, var(--popover) 78%, transparent);
-    backdrop-filter: blur(14px) saturate(1.2);
+    background: rgb(255 255 255 / 0.72);
+    backdrop-filter: blur(14px) saturate(1.6);
     border: 1px solid var(--border);
   }
   /* Quiet scrollbars across editor panes. */
   .thin-scroll {
     scrollbar-width: thin;
-    scrollbar-color: oklch(1 0 0 / 12%) transparent;
+    scrollbar-color: rgb(15 29 43 / 18%) transparent;
   }
   .grid-dots {
-    background-image: radial-gradient(oklch(1 0 0 / 7%) 1px, transparent 1px);
+    background-image: radial-gradient(rgb(15 29 43 / 10%) 1px, transparent 1px);
     background-size: 22px 22px;
+  }
+  /* Gradient fill in the logo blues, for primary calls to action. */
+  .bg-brand-gradient {
+    background-image: var(--brand-gradient);
   }
   .kbd {
     @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground;

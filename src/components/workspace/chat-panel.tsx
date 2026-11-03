@@ -88,7 +88,7 @@ export function ChatPanel({
         <div className="grid gap-4">
           {messages.map((m) =>
             m.role === "user" ? (
-              <div key={m.id} className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-secondary px-3.5 py-2.5 text-[13.5px] leading-relaxed">
+              <div key={m.id} className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-[13.5px] leading-relaxed">
                 {m.content}
               </div>
             ) : (

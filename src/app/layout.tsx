@@ -18,11 +18,11 @@ export const metadata: Metadata = {
   twitter: { card: "summary", title: SITE_TITLE, description: SITE_DESCRIPTION },
 };
 
-export const viewport: Viewport = { themeColor: "#0b0b0f", colorScheme: "dark" };
+export const viewport: Viewport = { themeColor: "#f4f8fb", colorScheme: "light" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full">
         <TooltipProvider delayDuration={250}>{children}</TooltipProvider>
         <Toaster position="bottom-right" />
