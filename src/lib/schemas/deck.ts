@@ -88,7 +88,11 @@ const slideFields = {
   subtitle: z.string().describe("One supporting sentence. Empty string for none."),
   bullets: z.array(z.string()).describe("0-4 concise bullet points (at most ~12 words each)."),
   stats: z.array(z.object({ value: z.string().describe("e.g. '3.2x' or '$4M'"), label: z.string() })).describe("2-4 items for layout 'stats', otherwise empty."),
-  notes: z.string().describe("Speaker notes. Empty string for none."),
+  notes: z
+    .string()
+    .describe(
+      "What the presenter says on this slide; it is read aloud as narration with subtitles. 2-4 natural spoken sentences (about 30-60 words) that add to the slide rather than repeat it word for word. Same language as the slides. Never empty.",
+    ),
 };
 
 const ThemeSchema = z.object({

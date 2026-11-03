@@ -1279,6 +1279,9 @@ window.addEventListener("message", (e) => {
   else if (action === "prev") prev();
   else if (action === "first") go(0);
   else if (action === "last") go(slides.length - 1);
+  // The PHP viewer narrates the deck and moves it on when a slide's voice ends;
+  // the deck's own timer must not move it as well.
+  else if (action === "autoplay" && typeof setPlaying === "function") setPlaying(Boolean(e.data.on));
 });
 
 window.addEventListener("hashchange", () => {
