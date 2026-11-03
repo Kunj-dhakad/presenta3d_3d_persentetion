@@ -143,6 +143,30 @@ export type DeckSettings = {
   autoplay: { enabled: boolean; seconds: number };
 };
 
+/**
+ * Cinematic presentations (deck.style "cinematic", see lib/schemas/cine.ts):
+ * full-bleed AI images and bold titles instead of 3D scenes. Each slide keeps
+ * the shared fields (kicker, title, notes …) and adds how it is drawn here.
+ */
+export const CINE_LOOKS = ["hero", "image", "statement", "stats", "cards", "timeline", "bullets", "closing"] as const;
+/** Looks drawn over a full-bleed AI image (the others use a CSS visual). */
+export const CINE_IMAGE_LOOKS: readonly (typeof CINE_LOOKS)[number][] = ["hero", "image", "closing"];
+export const CINE_VISUALS = ["planet", "spiral", "orbs", "pulse", "none"] as const;
+/** Where a slide image may come from: this app's deckmedia route, or any https URL. */
+export const CINE_IMAGE_RE = /^(\/deckmedia\/[A-Za-z0-9_-]{8,64}\/[A-Za-z0-9_-]{8,64}\.(?:webp|png|jpe?g)|https:\/\/\S{1,1000})$/;
+const CineItemSchema = z.object({ heading: z.string(), text: z.string() });
+const StoredCineSchema = z.object({
+  look: z.enum(CINE_LOOKS),
+  highlight: z.string(),
+  tone: Hex,
+  visual: z.enum(CINE_VISUALS),
+  imagePrompt: z.string(),
+  /** The generated image ("" while it is being painted, or when painting it failed). */
+  image: z.string(),
+  items: z.array(CineItemSchema),
+});
+export type CineSlide = z.infer<typeof StoredCineSchema>;
+
 /** What is stored in deck.json and read by the engine: presets expanded into scene descriptions. */
 // Optional: decks saved before slides had them rotate through the runtime's defaults.
 const StoredSlideSchema = z.object({
@@ -150,8 +174,16 @@ const StoredSlideSchema = z.object({
   transition: motionFields.transition.optional(),
   textEffect: motionFields.textEffect.optional(),
   scene: StoredSceneSchema,
+  cine: StoredCineSchema.optional(),
 });
-const StoredDeckSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(StoredSlideSchema), settings: DeckSettingsInput.optional() });
+const StoredDeckSchema = z.object({
+  title: z.string(),
+  /** "cinematic": rendered by the cinematic engine (server/deck/cine-codegen.ts); missing = 3D. */
+  style: z.enum(["3d", "cinematic"]).optional(),
+  theme: ThemeSchema,
+  slides: z.array(StoredSlideSchema),
+  settings: DeckSettingsInput.optional(),
+});
 export type DeckSpec = Omit<z.infer<typeof StoredDeckSchema>, "settings"> & { settings: DeckSettings };
 export type DeckSlide = DeckSpec["slides"][number];
 
@@ -236,6 +268,7 @@ export function validateDeck(input: unknown): DeckValidation {
   if (d.slides.length < DECK_LIMITS.minSlides) return { ok: false, errors: ["the deck needs at least one slide"] };
   const deck: DeckSpec = {
     title: d.title.trim().slice(0, 120) || "Untitled presentation",
+    ...(d.style === "cinematic" ? { style: "cinematic" as const } : {}),
     theme: d.theme,
     slides: d.slides.slice(0, DECK_LIMITS.maxSlides).map((s) => ({
       ...s,
@@ -252,10 +285,28 @@ export function validateDeck(input: unknown): DeckValidation {
         values: s.scene.values.filter((v) => Number.isFinite(v) && v >= 0).slice(0, DECK_LIMITS.maxValues),
         ...(s.scene.compose ? { compose: { ...s.scene.compose, count: Math.round(clamp(s.scene.compose.count, 1, DECK_LIMITS.maxCount, 12)) } } : {}),
       },
+      ...(s.cine ? { cine: normalizeCine(s.cine, s.title) } : {}),
     })),
     settings: normalizeSettings(d.settings),
   };
   return { ok: true, deck };
+}
+
+/** Trim a cinematic slide's fields; an image from anywhere else, or a highlight not in the title, is dropped. */
+function normalizeCine(c: CineSlide, title: string): CineSlide {
+  const highlight = c.highlight.trim().slice(0, 80);
+  return {
+    look: c.look,
+    highlight: highlight && title.toLowerCase().includes(highlight.toLowerCase()) ? highlight : "",
+    tone: c.tone,
+    visual: c.visual,
+    imagePrompt: c.imagePrompt.slice(0, 1200),
+    image: CINE_IMAGE_RE.test(c.image) ? c.image : "",
+    items: c.items
+      .filter((i) => i.heading.trim() || i.text.trim())
+      .slice(0, 4)
+      .map((i) => ({ heading: i.heading.slice(0, 40), text: i.text.slice(0, 160) })),
+  };
 }
 
 /**

@@ -4,6 +4,7 @@ import { AIError, type StructuredRequest, type StructuredResult, type TextModelP
 import { recordUsage } from "./usage";
 import { mockSceneFor } from "@/lib/scene/templates";
 import { sampleDeck, type DeckSpec } from "@/lib/schemas/deck";
+import type { CineSpec } from "@/lib/schemas/cine";
 
 /** Deck fixture: a new sample deck, or an edit that renames a slide title given in quotes. */
 function mockDeck(input: string, request: string): DeckSpec {
@@ -18,6 +19,33 @@ function mockDeck(input: string, request: string): DeckSpec {
   }
   const topic = request.replace(/\s+/g, " ").split(/[.!\n]/)[0].slice(0, 40) || "Present 3D";
   return sampleDeck(topic);
+}
+
+/** Cinematic deck fixture: a new trailer-style deck, or an edit that renames a slide title given in quotes. */
+function mockCine(input: string, request: string): CineSpec {
+  const current = /Current deck \(JSON\):\n(.+)/.exec(input)?.[1];
+  if (current) {
+    const deck = JSON.parse(current) as CineSpec;
+    const quoted = /["“]([^"”]{1,80})["”]/.exec(request)?.[1];
+    const n = Number(/slide\s+(\d+)/i.exec(request)?.[1] ?? "1");
+    const slide = deck.slides[Math.min(deck.slides.length, Math.max(1, n)) - 1];
+    if (quoted && slide) slide.title = quoted;
+    return deck;
+  }
+  const topic = request.replace(/\s+/g, " ").split(/[.!\n]/)[0].slice(0, 40) || "Present 3D";
+  const base = { subtitle: "", bullets: [], stats: [], items: [], visual: "none" as const, imagePrompt: "", highlight: "", notes: "A short line the presenter says." };
+  return {
+    title: topic,
+    theme: { background: "#030608", text: "#f6f1ea", accent: "#ff7a1a", font: "display" },
+    slides: [
+      { ...base, look: "hero", kicker: "THIS SEASON", title: topic, subtitle: "A story told like a film.", tone: "#ff7a1a", textEffect: "zoom", imagePrompt: `A dramatic wide shot about ${topic}` },
+      { ...base, look: "stats", kicker: "IN A WORLD", title: "Where numbers speak", highlight: "numbers", stats: [{ value: "420+", label: "things counted" }, { value: "1.2x", label: "faster" }], visual: "planet", tone: "#ff7a1a", textEffect: "rise" },
+      { ...base, look: "cards", kicker: "THE CAUSE", title: "Three reasons", items: [{ heading: "One", text: "First reason." }, { heading: "Two", text: "Second reason." }, { heading: "Three", text: "Third reason." }], tone: "#ff7a1a", textEffect: "slide" },
+      { ...base, look: "statement", kicker: "BUT", title: "There is a way", highlight: "a way", tone: "#4fd8e0", textEffect: "letters" },
+      { ...base, look: "timeline", kicker: "THE COUNTDOWN", title: "The mission", highlight: "mission", items: [{ heading: "NOW", text: "Start" }, { heading: "2030", text: "Halfway" }, { heading: "2050", text: "Done" }], tone: "#5fd36a", textEffect: "blur" },
+      { ...base, look: "closing", kicker: "COMING SOON", title: "The future is not written", subtitle: "We write it.", tone: "#5fd36a", textEffect: "zoom", imagePrompt: `A hopeful sunrise over the world, about ${topic}` },
+    ],
+  };
 }
 
 /**
@@ -225,6 +253,8 @@ function respond(schemaName: string, input: string): unknown {
     }
     case "deck_spec":
       return mockDeck(input, request);
+    case "cine_spec":
+      return mockCine(input, request);
     case "scene_spec":
       return mockSceneFor(request);
     case "scene_code":

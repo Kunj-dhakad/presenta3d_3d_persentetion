@@ -22,7 +22,7 @@ import { SubHeading, ToggleRow } from "./settings-parts";
  * and rebuild the preview; each one is saved as a version.
  */
 
-type DeckView = { title: string; theme: DeckSpec["theme"]; colors: DeckColors; settings: DeckSettings; slideCount: number };
+type DeckView = { title: string; style: "3d" | "cinematic"; theme: DeckSpec["theme"]; colors: DeckColors; settings: DeckSettings; slideCount: number };
 
 const COLOR_FIELDS: [keyof DeckColors, string][] = [
   ["background", "Background"],
@@ -171,7 +171,7 @@ export function TemplateSection({ d }: { d: Loaded }) {
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
         {COLOR_FIELDS.map(([key, label]) => (
           <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {label}
+            {d.deck.style === "cinematic" ? label.replace("3D colour", "Glow colour") : label}
             <span className="flex items-center gap-1.5">
               <input type="color" value={colors[key]} onChange={(e) => d.setColors({ ...colors, [key]: e.target.value })} className="h-8 w-9 shrink-0 cursor-pointer rounded-md border border-border bg-transparent" />
               <code className="truncate text-[10.5px]">{colors[key]}</code>

@@ -2,7 +2,8 @@ import type { BuildDiagnostic } from "./build-types";
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
-export type PipelineStage = "understand" | "plan" | "generate" | "review" | "validate" | "build" | "repair" | "finalize";
+/** "images": a cinematic presentation's AI images (all painted at once). */
+export type PipelineStage = "understand" | "plan" | "generate" | "review" | "images" | "validate" | "build" | "repair" | "finalize";
 
 export type TaskEventPayload = {
   id: string;

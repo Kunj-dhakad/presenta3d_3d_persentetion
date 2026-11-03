@@ -1,0 +1,407 @@
+// Present 3D cinematic presentation engine. Reads deck.json (style "cinematic")
+// and plays it like a film trailer: full-bleed AI images with Ken Burns motion,
+// big titles that zoom, rise or type in, glowing particles and visuals, and a
+// blur-and-flash cut between slides.
+// Keys: → / Space next · ← previous · Home/End · F fullscreen · N speaker notes · P auto-play.
+// Hosting pages: posts { source: "deck3d-preview", type: "slide", index } (1-based) on every
+// change and obeys { type: "deck3d-deck", action: next|prev|first|last|autoplay } from its parent.
+
+const deck = await fetch("./deck.json").then((r) => r.json());
+const settings = deck.settings || {};
+const webLink = (u, schemes = /^https?:\/\//i) => (typeof u === "string" && schemes.test(u) ? u : "");
+// Images come from this app (/deckmedia/…) or https only.
+const imageUrl = (u) => (typeof u === "string" && /^(\/deckmedia\/[A-Za-z0-9_\/-]+\.(webp|png|jpe?g)|https:\/\/\S+)$/.test(u) ? u : "");
+const slides = [...deck.slides];
+
+// The owner's Thank-you slide closes the deck, over the opening image.
+const thankYou = settings.thankYou;
+if (thankYou?.enabled) {
+  const opening = slides.find((s) => s.cine?.image);
+  slides.push({
+    kicker: "",
+    title: thankYou.title || "Thank you",
+    subtitle: thankYou.message || "",
+    bullets: [],
+    stats: [],
+    notes: "",
+    textEffect: "zoom",
+    buttons: (thankYou.buttons || []).filter((b) => b && b.label && webLink(b.url, /^(https?:\/\/|mailto:|tel:)/i)),
+    cine: { look: "closing", highlight: "", tone: deck.theme.accent, visual: "none", imagePrompt: "", image: opening?.cine.image || "", items: [] },
+  });
+}
+document.title = deck.title;
+
+const root = document.documentElement;
+root.style.setProperty("--bg", deck.theme.background);
+root.style.setProperty("--text", deck.theme.text);
+root.style.setProperty("--accent", deck.theme.accent);
+document.body.dataset.font = deck.theme.font || "display";
+
+const viewport = document.getElementById("viewport");
+const stage = document.getElementById("stage");
+const flash = document.getElementById("flash");
+const counterEl = document.getElementById("counter");
+const progressEl = document.getElementById("progress");
+const notesEl = document.getElementById("notes");
+
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+const pad = (n) => String(n).padStart(2, "0");
+
+// ─── Stage scaling: 1920×1080, or 1080×1920 on portrait screens ─────────
+function fit() {
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  const portrait = h > w * 1.1;
+  document.body.classList.toggle("portrait", portrait);
+  const sw = portrait ? 1080 : 1920, sh = portrait ? 1920 : 1080;
+  const k = Math.min(w / sw, h / sh);
+  stage.style.transform = `translate(-50%, -50%) scale(${k})`;
+}
+window.addEventListener("resize", fit);
+fit();
+
+// ─── Building a slide ───────────────────────────────────────────────────
+const EFFECTS = { rise: "a-rise", zoom: "a-zoom", slide: "a-slide", drop: "a-drop", blur: "a-blur", flip: "a-flip", letters: "letters" };
+
+function animate(node, name, delay) {
+  node.classList.add("a", name);
+  node.style.animationDelay = `${delay}s`;
+  return node;
+}
+
+/** The title, with its highlight words coloured; "letters" splits it into animated letters. */
+function title(slide, effect, delay) {
+  const h = el(slide.cine?.look === "hero" ? "h1" : "h2", "title");
+  const text = slide.title || "";
+  const hl = (slide.cine?.highlight || "").trim();
+  const at = hl ? text.toLowerCase().indexOf(hl.toLowerCase()) : -1;
+  const parts = at >= 0 ? [[text.slice(0, at), false], [text.slice(at, at + hl.length), true], [text.slice(at + hl.length), false]] : [[text, false]];
+  let n = 0;
+  for (const [part, isHl] of parts) {
+    if (!part) continue;
+    const span = isHl ? el("span", "hl") : document.createDocumentFragment();
+    if (effect === "letters") {
+      for (const word of part.split(/(\s+)/)) {
+        if (!word) continue;
+        if (/^\s+$/.test(word)) { span.append(" "); continue; }
+        const w = el("span", "ch");
+        w.style.whiteSpace = "nowrap";
+        for (const c of word) {
+          const ch = animate(el("span", "ch", c), "a-letter", delay + n * 0.045);
+          n++;
+          w.append(ch);
+        }
+        span.append(w);
+      }
+    } else span.append(part);
+    h.append(span);
+  }
+  if (effect !== "letters") animate(h, EFFECTS[effect] || "a-zoom", delay);
+  return h;
+}
+
+function particles(seed) {
+  const box = el("div", "particles");
+  for (let i = 0; i < 34; i++) {
+    const p = el("span", "particle");
+    const size = 3 + ((i * 7 + seed) % 9);
+    Object.assign(p.style, {
+      width: `${size}px`,
+      height: `${size}px`,
+      left: `${(i * 37 + seed * 11) % 100}%`,
+      bottom: `${-((i * 13) % 20)}%`,
+      animationDuration: `${i % 2 ? 13 : 8}s`,
+      animationDelay: `${-((i * 3) % 12)}s`,
+    });
+    box.append(p);
+  }
+  return box;
+}
+
+function visual(kind) {
+  if (!kind || kind === "none") return null;
+  const v = el("div", `visual v-${kind}`);
+  v.setAttribute("aria-hidden", "true");
+  if (kind === "planet") v.append(el("div", "orb"), el("div", "ring"));
+  if (kind === "spiral") for (let i = 0; i < 4; i++) v.append(el("div", "ring"));
+  if (kind === "orbs") v.append(el("div", "orb big"), el("div", "orb small"), el("div", "orb small"), el("div", "orb small"));
+  if (kind === "pulse") v.append(el("div", "wave"), el("div", "wave"), el("div", "wave"), el("div", "orb"));
+  return v;
+}
+
+function buildSlide(slide, i) {
+  const c = slide.cine || { look: "statement", tone: deck.theme.accent, visual: "none", image: "", items: [] };
+  const look = c.look || "statement";
+  const node = el("section", `slide look-${look}`);
+  node.style.setProperty("--tone", c.tone || deck.theme.accent);
+  node.setAttribute("aria-label", `Slide ${i + 1} of ${slides.length}`);
+
+  const bg = el("div", "bg");
+  const src = imageUrl(c.image);
+  if (src) {
+    bg.classList.add("has-img");
+    const img = el("img");
+    img.alt = "";
+    img.decoding = "async";
+    img.src = src;
+    img.addEventListener("error", () => bg.classList.add("painting"));
+    bg.append(img);
+  }
+  node.append(bg, particles(i * 5 + 3), el("div", "vignette"), el("div", "grain"));
+  if (!src) {
+    const v = visual(c.visual);
+    if (v) {
+      node.classList.add("has-visual");
+      node.append(animate(v, "a-fade", 0.9));
+    }
+  }
+
+  const effect = slide.textEffect || "zoom";
+  const content = el("div", "content");
+  let t = 0.5;
+  if (slide.kicker) content.append(animate(el("p", "kicker", slide.kicker), "a-rise", t));
+  t += 0.3;
+  content.append(title(slide, effect, t));
+  t += effect === "letters" ? 0.5 : 0.45;
+  if (slide.subtitle) {
+    content.append(animate(el("p", "subtitle", slide.subtitle), "a-rise", t));
+    t += 0.25;
+  }
+  if (look === "statement") content.append(animate(el("div", "rule"), "a-line", t));
+  if (slide.stats?.length) {
+    const box = el("div", "stats");
+    slide.stats.forEach((s, k) => {
+      const st = animate(el("div", "stat"), "a-rise", t + k * 0.18);
+      st.append(el("strong", "", s.value), el("span", "", s.label));
+      box.append(st);
+    });
+    content.append(box);
+  }
+  if (look === "cards" && c.items?.length) {
+    const box = el("div", "cards");
+    box.style.setProperty("--n", String(c.items.length));
+    c.items.forEach((it, k) => {
+      const card = animate(el("div", "card"), "a-flip", t + k * 0.2);
+      card.append(el("div", "num", pad(k + 1)), el("h3", "", it.heading), el("p", "", it.text));
+      box.append(card);
+    });
+    content.append(box);
+  }
+  if (look === "timeline" && c.items?.length) {
+    const box = el("div", "timeline");
+    box.style.setProperty("--n", String(c.items.length));
+    box.append(animate(el("div", "line"), "a-line", t));
+    c.items.forEach((it, k) => {
+      const step = animate(el("div", "step"), "a-rise", t + 0.3 + k * 0.25);
+      step.append(el("div", "node"), el("h3", "", it.heading), el("p", "", it.text));
+      box.append(step);
+    });
+    content.append(box);
+  }
+  if (slide.bullets?.length) {
+    const ul = el("ul", "bullets");
+    slide.bullets.forEach((b, k) => ul.append(animate(el("li", "", b), "a-slide", t + k * 0.15)));
+    content.append(ul);
+  }
+  if (slide.buttons?.length) {
+    const box = animate(el("div", "cta"), "a-rise", t + 0.2);
+    slide.buttons.forEach((b, k) => {
+      const a = el("a", k === 0 ? "primary" : "", b.label);
+      a.href = b.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      box.append(a);
+    });
+    content.append(box);
+  }
+  node.append(content);
+  return node;
+}
+
+// Images of the next slides are fetched ahead, so a cut never shows an empty frame.
+const preloaded = new Set();
+function preload(i) {
+  const src = imageUrl(slides[i]?.cine?.image);
+  if (!src || preloaded.has(src)) return;
+  preloaded.add(src);
+  const img = new Image();
+  img.src = src;
+}
+
+// ─── Navigation ─────────────────────────────────────────────────────────
+let index = -1;
+let current = null;
+let lastNav = 0;
+
+function go(next, instant = false) {
+  next = Math.max(0, Math.min(slides.length - 1, next));
+  if (next === index) return;
+  const now = performance.now();
+  if (now - lastNav < 350 && !instant) return;
+  lastNav = now;
+  index = next;
+  const slide = slides[next];
+
+  if (current) {
+    const old = current;
+    old.classList.remove("enter");
+    old.classList.add("exit");
+    setTimeout(() => old.remove(), 750);
+  }
+  const node = buildSlide(slide, next);
+  node.classList.add("enter");
+  stage.append(node);
+  current = node;
+  if (!instant) {
+    stage.classList.remove("cut");
+    flash.classList.remove("on");
+    void stage.offsetWidth; // restart the animations
+    stage.classList.add("cut");
+    flash.classList.add("on");
+  }
+  preload(next + 1);
+  preload(next + 2);
+
+  counterEl.innerHTML = "";
+  counterEl.append(el("b", "", `${pad(next + 1)} / ${pad(slides.length)}`), ` · ${slide.title}`);
+  progressEl.style.transform = `scaleX(${(next + 1) / slides.length})`;
+  notesEl.textContent = slide.notes || "No speaker notes for this slide.";
+  history.replaceState(null, "", `#${next + 1}`);
+  try {
+    if (window.parent !== window) window.parent.postMessage({ source: "deck3d-preview", type: "slide", index: next + 1 }, "*");
+  } catch {
+    /* no parent */
+  }
+  schedulePlay();
+}
+
+const next = () => go(index + 1);
+const prev = () => go(index - 1);
+document.getElementById("next").addEventListener("click", (e) => { e.stopPropagation(); next(); });
+document.getElementById("prev").addEventListener("click", (e) => { e.stopPropagation(); prev(); });
+document.getElementById("fs").addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else document.documentElement.requestFullscreen?.().catch(() => {});
+}
+
+window.addEventListener("keydown", (e) => {
+  if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(slides.length - 1);
+  else if (e.key.toLowerCase() === "f") toggleFullscreen();
+  else if (e.key.toLowerCase() === "n") document.body.classList.toggle("show-notes");
+  else if (e.key.toLowerCase() === "p") setPlaying(!playing);
+});
+viewport.addEventListener("click", (e) => {
+  if (e.target.closest("button, a")) return;
+  (e.clientX < window.innerWidth * 0.25 ? prev : next)();
+});
+let touchX = null;
+window.addEventListener("touchstart", (e) => (touchX = e.touches[0].clientX), { passive: true });
+window.addEventListener("touchend", (e) => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+  touchX = null;
+});
+// One slide per wheel / trackpad gesture.
+let wheelAcc = 0;
+let wheelLockUntil = 0;
+window.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const now = performance.now();
+    if (now < wheelLockUntil) {
+      wheelLockUntil = Math.max(wheelLockUntil, now + 300);
+      return;
+    }
+    wheelAcc += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    if (Math.abs(wheelAcc) >= 40) {
+      (wheelAcc > 0 ? next : prev)();
+      wheelAcc = 0;
+      wheelLockUntil = now + 800;
+    }
+  },
+  { passive: false },
+);
+
+// Commands from the hosting page (the PHP viewer narrates and moves the deck on).
+window.addEventListener("message", (e) => {
+  if (e.source !== window.parent || !e.data || e.data.type !== "deck3d-deck") return;
+  const action = e.data.action;
+  if (action === "next") next();
+  else if (action === "prev") prev();
+  else if (action === "first") go(0);
+  else if (action === "last") go(slides.length - 1);
+  else if (action === "autoplay") setPlaying(Boolean(e.data.on));
+});
+window.addEventListener("hashchange", () => {
+  const n = parseInt(location.hash.slice(1), 10);
+  // A jump asked for by the hosting page (e.g. the publish page's slide strip) is never throttled.
+  if (Number.isFinite(n)) { lastNav = 0; go(n - 1); }
+});
+
+// ─── Auto-play (no narration) ───────────────────────────────────────────
+const playBtn = document.getElementById("play");
+const autoplaySeconds = Math.min(60, Math.max(3, Number(settings.autoplay?.seconds) || 7));
+let playing = false;
+let playTimer = null;
+
+function schedulePlay() {
+  clearTimeout(playTimer);
+  playTimer = null;
+  if (!playing) return;
+  if (index >= slides.length - 1) {
+    setPlaying(false);
+    return;
+  }
+  playTimer = setTimeout(next, autoplaySeconds * 1000);
+}
+
+function setPlaying(on) {
+  playing = on;
+  playBtn.classList.toggle("on", on);
+  playBtn.textContent = on ? "Pause" : "Autoplay";
+  playBtn.title = on ? "Pause (P)" : "Auto-play (P)";
+  schedulePlay();
+}
+playBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!playing && index >= slides.length - 1) go(0);
+  setPlaying(!playing);
+});
+
+// ─── Footer branding ────────────────────────────────────────────────────
+const footer = settings.footer;
+const brandEl = document.getElementById("brand");
+const brandLogo = webLink(footer?.logoUrl, /^https:\/\//i);
+if (footer?.enabled && (footer.name || brandLogo)) {
+  const link = webLink(footer.link);
+  const wrap = el(link ? "a" : "span", "brand-link");
+  if (link) {
+    wrap.href = link;
+    wrap.target = "_blank";
+    wrap.rel = "noopener noreferrer";
+  }
+  if (brandLogo) {
+    const img = el("img");
+    img.src = brandLogo;
+    img.alt = footer.name || "";
+    wrap.append(img);
+  }
+  if (footer.name) wrap.append(el("span", "", footer.name));
+  brandEl.append(wrap);
+  brandEl.hidden = false;
+}
+
+const start = parseInt(location.hash.slice(1), 10);
+go(Number.isFinite(start) ? start - 1 : 0, true);
+if (settings.autoplay?.enabled) setPlaying(true);

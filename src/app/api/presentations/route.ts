@@ -9,6 +9,8 @@ const Body = z.object({
   prompt: z.string().trim().min(1, "Describe your presentation").max(8000, "Keep requests under 8,000 characters"),
   /** Shown while the slides are written (e.g. the topic or file name); the deck title replaces it. */
   name: z.string().trim().max(120).optional(),
+  /** "cinematic": AI images and trailer-style titles instead of 3D scenes (see server/deck/cine-pipeline.ts). */
+  style: z.enum(["3d", "cinematic"]).optional(),
 });
 
 /**
@@ -21,7 +23,7 @@ export const POST = api(
     const provider = textProviderOrThrow();
     const body = await readJson(req, Body, 64 * 1024);
     const draftName = body.name || draftNameFrom(body.prompt);
-    const project = await createProject(user.id, { name: draftName, category: "presentation", framework: "three" });
+    const project = await createProject(user.id, { name: draftName, category: "presentation", framework: body.style === "cinematic" ? "cinematic" : "three" });
     const started = await startDeckGeneration({ userId: user.id, projectId: project.id, provider, request: { prompt: body.prompt, mode: "auto", draftName }, isNew: true });
     return { projectId: project.id, ...started };
   },

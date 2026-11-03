@@ -31,8 +31,10 @@ export const CATEGORY_LABELS: Record<ProjectCategory, string> = {
  * - react-ts / react-js: esbuild bundle from src/main.(t|j)sx
  * - vanilla: static HTML/CSS/JS, ES modules allowed
  * - three: vanilla + three.js import map (alias of vanilla for the builder)
+ * - cinematic: a cinematic presentation (deck.json + generated engine, built in-process;
+ *   also tells the deck job to write a cinematic deck before deck.json exists)
  */
-export const FRAMEWORKS = ["react-ts", "react-js", "vanilla", "three"] as const;
+export const FRAMEWORKS = ["react-ts", "react-js", "vanilla", "three", "cinematic"] as const;
 export const Framework = z.enum(FRAMEWORKS);
 export type Framework = z.infer<typeof Framework>;
 

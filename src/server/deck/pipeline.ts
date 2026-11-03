@@ -71,7 +71,7 @@ export const DECK_EDIT_RULES = `You are editing an existing deck. Return the COM
 Apply exactly what the user asks; keep every other slide, word and setting unchanged. If the user refers to a slide by number, slides are numbered from 1.
 Exception: if the user asks for a presentation about a different topic (a new deck, not a change to this one), replace the whole deck: write a new story and a new design for the new topic, with a different palette, environment, font and scenes from the current deck (see the design brief). Do not keep the old colours or world.`;
 
-function currentDeck(files: Map<string, string>): DeckSpec | null {
+export function currentDeck(files: Map<string, string>): DeckSpec | null {
   const raw = files.get("deck.json");
   if (!raw) return null;
   try {
@@ -82,7 +82,7 @@ function currentDeck(files: Map<string, string>): DeckSpec | null {
   }
 }
 
-async function conversation(conversationId: string) {
+export async function conversation(conversationId: string) {
   const msgs = await db.chatMessage.findMany({ where: { conversationId }, orderBy: { createdAt: "desc" }, take: 9, select: { role: true, content: true } });
   return msgs
     .slice(1)
@@ -92,7 +92,7 @@ async function conversation(conversationId: string) {
 }
 
 /** Run `fn`, and once more if it fails (e.g. a database connection dropped by the network). */
-async function retryOnce<T>(fn: () => Promise<T>): Promise<T> {
+export async function retryOnce<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch {

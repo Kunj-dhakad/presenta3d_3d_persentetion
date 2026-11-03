@@ -24,7 +24,7 @@ async function loadDeck(projectId: string): Promise<DeckSpec> {
 }
 
 /** What the Design panel shows: the look and the owner's settings (no slide content). */
-const view = (deck: DeckSpec) => ({ title: deck.title, theme: deck.theme, colors: deckColors(deck), settings: deck.settings, slideCount: deck.slides.length });
+const view = (deck: DeckSpec) => ({ title: deck.title, style: deck.style ?? "3d", theme: deck.theme, colors: deckColors(deck), settings: deck.settings, slideCount: deck.slides.length });
 
 export const GET = api<P>(async ({ user, params }) => {
   await getOwnedProject(user.id, params.id);

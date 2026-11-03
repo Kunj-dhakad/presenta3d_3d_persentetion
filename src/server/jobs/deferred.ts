@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/server/db/client";
 import { getTextProvider } from "@/server/ai/provider";
 import { runDeckPipeline } from "@/server/deck/pipeline";
+import { runCinePipeline } from "@/server/deck/cine-pipeline";
 import { claimJob, type RunOutcome } from "./runner";
 
 /** Everything a deferred deck job needs, persisted in GenerationJob.input. */
@@ -33,7 +34,10 @@ export async function startDeferredJob(job: JobRow, opts: { budgetMs?: number } 
   const projectId = job.projectId;
   return claimJob(job.id, async (ctx) => {
     const provider = getTextProvider();
-    return runDeckPipeline(ctx, provider, {
+    // Cinematic presentations (framework "cinematic", set when they are created) have their own pipeline.
+    const project = await db.project.findUnique({ where: { id: projectId }, select: { framework: true } });
+    const run = project?.framework === "cinematic" ? runCinePipeline : runDeckPipeline;
+    return run(ctx, provider, {
       userId: job.userId,
       projectId,
       conversationId: input.conversationId,

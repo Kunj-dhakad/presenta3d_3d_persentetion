@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DeckSpec } from "@/lib/schemas/deck";
 import { validateSceneCode } from "./scene-code";
+import { cineToProjectFiles } from "./cine-codegen";
 
 const RUNTIME_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "src", "server", "deck", "runtime.js.txt");
 
@@ -95,6 +96,8 @@ function escapeHtml(s: string) {
  * unstyled while that extra request (an S3 round trip) was still loading.
  */
 export function deckToProjectFiles(deck: DeckSpec): { path: string; content: string }[] {
+  // Cinematic presentations have their own engine (images and titles, no 3D).
+  if (deck.style === "cinematic") return cineToProjectFiles(deck);
   const runtime = fs.readFileSync(RUNTIME_PATH, "utf8");
   return [
     {
