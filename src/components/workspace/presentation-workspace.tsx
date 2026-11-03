@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, ArrowLeft, Eye, MessageSquare, Pencil, Play, Rocket, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, Loader2, MessageSquare, Pencil, Play, Rocket, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useWorkspace, type ChatMessageRow, type ProjectMeta } from "@/stores/workspace";
 import { api, ApiError, errorMessage, streamJob } from "@/lib/api-client";
 import type { BuildSummary } from "@/lib/build-types";
@@ -40,7 +40,9 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const [messages, setMessages] = useState<ChatMessageRow[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [ai, setAi] = useState<AiStatus>(null);
-  const [shareOpen, setShareOpen] = useState(false);
+  // ?share=1 (the PHP publish page's "Unpublish & private links"): open the share dialog.
+  const [shareOpen, setShareOpen] = useState(() => params.get("share") === "1");
+  const [publishing, setPublishing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -220,6 +222,28 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   }
 
   const hasPreview = Boolean(project?.lastWorkingBuildId);
+
+  /**
+   * Inside the PHP app, Publish puts the latest version live and then hands over
+   * to PHP's publish page (link, embed code, QR, social), like the 2D editor did.
+   */
+  async function publishNow() {
+    if (publishing) return;
+    setPublishing(true);
+    try {
+      const r = await api<{ deployment: { status: string; error: string | null } }>(`/api/projects/${projectId}/publish`, { method: "POST" });
+      if (r.deployment.status === "ready") {
+        notifyParent("P3D_PUBLISHED", { projectId });
+        // PHP opens its page now; free the button in case it does not.
+        setTimeout(() => setPublishing(false), 10000);
+        return;
+      }
+      toast.error(r.deployment.error ?? "Publishing failed. Please try again.");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+    setPublishing(false);
+  }
   // The last request got no answer and nothing is running: its job was lost (the tab was closed
   // before it started, or the server stopped it). Offer to send it again.
   const last = messages[messages.length - 1];
@@ -286,8 +310,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
               </Link>
             </Button>
           )}
-          <Button size="sm" onClick={() => setShareOpen(true)} disabled={!hasPreview}>
-            <Rocket /> Publish
+          <Button size="sm" onClick={() => (inIframe() ? void publishNow() : setShareOpen(true))} disabled={!hasPreview || publishing}>
+            {publishing ? <Loader2 className="animate-spin" /> : <Rocket />} {publishing ? "Publishing…" : "Publish"}
           </Button>
         </div>
       </header>

@@ -11,6 +11,8 @@
  *   iframe → PHP   LOADER_OFF           the page is up; PHP hides its loader
  *   iframe → PHP   P3D_OPENED           { projectId }  a presentation was created or opened
  *   iframe → PHP   P3D_BACK             back to PHP's list of 3D presentations
+ *   iframe → PHP   P3D_PRESENT          { projectId }  open PHP's full-page viewer
+ *   iframe → PHP   P3D_PUBLISHED        { projectId }  published; open PHP's publish page (link, embed, QR, social)
  *
  * Opened directly (no parent page) the token can come as ?token= instead,
  * which is handy in development.

@@ -8,7 +8,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        // The PHP app's .btn-grad: the logo-blue gradient with a soft blue shadow.
+        default: "bg-primary bg-brand-gradient text-primary-foreground shadow-[0_8px_18px_-10px_rgb(0_136_204/0.8)] hover:brightness-95",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
