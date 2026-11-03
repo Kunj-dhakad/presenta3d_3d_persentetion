@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Palette, Play, Plus, Sparkles, Stamp, Trash2, Trophy } from "lucide-react";
+import { Check, Loader2, Plus, Stamp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api, errorMessage } from "@/lib/api-client";
 import { useWorkspace } from "@/stores/workspace";
@@ -17,6 +14,13 @@ import type { DeckSettings, DeckSpec } from "@/lib/schemas/deck";
 import type { BuildSummary } from "@/lib/build-types";
 import { getParentBranding } from "@/components/embed/parent-bridge";
 import { cn } from "@/lib/utils";
+import { SubHeading, ToggleRow } from "./settings-parts";
+
+/**
+ * The design part of the Settings drawer: templates and colours, the Thank
+ * You slide, footer branding and auto-play. Changes are applied without AI
+ * and rebuild the preview; each one is saved as a version.
+ */
 
 type DeckView = { title: string; theme: DeckSpec["theme"]; colors: DeckColors; settings: DeckSettings; slideCount: number };
 
@@ -38,23 +42,26 @@ function Swatches({ colors, className }: { colors: DeckColors; className?: strin
   );
 }
 
-/**
- * The Design panel: templates and colours, the Thank You slide, footer
- * branding and auto-play. Changes are applied without AI and rebuild the
- * preview; each one is saved as a version.
- */
-export function DesignDialog({ projectId, open, onOpenChange, onSaved }: { projectId: string; open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
+/** A small picture of a template: its background, a glow in its 3D colours and the deck title. */
+function TemplateArt({ colors, title }: { colors: DeckColors; title: string }) {
+  return (
+    <div
+      aria-hidden
+      className="relative flex aspect-video flex-col justify-center overflow-hidden rounded-lg px-3"
+      style={{ background: `radial-gradient(70% 90% at 85% 30%, ${colors.primary}55, transparent 70%), radial-gradient(60% 70% at 10% 110%, ${colors.secondary}40, transparent 70%), ${colors.background}` }}
+    >
+      <span className="mb-1 text-[7px] font-bold tracking-[0.2em] uppercase" style={{ color: colors.accent }}>Presentation</span>
+      <span className="line-clamp-2 max-w-[75%] text-[11px] leading-tight font-bold" style={{ color: colors.text }}>{title}</span>
+    </div>
+  );
+}
+
+export function useDesignSettings(projectId: string, open: boolean, onSaved: () => void) {
   const [deck, setDeck] = useState<DeckView | null>(null);
   const [settings, setSettings] = useState<DeckSettings | null>(null);
   const [colors, setColors] = useState<DeckColors | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const show = (d: DeckView) => {
-    setDeck(d);
-    setSettings(d.settings);
-    setColors(d.colors);
-  };
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +70,9 @@ export function DesignDialog({ projectId, open, onOpenChange, onSaved }: { proje
       (r) => {
         if (!live) return;
         setError(null);
-        show(r.deck);
+        setDeck(r.deck);
+        setSettings(r.deck.settings);
+        setColors(r.deck.colors);
       },
       (e) => live && setError(errorMessage(e)),
     );
@@ -76,7 +85,7 @@ export function DesignDialog({ projectId, open, onOpenChange, onSaved }: { proje
     setBusy(key);
     try {
       const r = await api<{ deck: DeckView; build: BuildSummary }>(`/api/projects/${projectId}/deck`, { method: "PATCH", json: body });
-      // Keep unsaved edits on the other tabs: refresh only what was saved.
+      // Keep unsaved edits in the other sections: refresh only what was saved.
       setDeck(r.deck);
       if (body.settings) setSettings(r.deck.settings);
       if (body.design) setColors(r.deck.colors);
@@ -93,162 +102,164 @@ export function DesignDialog({ projectId, open, onOpenChange, onSaved }: { proje
 
   const saveSettings = (key: string, done: string) => settings && void save(key, { settings }, done);
   const set = <K extends keyof DeckSettings>(part: K, patch: Partial<DeckSettings[K]>) => setSettings((s) => (s ? { ...s, [part]: { ...s[part], ...patch } } : s));
-  const branding = getParentBranding();
-  const busyIcon = (key: string, icon: React.ReactNode) => (busy === key ? <Loader2 className="animate-spin" /> : icon);
 
+  return { deck, settings, colors, setColors, busy, error, save, saveSettings, set };
+}
+
+export type DesignState = ReturnType<typeof useDesignSettings>;
+type Loaded = DesignState & { deck: DeckView; settings: DeckSettings; colors: DeckColors };
+
+/** Renders `children` once the deck has loaded; until then a spinner, or the error. */
+export function DesignGate({ d, children }: { d: DesignState; children: (d: Loaded) => React.ReactNode }) {
+  if (d.error) return <p className="text-sm text-destructive">{d.error}</p>;
+  if (!d.deck || !d.settings || !d.colors) return <p className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Loading…</p>;
+  return <>{children(d as Loaded)}</>;
+}
+
+function SaveButton({ d, id, onClick, label = "Save" }: { d: DesignState; id: string; onClick: () => void; label?: string }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Design</DialogTitle>
-          <DialogDescription>Change the look and the closing slide. Every change rebuilds the preview and can be undone from the version history.</DialogDescription>
-        </DialogHeader>
-        {error ? (
-          <p className="text-sm text-destructive">{error}</p>
-        ) : !deck || !settings || !colors ? (
-          <p className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Loading…</p>
-        ) : (
-          <Tabs defaultValue="templates" className="min-h-0 min-w-0">
-            <TabsList className="w-full">
-              <TabsTrigger value="templates"><Sparkles /> Templates</TabsTrigger>
-              <TabsTrigger value="colors"><Palette /> Colours</TabsTrigger>
-              <TabsTrigger value="thanks"><Trophy /> Thank you</TabsTrigger>
-              <TabsTrigger value="brand"><Stamp /> Branding</TabsTrigger>
-              <TabsTrigger value="play"><Play /> Auto-play</TabsTrigger>
-            </TabsList>
+    <div className="mt-4 flex justify-end">
+      <Button size="sm" disabled={d.busy !== null} onClick={onClick}>{d.busy === id ? <Loader2 className="animate-spin" /> : <Check />} {label}</Button>
+    </div>
+  );
+}
 
-            <TabsContent value="templates" className="mt-3 grid max-h-[calc(100dvh-14rem)] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-              {DECK_TEMPLATES.map((t) => {
-                const current = deck.theme.environment === t.environment && deck.theme.font === t.font && deck.colors.accent === t.colors.accent && deck.colors.background === t.colors.background;
-                return (
-                  <button
-                    key={t.id}
-                    disabled={busy !== null}
-                    onClick={() => void save(`template:${t.id}`, { design: { environment: t.environment, font: t.font, ...t.colors } }, `“${t.name}” applied`)}
-                    className={cn("flex flex-col gap-2 rounded-lg border border-border p-3 text-left transition hover:border-brand/60 disabled:opacity-60", current && "border-brand")}
-                  >
-                    <Swatches colors={t.colors} className="h-8" />
-                    <span className="flex items-center gap-1.5 text-sm font-medium">
-                      {busy === `template:${t.id}` ? <Loader2 className="size-3.5 animate-spin" /> : current && <Check className="size-3.5 text-brand" />}
-                      {t.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{t.description}</span>
-                  </button>
-                );
-              })}
-            </TabsContent>
+export function TemplateSection({ d }: { d: Loaded }) {
+  const { deck, colors, busy } = d;
+  return (
+    <>
+      <SubHeading first>Template</SubHeading>
+      <div className="grid grid-cols-2 gap-3">
+        {DECK_TEMPLATES.map((t) => {
+          const current = deck.theme.environment === t.environment && deck.theme.font === t.font && deck.colors.accent === t.colors.accent && deck.colors.background === t.colors.background;
+          return (
+            <button
+              key={t.id}
+              disabled={busy !== null}
+              aria-pressed={current}
+              title={t.description}
+              onClick={() => void d.save(`template:${t.id}`, { design: { environment: t.environment, font: t.font, ...t.colors } }, `“${t.name}” applied`)}
+              className={cn(
+                "relative flex flex-col gap-2 rounded-2xl border-[1.5px] border-border bg-card p-1.5 pb-2.5 text-left transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60",
+                current && "border-brand shadow-[0_0_0_4px_rgb(0_136_204/0.12)]",
+              )}
+            >
+              <TemplateArt colors={t.colors} title={deck.title} />
+              <span className="flex items-center gap-1.5 px-1.5 text-sm font-semibold">
+                {busy === `template:${t.id}` && <Loader2 className="size-3.5 animate-spin" />}
+                {t.name}
+              </span>
+              <span className={cn("absolute top-3 right-3 flex size-5 items-center justify-center rounded-full border-[1.5px] border-white/80 bg-white/90", current && "border-brand bg-brand text-white")} aria-hidden>
+                {current && <Check className="size-3" />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-            <TabsContent value="colors" className="mt-3 grid max-h-[calc(100dvh-14rem)] gap-4 overflow-y-auto pr-1">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {DECK_PALETTES.map((p) => (
-                  <button key={p.id} disabled={busy !== null} onClick={() => void save(`palette:${p.id}`, { design: p.colors }, `“${p.name}” colours applied`)} className="flex flex-col gap-1.5 rounded-lg border border-border p-2 text-left text-xs transition hover:border-brand/60 disabled:opacity-60">
-                    <Swatches colors={p.colors} className="h-6" />
-                    <span className="flex items-center gap-1">{busy === `palette:${p.id}` && <Loader2 className="size-3 animate-spin" />}{p.name}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-sm font-medium">Custom colours</p>
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-                  {COLOR_FIELDS.map(([key, label]) => (
-                    <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
-                      {label}
-                      <span className="flex items-center gap-2">
-                        <input type="color" value={colors[key]} onChange={(e) => setColors({ ...colors, [key]: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-border bg-transparent" />
-                        <code className="text-[11px]">{colors[key]}</code>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <Button size="sm" disabled={busy !== null} onClick={() => void save("colors", { design: colors }, "Colours applied")}>{busyIcon("colors", <Check />)} Apply colours</Button>
-                </div>
-              </div>
-            </TabsContent>
+      <SubHeading>Colour palettes</SubHeading>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {DECK_PALETTES.map((p) => (
+          <button key={p.id} disabled={busy !== null} onClick={() => void d.save(`palette:${p.id}`, { design: p.colors }, `“${p.name}” colours applied`)} className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-2 text-left text-xs transition hover:border-brand/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60">
+            <Swatches colors={p.colors} className="h-6" />
+            <span className="flex items-center gap-1">{busy === `palette:${p.id}` && <Loader2 className="size-3 animate-spin" />}{p.name}</span>
+          </button>
+        ))}
+      </div>
 
-            <TabsContent value="thanks" className="mt-3 grid max-h-[calc(100dvh-14rem)] gap-3 overflow-y-auto pr-1">
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-                End with a Thank You slide
-                <Switch checked={settings.thankYou.enabled} onCheckedChange={(v) => set("thankYou", { enabled: v })} />
-              </label>
-              <div className={cn("grid gap-3", !settings.thankYou.enabled && "pointer-events-none opacity-50")}>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="ty-title">Title</Label>
-                  <Input id="ty-title" value={settings.thankYou.title} maxLength={120} onChange={(e) => set("thankYou", { title: e.target.value })} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="ty-message">Message</Label>
-                  <Textarea id="ty-message" value={settings.thankYou.message} maxLength={400} rows={2} placeholder="e.g. Questions? Let's talk." onChange={(e) => set("thankYou", { message: e.target.value })} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Buttons</Label>
-                  {settings.thankYou.buttons.map((b, i) => (
-                    <div key={i} className="flex gap-2">
-                      <Input value={b.label} maxLength={40} placeholder="Label, e.g. Book a call" aria-label={`Button ${i + 1} label`} className="w-2/5" onChange={(e) => set("thankYou", { buttons: settings.thankYou.buttons.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
-                      <Input value={b.url} placeholder="https://… , mailto: or tel:" aria-label={`Button ${i + 1} link`} onChange={(e) => set("thankYou", { buttons: settings.thankYou.buttons.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)) })} />
-                      <Button size="icon" variant="ghost" aria-label={`Remove button ${i + 1}`} onClick={() => set("thankYou", { buttons: settings.thankYou.buttons.filter((_, j) => j !== i) })}><Trash2 /></Button>
-                    </div>
-                  ))}
-                  {settings.thankYou.buttons.length < 3 && (
-                    <Button size="sm" variant="secondary" className="justify-self-start" onClick={() => set("thankYou", { buttons: [...settings.thankYou.buttons, { label: "", url: "https://" }] })}><Plus /> Add button</Button>
-                  )}
-                  <p className="text-xs text-muted-foreground">Up to 3 buttons. Buttons without a label or a valid link are left out.</p>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button size="sm" disabled={busy !== null} onClick={() => saveSettings("thanks", "Thank You slide saved")}>{busyIcon("thanks", <Check />)} Save</Button>
-              </div>
-            </TabsContent>
+      <SubHeading>Custom colours</SubHeading>
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+        {COLOR_FIELDS.map(([key, label]) => (
+          <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {label}
+            <span className="flex items-center gap-1.5">
+              <input type="color" value={colors[key]} onChange={(e) => d.setColors({ ...colors, [key]: e.target.value })} className="h-8 w-9 shrink-0 cursor-pointer rounded-md border border-border bg-transparent" />
+              <code className="truncate text-[10.5px]">{colors[key]}</code>
+            </span>
+          </label>
+        ))}
+      </div>
+      <SaveButton d={d} id="colors" label="Apply colours" onClick={() => void d.save("colors", { design: colors }, "Colours applied")} />
+    </>
+  );
+}
 
-            <TabsContent value="brand" className="mt-3 grid max-h-[calc(100dvh-14rem)] gap-3 overflow-y-auto pr-1">
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-                Show my branding on every slide
-                <Switch checked={settings.footer.enabled} onCheckedChange={(v) => set("footer", { enabled: v })} />
-              </label>
-              <div className={cn("grid gap-3", !settings.footer.enabled && "pointer-events-none opacity-50")}>
-                {branding && (branding.logo || branding.name) && (
-                  <Button size="sm" variant="secondary" className="justify-self-start" onClick={() => set("footer", { logoUrl: branding.logo, name: branding.name, link: branding.link })}>
-                    <Stamp /> Use my whitelabel branding
-                  </Button>
-                )}
-                <div className="grid gap-1.5">
-                  <Label htmlFor="brand-logo">Logo URL</Label>
-                  <Input id="brand-logo" value={settings.footer.logoUrl} placeholder="https://…/logo.png" onChange={(e) => set("footer", { logoUrl: e.target.value })} />
-                  <p className="text-xs text-muted-foreground">Must start with https://.</p>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="brand-name">Brand name</Label>
-                  <Input id="brand-name" value={settings.footer.name} maxLength={80} onChange={(e) => set("footer", { name: e.target.value })} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="brand-link">Link</Label>
-                  <Input id="brand-link" value={settings.footer.link} placeholder="https://your-website.com" onChange={(e) => set("footer", { link: e.target.value })} />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button size="sm" disabled={busy !== null} onClick={() => saveSettings("brand", "Branding saved")}>{busyIcon("brand", <Check />)} Save</Button>
-              </div>
-            </TabsContent>
+export function AutoplaySection({ d }: { d: Loaded }) {
+  const { settings } = d;
+  return (
+    <>
+      <ToggleRow id="design-autoplay" title="Auto-play" hint="Slides move on by themselves (no narration). Viewers can always pause with ▶ or the P key." checked={settings.autoplay.enabled} onChange={(v) => d.set("autoplay", { enabled: v })} first />
+      <div className="mt-2 grid gap-1.5">
+        <Label htmlFor="play-seconds">Seconds per slide</Label>
+        <Input id="play-seconds" type="number" min={3} max={60} value={settings.autoplay.seconds} className="w-28" onChange={(e) => d.set("autoplay", { seconds: Number(e.target.value) })} />
+      </div>
+      <SaveButton d={d} id="play" onClick={() => d.saveSettings("play", "Auto-play saved")} />
+    </>
+  );
+}
 
-            <TabsContent value="play" className="mt-3 grid max-h-[calc(100dvh-14rem)] gap-3 overflow-y-auto pr-1">
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-                <span>
-                  Start playing automatically
-                  <span className="block text-xs text-muted-foreground">Slides move on by themselves (no narration). Viewers can always pause with ▶ or the P key.</span>
-                </span>
-                <Switch checked={settings.autoplay.enabled} onCheckedChange={(v) => set("autoplay", { enabled: v })} />
-              </label>
-              <div className="grid gap-1.5">
-                <Label htmlFor="play-seconds">Seconds per slide</Label>
-                <Input id="play-seconds" type="number" min={3} max={60} value={settings.autoplay.seconds} className="w-28" onChange={(e) => set("autoplay", { seconds: Number(e.target.value) })} />
-              </div>
-              <div className="flex justify-end">
-                <Button size="sm" disabled={busy !== null} onClick={() => saveSettings("play", "Auto-play saved")}>{busyIcon("play", <Check />)} Save</Button>
-              </div>
-            </TabsContent>
-          </Tabs>
+export function ThankYouSection({ d }: { d: Loaded }) {
+  const { settings } = d;
+  const buttons = settings.thankYou.buttons;
+  return (
+    <>
+      <ToggleRow id="design-thanks" title="End with a Thank-you slide" hint="A closing slide with your message and call-to-action buttons." checked={settings.thankYou.enabled} onChange={(v) => d.set("thankYou", { enabled: v })} first />
+      <div className={cn("grid gap-3", !settings.thankYou.enabled && "pointer-events-none opacity-50")}>
+        <div className="grid gap-1.5">
+          <Label htmlFor="ty-title">Heading</Label>
+          <Input id="ty-title" value={settings.thankYou.title} maxLength={120} onChange={(e) => d.set("thankYou", { title: e.target.value })} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="ty-message">Message</Label>
+          <Textarea id="ty-message" value={settings.thankYou.message} maxLength={400} rows={2} placeholder="e.g. Questions? Let's talk." onChange={(e) => d.set("thankYou", { message: e.target.value })} />
+        </div>
+        <div className="grid gap-2">
+          <Label>Call-to-action buttons</Label>
+          {buttons.map((b, i) => (
+            <div key={i} className="flex gap-2">
+              <Input value={b.label} maxLength={40} placeholder="Label, e.g. Book a call" aria-label={`Button ${i + 1} label`} className="w-2/5" onChange={(e) => d.set("thankYou", { buttons: buttons.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
+              <Input value={b.url} placeholder="https://… , mailto: or tel:" aria-label={`Button ${i + 1} link`} onChange={(e) => d.set("thankYou", { buttons: buttons.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)) })} />
+              <Button size="icon" variant="ghost" aria-label={`Remove button ${i + 1}`} onClick={() => d.set("thankYou", { buttons: buttons.filter((_, j) => j !== i) })}><Trash2 /></Button>
+            </div>
+          ))}
+          {buttons.length < 3 && (
+            <Button size="sm" variant="secondary" className="justify-self-start" onClick={() => d.set("thankYou", { buttons: [...buttons, { label: "", url: "https://" }] })}><Plus /> Add button</Button>
+          )}
+          <p className="text-xs text-muted-foreground">Up to 3 buttons. Buttons without a label or a valid link are left out.</p>
+        </div>
+      </div>
+      <SaveButton d={d} id="thanks" onClick={() => d.saveSettings("thanks", "Thank-you slide saved")} />
+    </>
+  );
+}
+
+export function BrandingSection({ d }: { d: Loaded }) {
+  const { settings } = d;
+  const branding = getParentBranding();
+  return (
+    <>
+      <ToggleRow id="design-brand" title="Show my branding on every slide" hint="Your logo, name and link in the slide footer." checked={settings.footer.enabled} onChange={(v) => d.set("footer", { enabled: v })} first />
+      <div className={cn("grid gap-3", !settings.footer.enabled && "pointer-events-none opacity-50")}>
+        {branding && (branding.logo || branding.name) && (
+          <Button size="sm" variant="secondary" className="justify-self-start" onClick={() => d.set("footer", { logoUrl: branding.logo, name: branding.name, link: branding.link })}>
+            <Stamp /> Use my whitelabel branding
+          </Button>
         )}
-      </DialogContent>
-    </Dialog>
+        <div className="grid gap-1.5">
+          <Label htmlFor="brand-logo">Logo URL</Label>
+          <Input id="brand-logo" value={settings.footer.logoUrl} placeholder="https://…/logo.png" onChange={(e) => d.set("footer", { logoUrl: e.target.value })} />
+          <p className="text-xs text-muted-foreground">Must start with https://.</p>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="brand-name">Brand name</Label>
+          <Input id="brand-name" value={settings.footer.name} maxLength={80} onChange={(e) => d.set("footer", { name: e.target.value })} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="brand-link">Link</Label>
+          <Input id="brand-link" value={settings.footer.link} placeholder="https://your-website.com" onChange={(e) => d.set("footer", { link: e.target.value })} />
+        </div>
+      </div>
+      <SaveButton d={d} id="brand" onClick={() => d.saveSettings("brand", "Branding saved")} />
+    </>
   );
 }
