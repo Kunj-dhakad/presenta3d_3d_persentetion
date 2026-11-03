@@ -82,7 +82,19 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       streamAbort.current = ctrl;
       useWorkspace.getState().startJob(jobId);
       try {
-        await streamJob(jobId, (e) => useWorkspace.getState().applyJobEvent(e), ctrl.signal);
+        let named = false;
+        await streamJob(
+          jobId,
+          (e) => {
+            useWorkspace.getState().applyJobEvent(e);
+            // The first preview is saved with the deck's title as the name: show it now, not at the end.
+            if (e.type === "build" && !named) {
+              named = true;
+              api<ProjectResponse>(`/api/projects/${projectId}`).then((p) => useWorkspace.getState().setProject(p.project), () => {});
+            }
+          },
+          ctrl.signal,
+        );
       } catch (e) {
         if (!ctrl.signal.aborted) toast.error(errorMessage(e));
       }

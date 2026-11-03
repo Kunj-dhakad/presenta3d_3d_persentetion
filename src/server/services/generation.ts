@@ -12,6 +12,8 @@ export type GenerationRequest = {
   mode: "auto" | "repair";
   conversationId?: string | null;
   runtimeErrors?: string[];
+  /** See PipelineInput.draftName. */
+  draftName?: string;
 };
 
 export function textProviderOrThrow(): TextModelProvider {
@@ -55,6 +57,7 @@ export async function startDeckGeneration(input: {
     mode: request.mode,
     conversationId: conversation.id,
     runtimeErrors: request.runtimeErrors,
+    draftName: request.draftName,
     startedAt: new Date().toISOString(),
   };
   // The job id is chosen up front so the message and the job are written in parallel.

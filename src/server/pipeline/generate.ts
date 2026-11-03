@@ -30,6 +30,8 @@ export type PipelineInput = {
   prompt: string;
   mode: "auto" | "repair";
   runtimeErrors?: string[];
+  /** The name the presentation got when it was created; replaced by the deck title once the slides are written. */
+  draftName?: string;
 };
 
 export type PipelineResult = {

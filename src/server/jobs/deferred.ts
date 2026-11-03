@@ -12,6 +12,7 @@ export const DeckJobInput = z.object({
   mode: z.enum(["auto", "repair"]),
   conversationId: z.string(),
   runtimeErrors: z.array(z.string()).optional(),
+  draftName: z.string().optional(),
   startedAt: z.string(),
 });
 export type DeckJobInput = z.infer<typeof DeckJobInput>;
@@ -39,6 +40,7 @@ export async function startDeferredJob(job: JobRow, opts: { budgetMs?: number } 
       prompt: input.prompt,
       mode: input.mode,
       runtimeErrors: input.runtimeErrors,
+      draftName: input.draftName,
     }).catch(async (err) => {
       // Cancelled, or taken over by another step after this instance was frozen: nothing to report here.
       if (ctx.signal.aborted) throw err;

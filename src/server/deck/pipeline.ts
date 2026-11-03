@@ -178,8 +178,9 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     log: (m, level = "info") => (level === "info" ? log(m) : ctx.emit({ type: "log", level, message: m })),
   });
 
+  // A placeholder or creation-time name becomes the deck title; a name the user gave meanwhile stays.
   const meta = (name: string, deck: DeckSpec) => ({
-    name: name === "Untitled project" || name === "Untitled presentation" ? deck.title.slice(0, 120) : name,
+    name: name === "Untitled project" || name === "Untitled presentation" || (input.draftName && name === input.draftName) ? deck.title.slice(0, 120) : name,
     description: deck.slides[0]?.subtitle.slice(0, 500) ?? "",
     category: "presentation",
     framework: "three",
