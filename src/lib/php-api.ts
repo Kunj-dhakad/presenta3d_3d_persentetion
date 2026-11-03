@@ -14,7 +14,11 @@ const TIMEOUT_MS = 20_000;
 
 export class PhpApiError extends Error {}
 
-export async function phpPost<T>(path: string, fields: Record<string, string | number | boolean | null | undefined>): Promise<T> {
+export async function phpPost<T>(
+  path: string,
+  fields: Record<string, string | number | boolean | null | undefined>,
+  { timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<T> {
   const site = getParentSite();
   const token = getAccessToken();
   if (!site || !token) throw new PhpApiError("Open this presentation from your dashboard to change these settings.");
@@ -26,7 +30,7 @@ export async function phpPost<T>(path: string, fields: Record<string, string | n
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(site + path, { method: "POST", body, signal: controller.signal });
