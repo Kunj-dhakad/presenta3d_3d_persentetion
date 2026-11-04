@@ -26,6 +26,8 @@ export type PreviewMessage =
   | { source: "deck3d-preview"; type: "ready"; loadMs: number }
   /** Posted by presentations when the current slide changes (1-based). */
   | { source: "deck3d-preview"; type: "slide"; index: number }
+  /** Posted by presentations when asked ("thumbnail" action): a JPEG data URL of slide 1. */
+  | { source: "deck3d-preview"; type: "thumbnail"; image: string }
   | {
       source: "deck3d-preview";
       type: "runtime-error" | "console-error" | "resource-error" | "csp-violation";

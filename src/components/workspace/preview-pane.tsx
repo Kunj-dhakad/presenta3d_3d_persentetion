@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck } from "lucide-react";
 import { useWorkspace } from "@/stores/workspace";
+import { api } from "@/lib/api-client";
 import { formatDiagnostic, type PreviewMessage } from "@/lib/build-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,13 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
   const [box, setBox] = useState({ w: 0, h: 0 });
   // The slide being viewed, so a rebuilt presentation (e.g. when its custom 3D scenes arrive) reopens on it.
   const [slide, setSlide] = useState(1);
+  // Builds whose slide-1 thumbnail was asked for (once each; the presentation listing shows it).
+  const thumbAsked = useRef(new Set<string>());
+  const shownBuild = /\/preview\/([A-Za-z0-9_-]{8,58})\//.exec(build.previewUrl ?? "")?.[1] ?? null;
+  const shownBuildRef = useRef(shownBuild);
+  useEffect(() => {
+    shownBuildRef.current = shownBuild;
+  }, [shownBuild]);
 
   // Messages from the sandboxed preview: accept only those from our iframe's window.
   useEffect(() => {
@@ -35,9 +43,23 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
       if (e.source !== frameRef.current?.contentWindow) return;
       const d = e.data as PreviewMessage;
       if (!d || d.source !== "deck3d-preview") return;
+      const buildId = shownBuildRef.current;
       if (d.type === "ready") setLoading(false);
-      else if (d.type === "slide") setSlide(Number.isInteger(d.index) && d.index > 0 ? d.index : 1);
-      else pushRuntimeError(d);
+      else if (d.type === "slide") {
+        setSlide(Number.isInteger(d.index) && d.index > 0 ? d.index : 1);
+        // A presentation is showing: ask it for a picture of slide 1 (drawn once slide 1 has settled).
+        if (buildId && !thumbAsked.current.has(buildId)) {
+          thumbAsked.current.add(buildId);
+          frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "thumbnail" }, "*");
+        }
+      } else if (d.type === "thumbnail") {
+        const projectId = useWorkspace.getState().projectId;
+        if (buildId && projectId && typeof d.image === "string") {
+          void api(`/api/projects/${projectId}/thumbnail`, { method: "POST", json: { buildId, image: d.image } }).catch(() => {
+            /* only the listing's picture: a later build tries again */
+          });
+        }
+      } else pushRuntimeError(d);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
