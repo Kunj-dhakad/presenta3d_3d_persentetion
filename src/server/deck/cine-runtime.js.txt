@@ -311,8 +311,50 @@ slides.forEach((_, i) => {
     e.stopPropagation();
     go(i);
   });
+  d.addEventListener("mouseenter", () => showPeek(i, d));
+  d.addEventListener("focus", () => showPeek(i, d));
+  d.addEventListener("mouseleave", hidePeek);
+  d.addEventListener("blur", hidePeek);
   dotsEl.append(d);
 });
+
+// ─── Slide preview on hover ─────────────────────────────────────────────
+// Hovering a dot shows that slide above it, like a video's seek bar: its
+// picture when there is one, otherwise its title on the deck's colours.
+const peekEl = document.getElementById("peek");
+const peekImgEl = peekEl.querySelector(".peek-img");
+const peekNEl = peekEl.querySelector(".peek-n");
+const peekCEl = peekEl.querySelector(".peek-c");
+let peekHide = null;
+const peekPicture = (i) => slides[i].cine?.image || null;
+
+function showPeek(i, dot) {
+  clearTimeout(peekHide);
+  const slide = slides[i];
+  peekImgEl.replaceChildren();
+  const src = peekPicture(i);
+  if (src) {
+    const img = el("img");
+    img.alt = "";
+    img.src = src;
+    peekImgEl.append(img);
+  } else {
+    if (slide.kicker) peekImgEl.append(el("div", "peek-k", slide.kicker));
+    peekImgEl.append(el("div", "peek-t", slide.title));
+  }
+  peekNEl.textContent = pad(i + 1);
+  peekCEl.textContent = slide.title;
+  const r = dot.getBoundingClientRect();
+  const hud = dotsEl.parentElement.getBoundingClientRect();
+  const w = peekEl.offsetWidth || 208;
+  peekEl.style.left = `${Math.round(Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)))}px`;
+  peekEl.style.bottom = `${Math.round(window.innerHeight - hud.top + 10)}px`;
+  peekEl.classList.add("on");
+}
+function hidePeek() {
+  clearTimeout(peekHide);
+  peekHide = setTimeout(() => peekEl.classList.remove("on"), 60);
+}
 
 // ─── Travel ─────────────────────────────────────────────────────────────
 let index = -1;

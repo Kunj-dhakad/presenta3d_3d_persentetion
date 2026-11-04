@@ -1097,8 +1097,66 @@ slides.forEach((_, i) => {
     e.stopPropagation();
     go(i);
   });
+  d.addEventListener("mouseenter", () => showPeek(i, d));
+  d.addEventListener("focus", () => showPeek(i, d));
+  d.addEventListener("mouseleave", hidePeek);
+  d.addEventListener("blur", hidePeek);
   dotsEl.append(d);
 });
+
+// ─── Slide preview on hover ─────────────────────────────────────────────
+// Hovering a dot shows that slide above it, like a video's seek bar: its
+// picture when there is one, otherwise its title on the deck's colours.
+const peekEl = document.getElementById("peek");
+const peekImgEl = peekEl.querySelector(".peek-img");
+const peekNEl = peekEl.querySelector(".peek-n");
+const peekCEl = peekEl.querySelector(".peek-c");
+let peekHide = null;
+// A small picture of each slide, taken once it has been on screen and its text has settled.
+const peeks = new Map();
+let peekTimer = null;
+function schedulePeek() {
+  clearTimeout(peekTimer);
+  if (peeks.has(index)) return;
+  const i = index;
+  peekTimer = setTimeout(() => {
+    if (index !== i || peeks.has(i)) return;
+    try {
+      peeks.set(i, captureThumbnail(320, 180));
+    } catch {
+      /* the picture could not be read */
+    }
+  }, 2600);
+}
+const peekPicture = (i) => peeks.get(i) || null;
+
+function showPeek(i, dot) {
+  clearTimeout(peekHide);
+  const slide = slides[i];
+  peekImgEl.replaceChildren();
+  const src = peekPicture(i);
+  if (src) {
+    const img = el("img");
+    img.alt = "";
+    img.src = src;
+    peekImgEl.append(img);
+  } else {
+    if (slide.kicker) peekImgEl.append(el("div", "peek-k", slide.kicker));
+    peekImgEl.append(el("div", "peek-t", slide.title));
+  }
+  peekNEl.textContent = pad(i + 1);
+  peekCEl.textContent = slide.title;
+  const r = dot.getBoundingClientRect();
+  const hud = dotsEl.parentElement.getBoundingClientRect();
+  const w = peekEl.offsetWidth || 208;
+  peekEl.style.left = `${Math.round(Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)))}px`;
+  peekEl.style.bottom = `${Math.round(window.innerHeight - hud.top + 10)}px`;
+  peekEl.classList.add("on");
+}
+function hidePeek() {
+  clearTimeout(peekHide);
+  peekHide = setTimeout(() => peekEl.classList.remove("on"), 60);
+}
 
 // ─── Camera travel ──────────────────────────────────────────────────────
 const rig = { x: 0, y: 0.6, z: 11, lookX: 0, lookY: 0.2, lookZ: 0, fov: 45, roll: 0 };
@@ -1213,6 +1271,7 @@ function go(next, instant = false) {
   // Auto-play counts down again from every slide, however it was reached.
   schedulePlay();
   scheduleThumbnail();
+  schedulePeek();
 }
 
 const next = () => go(index + 1);
@@ -1317,8 +1376,7 @@ function scheduleThumbnail() {
   }, 3200);
 }
 
-function captureThumbnail() {
-  const W = 640, H = 360;
+function captureThumbnail(W = 640, H = 360) {
   const vw = window.innerWidth, vh = window.innerHeight;
   const c = document.createElement("canvas");
   c.width = W;

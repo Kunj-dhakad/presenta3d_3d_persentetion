@@ -58,6 +58,17 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 .dot { width: 26px; height: 3px; border-radius: 3px; border: 0; padding: 0; background: rgba(255, 255, 255, 0.18); cursor: pointer; transition: background 0.4s; }
 .dot:hover { background: rgba(255, 255, 255, 0.4); }
 .dot.active { background: var(--accent); }
+/* Hover preview of a slide above its dot, like a video's seek bar. */
+#peek { position: fixed; z-index: 30; width: 208px; padding: 4px; border-radius: 12px; background: rgba(12, 13, 20, 0.86); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.8); pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity 0.18s, transform 0.18s; }
+#peek.on { opacity: 1; transform: none; }
+#peek .peek-img { position: relative; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; text-align: left; }
+#peek .peek-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#peek .peek-k { font-size: 7px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 3px; }
+#peek .peek-t { font-size: 12px; font-weight: 700; line-height: 1.2; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#peek .peek-cap { display: flex; align-items: center; gap: 6px; padding: 6px 4px 2px; font-size: 11px; color: var(--text); }
+#peek .peek-n { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+#peek .peek-c { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+@media (hover: none) { #peek { display: none; } }
 .nav-btn { width: 32px; height: 32px; border-radius: 999px; border: 0; background: transparent; color: var(--text); cursor: pointer; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; transition: background 0.2s; }
 .nav-btn:hover { background: rgba(255, 255, 255, 0.1); }
 .progress { position: fixed; top: 0; left: 0; right: 0; height: 2px; background: rgba(255, 255, 255, 0.05); }
@@ -123,6 +134,7 @@ ${STYLE}  </style>
   <div id="hint" class="pill">&#8592; &#8594; or scroll to travel</div>
   <div id="notes" role="note"></div>
   <footer id="brand" hidden></footer>
+  <div id="peek" aria-hidden="true"><div class="peek-img"></div><div class="peek-cap"><span class="peek-n"></span><span class="peek-c"></span></div></div>
   <nav class="hud pill" aria-label="Slides">
     <button id="prev" class="nav-btn" aria-label="Previous slide">&#8249;</button>
     <div id="dots"></div>
