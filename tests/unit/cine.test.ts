@@ -133,7 +133,7 @@ describe("cinematic generation", () => {
     const events = first.job.events as { type: string; status?: string; message?: string; stage?: string; state?: string }[];
     // Shown first with the slides' colours, then rebuilt with the images.
     expect(events.filter((e) => e.type === "build" && e.status === "succeeded")).toHaveLength(2);
-    expect(events.some((e) => e.type === "log" && /Painting 2 cinematic images at the same time/.test(e.message ?? ""))).toBe(true);
+    expect(events.some((e) => e.type === "log" && /Painting 2 images at the same time/.test(e.message ?? ""))).toBe(true);
     expect(events.some((e) => e.type === "stage" && e.stage === "images" && e.state === "done")).toBe(true);
 
     const files = await getFiles(p.id);
