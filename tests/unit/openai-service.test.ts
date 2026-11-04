@@ -149,6 +149,13 @@ describe("OpenAI service (Responses API)", () => {
   });
 
   it("maps timeouts and cancellation", () => {
+    // No credits, as an error event inside a stream (no HTTP status): named plainly, not retried.
+    const noCredits = new OpenAI.APIError(undefined, { type: "insufficient_quota", code: "credit_balance_exhausted", message: "You have no credits remaining." }, "You have no credits remaining.", undefined);
+    expect(mapOpenAIError(noCredits)).toMatchObject({ code: "RATE_LIMITED", retryable: false });
+    expect(mapOpenAIError(noCredits).message).toMatch(/no credits left.*Billing/);
+    // Any other stream error shows OpenAI's words instead of "(?)".
+    const streamError = new OpenAI.APIError(undefined, { type: "server_error", code: null, message: "The server had an error" }, "The server had an error", undefined);
+    expect(mapOpenAIError(streamError).message).toBe("OpenAI error (?): The server had an error");
     expect(mapOpenAIError(new OpenAI.APIConnectionTimeoutError()).code).toBe("TIMEOUT");
     expect(mapOpenAIError(new OpenAI.APIUserAbortError()).code).toBe("CANCELLED");
   });

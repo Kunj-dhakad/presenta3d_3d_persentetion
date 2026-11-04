@@ -33,16 +33,23 @@ export function mapOpenAIError(err: unknown): AIError {
   if (err instanceof OpenAI.APIUserAbortError) return new AIError("CANCELLED", "Request cancelled");
   if (err instanceof OpenAI.APIConnectionTimeoutError) return new AIError("TIMEOUT", "OpenAI request timed out", true);
   if (err instanceof OpenAI.APIConnectionError) return new AIError("UPSTREAM", "Could not reach OpenAI", true);
+  // No credits / quota left: the same whether it arrives as a 429 or as an error event inside a stream (no status).
+  if (err instanceof OpenAI.APIError && (err.type === "insufficient_quota" || /credit_balance|insufficient_quota/i.test(err.code ?? "") || /no credits remaining|exceeded your current quota/i.test(err.message))) {
+    return new AIError("RATE_LIMITED", "The OpenAI account has no credits left: add credits at platform.openai.com (Settings › Organization › Billing), then try again.", false, err.requestID ?? null);
+  }
   if (err instanceof OpenAI.RateLimitError) {
-    const quota = /quota/i.test(err.message);
-    return new AIError("RATE_LIMITED", quota ? "OpenAI quota exceeded for this API key" : "OpenAI rate limit reached; try again shortly", !quota, err.requestID ?? null);
+    return new AIError("RATE_LIMITED", "OpenAI rate limit reached; try again shortly", true, err.requestID ?? null);
   }
   if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) {
     return new AIError("AUTH", "OpenAI rejected the API key or the key lacks access to this model", false, err.requestID ?? null);
   }
   if (err instanceof OpenAI.NotFoundError) return new AIError("BAD_REQUEST", "The configured OpenAI model was not found or is not available to this key", false, err.requestID ?? null);
   if (err instanceof OpenAI.BadRequestError) return new AIError("BAD_REQUEST", `OpenAI rejected the request: ${err.message.slice(0, 300)}`, false, err.requestID ?? null);
-  if (err instanceof OpenAI.APIError) return new AIError("UPSTREAM", `OpenAI error (${err.status ?? "?"})`, (err.status ?? 500) >= 500, err.requestID ?? null);
+  // An error event inside a stream has no status: show OpenAI's own words instead of "(?)".
+  if (err instanceof OpenAI.APIError) {
+    const detail = err.status == null && err.message ? `: ${err.message.slice(0, 200)}` : "";
+    return new AIError("UPSTREAM", `OpenAI error (${err.status ?? err.code ?? "?"})${detail}`, (err.status ?? 500) >= 500, err.requestID ?? null);
+  }
   if (err instanceof Error && err.name === "AbortError") return new AIError("CANCELLED", "Request cancelled");
   return new AIError("UPSTREAM", err instanceof Error ? err.message.slice(0, 300) : "Unknown OpenAI error");
 }
