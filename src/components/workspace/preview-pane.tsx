@@ -144,13 +144,14 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
         </div>
       )}
 
-      <div ref={boxRef} className={cn("relative min-h-0 flex-1 overflow-hidden", viewport !== "desktop" && "grid-dots flex items-center justify-center")}>
+      {/* The preview sits in a framed card with the page around it, never edge to edge. */}
+      <div ref={boxRef} className={cn("relative min-h-0 flex-1 overflow-hidden", viewport === "desktop" ? "p-4 sm:p-5" : "grid-dots flex items-center justify-center")}>
         {busy ? (
           <GeneratingSkeleton box={box} />
         ) : src ? (
           <div
             style={vp.w && vp.h ? { width: vp.w, height: vp.h, transform: `scale(${scale})`, transformOrigin: "center" } : { width: "100%", height: "100%" }}
-            className={cn("relative shrink-0 bg-white", viewport !== "desktop" && "overflow-hidden rounded-[18px] shadow-2xl ring-1 ring-border")}
+            className={cn("relative shrink-0 overflow-hidden bg-white ring-1 ring-border", viewport === "desktop" ? "rounded-2xl shadow-[0_14px_34px_-18px_rgb(15_29_43/0.35)]" : "rounded-[18px] shadow-2xl")}
           >
             <iframe
               key={src}
