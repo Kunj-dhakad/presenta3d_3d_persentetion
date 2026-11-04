@@ -48,20 +48,20 @@ describe("cinematic images across job steps", () => {
     expect((await step()).status).not.toBe("succeeded");
     expect(painted).toHaveLength(0);
 
-    // Step 2: both images start together, but the step ends before they finish.
+    // Step 2: every image starts together, but the step ends before they finish.
     // (A 20 s step has no time for medium quality, so they are painted at low quality from the start.)
     round = 1;
     expect((await step()).status).not.toBe("succeeded");
-    expect(painted).toEqual([{ quality: "low", round: 1 }, { quality: "low", round: 1 }]);
+    expect(painted).toEqual(Array(6).fill({ quality: "low", round: 1 })); // all six slides at once
 
     // Step 3: painted again, both at once, and finished.
     round = 2;
     const job = await step();
     expect({ status: job.status, error: job.error }).toEqual({ status: "succeeded", error: null });
-    expect(painted.slice(2)).toEqual([{ quality: "low", round: 2 }, { quality: "low", round: 2 }]);
+    expect(painted.slice(6)).toEqual(Array(6).fill({ quality: "low", round: 2 }));
 
     const deck = JSON.parse((await getFiles(project.id)).find((f) => f.path === "deck.json")!.content);
     const images = deck.slides.map((s: { cine: { image: string } }) => s.cine.image).filter(Boolean);
-    expect(images).toHaveLength(2);
+    expect(images).toHaveLength(6);
   }, 120_000);
 });

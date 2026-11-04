@@ -26,7 +26,7 @@ if (thankYou?.enabled) {
     notes: "",
     textEffect: "zoom",
     buttons: (thankYou.buttons || []).filter((b) => b && b.label && webLink(b.url, /^(https?:\/\/|mailto:|tel:)/i)),
-    cine: { look: "closing", highlight: "", tone: deck.theme.accent, visual: "none", imagePrompt: "", image: opening?.cine.image || "", items: [] },
+    cine: { look: "closing", highlight: "", tone: deck.theme.accent, visual: "none", imagePrompt: "", image: opening?.cine.image || "", items: [], frame: "full", cut: "fade" },
   });
 }
 document.title = deck.title;
@@ -35,7 +35,16 @@ const root = document.documentElement;
 root.style.setProperty("--bg", deck.theme.background);
 root.style.setProperty("--text", deck.theme.text);
 root.style.setProperty("--accent", deck.theme.accent);
-document.body.dataset.font = deck.theme.font || "display";
+// The deck's style sets fonts, image treatment, highlights and motion (see the styles in cine-codegen.ts).
+const STYLE = ["trailer", "editorial", "noir", "neon", "documentary", "luxury"].includes(deck.cineStyle) ? deck.cineStyle : "trailer";
+document.body.dataset.style = STYLE;
+// Letterbox bars close in on the flash cut in the film-like styles.
+const BARS = STYLE === "trailer" || STYLE === "noir" || STYLE === "neon";
+const CUTS = ["flash", "fade", "push", "zoom", "wipe", "iris"];
+const FRAMES = ["full", "right", "left", "window"];
+/** Looks that need the whole width for their text: always a full-screen image. */
+const FULL = ["hero", "statement", "closing", "cards", "timeline"];
+const cutOf = (slide) => (CUTS.includes(slide?.cine?.cut) ? slide.cine.cut : "flash");
 
 const stage = document.getElementById("stage");
 const flash = document.getElementById("flash");
@@ -137,7 +146,8 @@ function visual(kind) {
 function buildSlide(slide, i) {
   const c = slide.cine || { look: "statement", tone: deck.theme.accent, visual: "none", image: "", items: [] };
   const look = c.look || "statement";
-  const node = el("section", `slide look-${look}`);
+  const frame = FULL.includes(look) || !FRAMES.includes(c.frame) ? "full" : c.frame;
+  const node = el("section", `slide look-${look} frame-${frame}`);
   node.style.setProperty("--tone", c.tone || deck.theme.accent);
   node.setAttribute("aria-label", `Slide ${i + 1} of ${slides.length}`);
 
@@ -145,21 +155,25 @@ function buildSlide(slide, i) {
   const src = imageUrl(c.image);
   if (src) {
     bg.classList.add("has-img");
-    const img = el("img");
+    const pic = el("div", "pic");
+    // A different camera move on each slide: zoom in, zoom out, pan left, pan right.
+    const img = el("img", `kb-${i % 4}`);
     img.alt = "";
     img.decoding = "async";
     img.src = src;
     img.addEventListener("error", () => bg.classList.add("painting"));
-    bg.append(img);
+    pic.append(img);
+    bg.append(pic);
   }
   node.append(bg, particles(i * 5 + 3), el("div", "vignette"), el("div", "grain"));
-  const frame = el("div", "frame");
-  node.append(frame);
+  const stageFrame = el("div", "frame");
+  node.append(stageFrame);
+  // The glowing visual only stands in for an image that could not be painted.
   if (!src) {
     const v = visual(c.visual);
     if (v) {
       node.classList.add("has-visual");
-      frame.append(animate(v, "a-fade", 0.9));
+      stageFrame.append(animate(v, "a-fade", 0.9));
     }
   }
 
@@ -221,7 +235,7 @@ function buildSlide(slide, i) {
     });
     content.append(box);
   }
-  frame.append(content);
+  stageFrame.append(content);
   return node;
 }
 
@@ -246,24 +260,28 @@ function go(next, instant = false) {
   const now = performance.now();
   if (now - lastNav < 350 && !instant) return;
   lastNav = now;
+  const back = next < index;
   index = next;
   const slide = slides[next];
-
+  // Both slides play the entering slide's cut; going back reverses push and wipe.
+  const cut = cutOf(slide);
+  stage.classList.toggle("back", back);
+  for (const old of stage.querySelectorAll(".slide.exit")) old.remove();
   if (current) {
     const old = current;
-    old.classList.remove("enter");
-    old.classList.add("exit");
-    setTimeout(() => old.remove(), 750);
+    old.className = old.className.replace(/\b(enter|cut-\w+)\b/g, "").trim();
+    old.classList.add("exit", `cut-${cut}`);
+    setTimeout(() => old.remove(), 1500);
   }
   const node = buildSlide(slide, next);
-  node.classList.add("enter");
+  node.classList.add(...(instant ? [] : ["enter", `cut-${cut}`]));
   stage.append(node);
   current = node;
-  if (!instant) {
+  if (!instant && cut === "flash") {
     stage.classList.remove("cut");
     flash.classList.remove("on");
     void stage.offsetWidth; // restart the animations
-    stage.classList.add("cut");
+    if (BARS) stage.classList.add("cut");
     flash.classList.add("on");
   }
   preload(next + 1);

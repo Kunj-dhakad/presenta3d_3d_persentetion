@@ -3,6 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DeckSpec } from "@/lib/schemas/deck";
 
+/** Google Fonts of each deck style (and Inter, used by the controls). */
+const STYLE_FONTS: Record<string, string> = {
+  trailer: "family=Bebas+Neue&family=Barlow:wght@400;500;600",
+  editorial: "family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600",
+  noir: "family=Oswald:wght@500;600",
+  neon: "family=Unbounded:wght@600;700",
+  documentary: "family=Montserrat:wght@700;800",
+  luxury: "family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@300;400",
+};
+
 const RUNTIME_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "src", "server", "deck", "cine-runtime.js.txt");
 
 /**
@@ -11,34 +21,62 @@ const RUNTIME_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "src", "
  * branding: copied verbatim from codegen.ts). Each slide's background (image,
  * particles, grain) fills the screen; its text and visual are laid out on a
  * 1920×1080 frame (1080×1920 on portrait screens) scaled to fit (--k), so every
- * size of the slide's content is in frame pixels. Motion: enterCine / exitCine between
- * slides, Ken Burns on images, entrance effects on text (a-*), floating
- * particles, film grain and letterbox bars.
+ * size of the slide's content is in frame pixels.
+ * Every deck has a style (body[data-style]: trailer, editorial, noir, neon,
+ * documentary, luxury) that sets its fonts, image treatment, highlights and
+ * motion; every slide has an image frame (frame-full / -right / -left /
+ * -window), a cut (cut-flash / -fade / -push / -zoom / -wipe / -iris) and a
+ * camera move on its image (kb-0..3), so slides and decks do not look alike.
  */
 const STYLE = `:root { --bg: #030608; --text: #f6f1ea; --accent: #ff7a1a; --tone: #ff7a1a; --title: "Bebas Neue", "Oswald", Impact, sans-serif; --body: "Barlow", "Inter", system-ui, sans-serif; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--text); font-family: var(--body); -webkit-font-smoothing: antialiased; }
-body[data-font="sans"] { --title: "Oswald", "Bebas Neue", Impact, sans-serif; }
-body[data-font="serif"] { --title: "Playfair Display", Georgia, serif; }
-body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, monospace; }
 #stage { position: fixed; inset: 0; overflow: hidden; background: var(--bg); cursor: default; }
 .slide { position: absolute; inset: 0; overflow: hidden; }
 .frame { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform: translate(-50%, -50%) scale(var(--k, 1)); }
 body.portrait .frame { width: 1080px; height: 1920px; }
 .pill, .hud, #notes, #brand { font-family: "Inter", system-ui, sans-serif; }
-.slide.enter { animation: enterCine 1.1s cubic-bezier(.2,.8,.2,1) both; }
-.slide.exit { animation: exitCine .7s ease-in both; pointer-events: none; }
+
+/* cuts: the entering slide (on top) and the leaving one carry the same cut-* class */
+.slide.enter { animation-duration: 1.1s; animation-timing-function: cubic-bezier(.2,.8,.2,1); animation-fill-mode: both; }
+.slide.exit { animation-duration: .8s; animation-timing-function: ease-in; animation-fill-mode: both; pointer-events: none; }
+.slide.enter.cut-flash { animation-name: enterCine; } .slide.exit.cut-flash { animation-name: exitCine; animation-duration: .7s; }
+.slide.enter.cut-fade { animation-name: fadeIn; animation-duration: 1.3s; animation-delay: .45s; animation-timing-function: ease-out; } .slide.exit.cut-fade { animation-name: fadeOut; animation-duration: .6s; }
+.slide.enter.cut-push { animation-name: pushIn; animation-duration: 1s; animation-timing-function: cubic-bezier(.65,0,.25,1); } .slide.exit.cut-push { animation-name: pushOut; animation-duration: 1s; animation-timing-function: cubic-bezier(.65,0,.25,1); }
+#stage.back .slide.enter.cut-push { animation-name: pushInBack; } #stage.back .slide.exit.cut-push { animation-name: pushOutBack; }
+.slide.enter.cut-zoom { animation-name: zoomThroughIn; animation-duration: 1.2s; } .slide.exit.cut-zoom { animation-name: zoomThroughOut; animation-duration: .7s; }
+.slide.enter.cut-wipe { animation-name: wipeIn; animation-duration: 1.1s; animation-timing-function: cubic-bezier(.75,0,.2,1); } .slide.exit.cut-wipe { animation-name: hold; animation-duration: 1.1s; }
+#stage.back .slide.enter.cut-wipe { animation-name: wipeInBack; }
+.slide.enter.cut-iris { animation-name: irisIn; animation-duration: 1.3s; animation-timing-function: cubic-bezier(.6,0,.2,1); } .slide.exit.cut-iris { animation-name: hold; animation-duration: 1.3s; }
 @keyframes enterCine { 0% { opacity: 0; filter: blur(30px) brightness(3); transform: scale(1.3); } to { opacity: 1; filter: none; transform: none; } }
 @keyframes exitCine { 0% { opacity: 1; filter: none; transform: none; } to { opacity: 0; filter: blur(20px) brightness(.2); transform: scale(.85); } }
+@keyframes fadeIn { 0% { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { 0% { opacity: 1; } to { opacity: 0; } }
+@keyframes pushIn { 0% { transform: translateX(100%); } to { transform: none; } }
+@keyframes pushOut { 0% { transform: none; filter: none; } to { transform: translateX(-30%); filter: brightness(.35); } }
+@keyframes pushInBack { 0% { transform: translateX(-100%); } to { transform: none; } }
+@keyframes pushOutBack { 0% { transform: none; filter: none; } to { transform: translateX(30%); filter: brightness(.35); } }
+@keyframes zoomThroughIn { 0% { opacity: 0; transform: scale(.82); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes zoomThroughOut { 0% { opacity: 1; transform: none; } to { opacity: 0; transform: scale(1.5); filter: blur(10px); } }
+@keyframes wipeIn { 0% { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
+@keyframes wipeInBack { 0% { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes irisIn { 0% { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
+@keyframes hold { 0%, to { opacity: 1; } }
 
 /* backgrounds */
 .bg { position: absolute; inset: 0; background: radial-gradient(60% 70% at 78% 45%, color-mix(in srgb, var(--tone) 16%, transparent), transparent 70%), var(--bg); }
 .bg::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 4px 4px; }
-.bg img { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; animation: kenburns 18s ease-out both; }
-@keyframes kenburns { 0% { transform: scale(1.25) translate(2%, 1%); } to { transform: scale(1.02) translate(-2%, -1%); } }
+.bg .pic { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.bg .pic img { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; animation: kbIn 18s ease-out both; }
+/* camera moves, varied from slide to slide */
+.bg .pic img.kb-1 { animation-name: kbOut; } .bg .pic img.kb-2 { animation-name: kbLeft; } .bg .pic img.kb-3 { animation-name: kbRight; }
+@keyframes kbIn { 0% { transform: scale(1.22) translate(2%, 1%); } to { transform: scale(1.02) translate(-1%, -1%); } }
+@keyframes kbOut { 0% { transform: scale(1.02); } to { transform: scale(1.18) translate(-1%, 1%); } }
+@keyframes kbLeft { 0% { transform: scale(1.14) translate(3%, 0); } to { transform: scale(1.14) translate(-3%, -1%); } }
+@keyframes kbRight { 0% { transform: scale(1.14) translate(-3%, 1%); } to { transform: scale(1.14) translate(3%, 0); } }
 .bg.has-img::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 80%, transparent) 0%, color-mix(in srgb, var(--bg) 32%, transparent) 40%, transparent 66%); }
 .look-closing .bg.has-img::before { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 55%, transparent), transparent 35%, transparent 65%, color-mix(in srgb, var(--bg) 70%, transparent)), radial-gradient(70% 60% at 50% 50%, color-mix(in srgb, var(--bg) 45%, transparent), transparent 75%); }
-.bg.painting img { display: none; }
+.bg.painting .pic { display: none; }
 .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 100% at 50% 50%, transparent 60%, rgba(0,0,0,.5)); }
 .grain { position: absolute; inset: -10%; pointer-events: none; opacity: .09; mix-blend-mode: overlay; animation: grain .9s steps(4) infinite;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
@@ -138,6 +176,97 @@ body.portrait .timeline { grid-template-columns: 1fr; gap: 50px; } body.portrait
 body.portrait .visual { top: auto; bottom: 120px; right: 50%; margin: 0 -280px 0 0; transform: scale(.8); }
 body.portrait .bg.has-img::before { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 80%, transparent), transparent 40%, transparent 55%, color-mix(in srgb, var(--bg) 90%, transparent)); }
 
+
+/* image frames: full screen, a half on the right or left, or a framed window */
+.frame-right .bg .pic { left: auto; width: 60%; -webkit-mask-image: linear-gradient(90deg, transparent, #000 28%); mask-image: linear-gradient(90deg, transparent, #000 28%); }
+.frame-left .bg .pic { right: auto; width: 60%; -webkit-mask-image: linear-gradient(270deg, transparent, #000 28%); mask-image: linear-gradient(270deg, transparent, #000 28%); }
+.frame-window .bg .pic { inset: 12% 6% 16% auto; width: 46%; border-radius: 22px; box-shadow: 0 40px 90px -30px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.1); }
+.frame-right .bg.has-img::before, .frame-left .bg.has-img::before { background: none; }
+.frame-window .bg.has-img::before { background: radial-gradient(55% 75% at 76% 50%, color-mix(in srgb, var(--tone) 22%, transparent), transparent 70%); z-index: -1; }
+.frame-right .content, .frame-window .content { right: 900px; }
+.frame-left .content { left: 900px; right: 120px; }
+/* half-width text: numbers stay on one line and get smaller; stats wrap rather than spill */
+.stats { flex-wrap: wrap; row-gap: 40px; }
+.stat strong { white-space: nowrap; }
+.slide:not(.frame-full) .stats { gap: 40px 80px; }
+.slide:not(.frame-full) .stat strong { font-size: 118px; }
+.slide:not(.frame-full) .title { max-width: 860px; }
+/* text-heavy slides over a full-screen image: a deeper shade so the text reads */
+.frame-full.look-cards .bg.has-img::before, .frame-full.look-timeline .bg.has-img::before, .frame-full.look-stats .bg.has-img::before, .frame-full.look-bullets .bg.has-img::before { background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 90%, transparent), color-mix(in srgb, var(--bg) 72%, transparent) 55%, color-mix(in srgb, var(--bg) 45%, transparent)); }
+.look-statement .bg.has-img::before { background: radial-gradient(62% 58% at 50% 50%, color-mix(in srgb, var(--bg) 72%, transparent), color-mix(in srgb, var(--bg) 30%, transparent) 75%); }
+body.portrait .frame-right .bg .pic, body.portrait .frame-left .bg .pic, body.portrait .frame-window .bg .pic { inset: 0; width: auto; border-radius: 0; box-shadow: none; -webkit-mask-image: none; mask-image: none; }
+body.portrait .frame-right .content, body.portrait .frame-window .content, body.portrait .frame-left .content { left: 90px; right: 90px; }
+body.portrait .slide:not(.frame-full) .bg.has-img::before { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 85%, transparent), color-mix(in srgb, var(--bg) 40%, transparent) 45%, color-mix(in srgb, var(--bg) 92%, transparent)); }
+
+/* ───── deck styles ───── */
+body[data-style="trailer"] { --title: "Bebas Neue", "Oswald", Impact, sans-serif; --body: "Barlow", "Inter", system-ui, sans-serif; }
+
+/* editorial: magazine, elegant serif, italic highlights, calm */
+body[data-style="editorial"] { --title: "Playfair Display", Georgia, serif; --body: "Inter", system-ui, sans-serif; }
+body[data-style="editorial"] .title { text-transform: none; font-weight: 600; font-size: 116px; line-height: 1.04; letter-spacing: -.012em; text-shadow: 0 2px 30px rgba(0,0,0,.45); }
+body[data-style="editorial"] .look-hero .title { font-size: 150px; text-shadow: 0 2px 34px rgba(0,0,0,.5); }
+body[data-style="editorial"] .look-statement .title, body[data-style="editorial"] .look-closing .title { font-size: 150px; }
+body[data-style="editorial"] .title .hl { font-style: italic; color: var(--tone); text-shadow: none; }
+body[data-style="editorial"] .kicker { display: flex; align-items: center; gap: 20px; font-size: 21px; letter-spacing: .34em; font-weight: 600; }
+body[data-style="editorial"] .kicker::before { content: ""; width: 64px; height: 2px; background: var(--accent); flex-shrink: 0; }
+body[data-style="editorial"] .look-statement .kicker, body[data-style="editorial"] .look-closing .kicker { justify-content: center; }
+body[data-style="editorial"] .subtitle { font-size: 36px; font-weight: 400; }
+body[data-style="editorial"] .card h3, body[data-style="editorial"] .timeline h3 { text-transform: none; font-weight: 600; }
+body[data-style="editorial"] .particles { display: none; }
+body[data-style="editorial"] .grain { opacity: .05; }
+body[data-style="editorial"] .a-zoom { animation-name: softZoom; } body[data-style="editorial"] .a-flip { animation-name: rise; }
+
+/* noir: black-and-white photographs, hard type, one red accent */
+body[data-style="noir"] { --title: "Oswald", Impact, sans-serif; --body: "Inter", system-ui, sans-serif; }
+body[data-style="noir"] .bg .pic img { filter: grayscale(1) contrast(1.2) brightness(.92); }
+body[data-style="noir"] .title { font-weight: 600; font-size: 136px; line-height: .98; letter-spacing: .005em; }
+body[data-style="noir"] .look-hero .title { font-size: 170px; text-shadow: 0 6px 40px rgba(0,0,0,.6); }
+body[data-style="noir"] .title .hl { color: var(--accent); text-shadow: none; }
+body[data-style="noir"] .kicker { font-weight: 600; letter-spacing: .42em; }
+body[data-style="noir"] .particles { display: none; }
+body[data-style="noir"] .grain { opacity: .16; }
+body[data-style="noir"] .vignette { background: radial-gradient(120% 95% at 50% 50%, transparent 45%, rgba(0,0,0,.78)); }
+
+/* neon: futuristic night, wide glowing type, gradient highlights, scanlines */
+body[data-style="neon"] { --title: "Unbounded", "Inter", sans-serif; --body: "Inter", system-ui, sans-serif; }
+body[data-style="neon"] .bg .pic img { filter: saturate(1.25) contrast(1.05); }
+body[data-style="neon"] .title { font-weight: 700; font-size: 100px; line-height: 1.04; letter-spacing: -.015em; text-shadow: 0 0 40px color-mix(in srgb, var(--tone) 35%, transparent); }
+body[data-style="neon"] .look-hero .title, body[data-style="neon"] .look-statement .title, body[data-style="neon"] .look-closing .title { font-size: 128px; }
+body[data-style="neon"] .title .hl { background: linear-gradient(90deg, var(--tone), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 0 22px color-mix(in srgb, var(--tone) 70%, transparent)); }
+body[data-style="neon"] .kicker { font-family: var(--title); font-size: 20px; letter-spacing: .4em; }
+body[data-style="neon"] .stat strong, body[data-style="neon"] .card .num { font-size: 120px; }
+body[data-style="neon"] .slide::after { content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 4px); }
+
+/* documentary: photojournalism, bold sans on lower-third panels */
+body[data-style="documentary"] { --title: "Montserrat", "Inter", sans-serif; --body: "Inter", system-ui, sans-serif; }
+body[data-style="documentary"] .title { font-weight: 800; font-size: 96px; line-height: 1.02; letter-spacing: -.01em; text-shadow: none; }
+body[data-style="documentary"] .look-hero .title, body[data-style="documentary"] .look-closing .title { font-size: 120px; text-shadow: none; }
+body[data-style="documentary"] .look-statement .title { font-size: 130px; }
+body[data-style="documentary"] .title .hl { color: var(--accent); text-shadow: none; }
+body[data-style="documentary"] .kicker { display: inline-block; padding: 8px 16px; background: var(--accent); color: #0b0b0b; font-weight: 700; font-size: 20px; letter-spacing: .24em; }
+body[data-style="documentary"] .slide:not(.look-statement):not(.look-cards):not(.look-timeline) .content { top: auto; bottom: 90px; transform: none; padding: 48px 56px; background: color-mix(in srgb, var(--bg) 80%, transparent); border-left: 10px solid var(--accent); backdrop-filter: blur(6px); }
+body[data-style="documentary"] .particles { display: none; }
+body[data-style="documentary"] .grain { opacity: .06; }
+body[data-style="documentary"] .a-slide { animation-name: reveal; } body[data-style="documentary"] .a-zoom { animation-name: reveal; }
+
+/* luxury: refined serif, gold, slow and quiet */
+body[data-style="luxury"] { --title: "Cormorant Garamond", Georgia, serif; --body: "Jost", "Inter", sans-serif; }
+body[data-style="luxury"] .title { text-transform: none; font-weight: 500; font-size: 140px; line-height: .98; letter-spacing: .004em; text-shadow: 0 2px 30px rgba(0,0,0,.4); }
+body[data-style="luxury"] .look-hero .title, body[data-style="luxury"] .look-statement .title, body[data-style="luxury"] .look-closing .title { font-size: 176px; text-shadow: 0 2px 34px rgba(0,0,0,.45); }
+body[data-style="luxury"] .title .hl { font-style: italic; color: var(--tone); text-shadow: none; }
+body[data-style="luxury"] .kicker { font-weight: 300; font-size: 22px; letter-spacing: .6em; }
+body[data-style="luxury"] .subtitle, body[data-style="luxury"] .bullets li, body[data-style="luxury"] .card p { font-weight: 300; }
+body[data-style="luxury"] .card h3, body[data-style="luxury"] .timeline h3 { text-transform: none; font-weight: 500; }
+body[data-style="luxury"] .rule { height: 1px; }
+body[data-style="luxury"] .bg .pic img { animation-duration: 28s; }
+body[data-style="luxury"] .particles { display: none; }
+body[data-style="luxury"] .grain { opacity: .04; }
+body[data-style="luxury"] .a-zoom { animation-name: track; animation-duration: 1.8s; } body[data-style="luxury"] .a-flip { animation-name: fade; animation-duration: 1.6s; }
+
+@keyframes softZoom { 0% { opacity: 0; transform: scale(1.08); filter: blur(12px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes reveal { 0% { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes track { 0% { opacity: 0; letter-spacing: .3em; filter: blur(6px); } to { opacity: 1; filter: none; } }
+
 /* controls: the same as the 3D engine (codegen.ts) */
 .pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); font-size: 13px; }
 #chip { position: fixed; top: 18px; left: 18px; max-width: calc(100% - 36px); }
@@ -196,7 +325,7 @@ export function cineToProjectFiles(deck: DeckSpec): { path: string; content: str
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(deck.title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Oswald:wght@500;600&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&${STYLE_FONTS[deck.cineStyle ?? "trailer"] ?? STYLE_FONTS.trailer}&display=swap" rel="stylesheet">
   <style>
 ${STYLE}  </style>
 </head>

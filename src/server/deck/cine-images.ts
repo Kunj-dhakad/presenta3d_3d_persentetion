@@ -5,10 +5,6 @@ import { openaiClient, mapOpenAIError } from "@/server/ai/openai-provider";
 import { mediaProvider } from "@/server/media/providers";
 import { storage } from "@/server/storage/storage";
 
-/** The look every slide image shares (added to the slide's own prompt). */
-const STYLE =
-  "Cinematic film still, photorealistic, 16:9 widescreen, dramatic volumetric lighting, rich colour grade, deep shadows and dark edges, shallow depth of field, epic sense of scale. Absolutely no text, letters, numbers, captions, watermarks or logos. Keep the left third calmer and darker so a title can be read over it.";
-
 /** Image model when OPENAI_IMAGE_MODEL is not set: the one the image-led editor (research/3dppt) uses. */
 export const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 
@@ -43,9 +39,13 @@ export class ImagePainter {
     return /^gpt-image-2/.test(this.model) ? "1280x720" : "1536x1024";
   }
 
-  /** Paint one image and store it; returns its address. Throws an AIError with OpenAI's message. */
+  /**
+   * Paint one image from its full prompt (subject, deck style and composition:
+   * lib/schemas/cine.ts imagePromptFor) and store it; returns its address.
+   * Throws an AIError with OpenAI's message.
+   */
   async paint(prompt: string, quality: ImageQuality, signal: AbortSignal): Promise<string> {
-    const input = `${prompt.slice(0, 2600)}\n\n${STYLE}`;
+    const input = prompt.slice(0, 3800);
     if (this.mock) {
       const fixture = mediaProvider("test-fixture");
       if (!fixture) throw new Error("no test image provider");

@@ -5,7 +5,8 @@ import type { Prisma } from "@/generated/mysql-prisma/client";
 import { CONTINUE, type JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import type { DeckSpec } from "@/lib/schemas/deck";
-import { CineSpecSchema, cineForPrompt, cineToDeck } from "@/lib/schemas/cine";
+import { CineSpecSchema, cineForPrompt, cineToDeck, imagePromptFor } from "@/lib/schemas/cine";
+import { CINE_CUTS, CINE_STYLES } from "@/lib/schemas/deck";
 import { diffStats, toFileMap } from "@/lib/vfs/apply";
 import { getFiles, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
 import { buildProject } from "@/server/build/builder";
@@ -16,43 +17,54 @@ import { conversation, currentDeck, retryOnce } from "./pipeline";
 import { ImagePainter, type ImageQuality } from "./cine-images";
 import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 
-export const CINE_SYSTEM = `You are the director of Present 3D's cinematic presentations: slide decks that feel like a film trailer.
-You do not write code. You write a CineSpec: the story, the words and the art direction. A fixed engine renders it: full-bleed AI images with slow camera motion, huge condensed titles that zoom or rise in, glowing particles, and a blur-and-flash cut between slides.
+export const CINE_SYSTEM = `You are the director of Present 3D's cinematic presentations: slide decks shot like a film, a magazine or a campaign, with an AI photograph on every slide.
+You do not write code. You write a CineSpec: the story, the words and the art direction. A fixed engine renders it in the deck's style (theme.style): its fonts, image treatment, slide cuts and text animations.
 
-Story: write it like a trailer, in acts: a gripping opening (hero, over an image), the stakes or the problem, a turn ("BUT / THERE IS A WAY"), the solutions or the offer, the plan, and a closing line over an image. Use 7-10 slides unless the user asks otherwise. Do not write a "Thank you" slide: the engine adds its own.
-Words: titles are 2-7 punchy words written for huge capitals (e.g. "THE LAST DEGREE", "ICE FALLS. SEAS RISE. FORESTS BURN."). Kickers are short scene labels ("THE CAUSE", "SOLUTION 01", "THIS NOVEMBER · A PLANET ON FIRE"). Subtitles are one short sentence. Real, specific facts and copy, never placeholders. Write in the language the user writes in.
-highlight: on most slides pick the key word(s) of the title, copied exactly, to glow in the slide's tone.
-Looks: vary them; never put the same look on neighbouring slides, except image slides may follow each other once.
-- hero (first slide) and closing (last slide) and 1-3 "image" slides are drawn over a full-bleed AI image: write their imagePrompt.
-- statement: one huge centred turning-point line, no image.
-- stats: 2-3 huge numbers (value + short label) with a visual.
-- cards: exactly 3 numbered items (heading + one sentence).
-- timeline: 3-4 milestones (heading = when, e.g. "NOW", "2030"; text = 2-5 words).
-- bullets: 2-4 short bullets with a visual.
-Visuals for slides without an image: planet, spiral, orbs, pulse (vary them), or none for statements.
-Image prompts: describe one striking photorealistic scene that carries the slide's idea (subject, setting, light, colour grade, camera angle), cinematic and dramatic, with darker calm space on the left for the title. Never ask for text, words, logos or UI in the image. Keep the deck's colour grade consistent.
-Colour: theme.background near black; theme.text warm off-white; theme.accent one vivid kicker colour used on every slide. Each slide's tone is its glow colour: shift it with the story (e.g. ember orange for danger, cyan for technology, green for hope) but keep 2-3 tones per deck.
-textEffect: vary it; "zoom" for big openings, "letters" for short powerful titles, "rise", "slide", "blur", "flip" elsewhere.
+Story: a strong arc: an opening that grabs (hero), the stakes or the problem, a turn, the solutions or the offer, the proof or the plan, and a closing line. Use 7-10 slides unless the user asks otherwise. Do not write a "Thank you" slide: the engine adds its own.
+Words: titles are 2-7 punchy words; kickers are short scene labels ("THE CAUSE", "SOLUTION 01"); subtitles are one short sentence. Real, specific facts and copy, never placeholders. Write in the language the user writes in.
+highlight: on most slides pick the key word(s) of the title, copied exactly, to set in the slide's tone.
+Looks: vary them; never the same look on neighbouring slides. hero first, closing last; use image, statement, stats (2-3 numbers), cards (exactly 3 items), timeline (3-4 milestones) and bullets (2-4) where the content fits.
+
+IMAGES — every slide has its own photograph, and it must show THAT slide's content:
+- Read the slide's title, subtitle, bullets, numbers or items and picture them literally: the people, objects, places and actions they name. A slide about "fraud checks in seconds" shows an analyst at screens of flagged transactions, not a generic city; "3 villains: fossil fuels, deforestation, methane" shows smokestacks, a cleared forest and cattle in one frame.
+- Never repeat a scene, subject or shot within a deck. Vary the shot from slide to slide: wide establishing, close-up, aerial, macro detail, portrait, silhouette, over-the-shoulder, low angle.
+- Describe subject, setting, light, mood and camera in 1-3 sentences. No text, words, logos, screens with readable text or UI in the image.
+- frame: hero, closing, statement, cards and timeline are full screen; for image, stats and bullets choose right, left or window and alternate them.
+
+STYLE — pick theme.style for the topic and audience (the design brief suggests one; use it unless it clearly does not fit):
+- trailer: launches, causes, big bold stories. editorial: culture, education, people, brands. noir: security, investigations, dramatic turnarounds.
+- neon: tech, AI, gaming, crypto, night life. documentary: real-world impact, NGOs, reports, field work. luxury: real estate, fashion, hospitality, premium products.
+Colours fit the style: theme.background a dark tone of the palette, theme.text light, theme.accent one colour for kickers and lines (noir: a red; luxury: a gold; neon: magenta or cyan). Each slide's tone is its highlight colour; keep 2-3 tones per deck.
+
+MOTION — make every slide feel different:
+- cut: how the slide cuts in. Never the same cut on neighbouring slides; use at least 4 different cuts in a deck. flash for big reveals, fade for calm moments, push for progress, zoom for impact, wipe for comparisons and lists, iris for focus.
+- textEffect: never the same on neighbouring slides; letters for short powerful titles, zoom for openings, rise/slide/blur/flip/drop elsewhere.
+
 Narration: every slide's notes is what a presenter says over it (read aloud with subtitles): 2-4 warm, spoken sentences, never empty.
 Names: use the names the user gives; if you must invent one, make it specific to the topic.`;
 
 export const CINE_EDIT_RULES = `You are editing an existing cinematic deck. Return the COMPLETE updated deck.
-Apply exactly what the user asks; keep every other slide, word, image prompt and colour unchanged (an unchanged imagePrompt keeps its painted image; a changed one is painted again). Slides are numbered from 1.
-If the user asks for a presentation about a different topic, write a new deck for the new topic with new image prompts and colours.`;
+Apply exactly what the user asks; keep every other slide, word, image prompt, frame, cut and colour unchanged (an unchanged imagePrompt keeps its painted image; a changed one is painted again; a slide whose text changes gets a new imagePrompt that shows its new content). Slides are numbered from 1.
+If the user asks for another style, change theme.style and the colours, and rewrite the image prompts to suit it.
+If the user asks for a presentation about a different topic, write a new deck for the new topic with a new style, new image prompts and colours.`;
 
-const GRADES = [
-  "ember orange and teal, like a disaster epic",
-  "cold steel blue and white, like a space drama",
-  "golden hour amber and deep shadow",
-  "neon magenta and cyan night city",
-  "emerald green and gold, lush and hopeful",
-  "crimson and charcoal, intense and dramatic",
-  "desert sand and burnt copper",
-  "deep ocean blue with bioluminescent cyan",
-];
-
+/**
+ * A random starting point for each new deck, so that two decks never come out
+ * alike: a suggested style, a colour palette and a cut to open with.
+ */
 function cineBrief(): string {
-  return `Art direction idea for this deck (adapt it to the topic): colour grade ${GRADES[randomInt(GRADES.length)]}.`;
+  const pick = <T,>(xs: readonly T[]) => xs[randomInt(xs.length)];
+  const palettes = [
+    "ember orange and teal", "cold steel blue and white", "golden hour amber and deep shadow", "magenta and cyan",
+    "emerald green and gold", "crimson and charcoal", "desert sand and burnt copper", "deep ocean blue and aqua",
+    "violet and soft pink", "forest green and cream", "monochrome with one red accent", "champagne gold and black",
+  ];
+  return [
+    "Design brief for this deck (a fresh starting point; adapt anything that clashes with the topic):",
+    `- style: ${pick(CINE_STYLES)}`,
+    `- palette idea: ${pick(palettes)}`,
+    `- open with the "${pick(CINE_CUTS)}" cut`,
+  ].join("\n");
 }
 
 /** Steps (rounds) the images get; the last round paints at low quality, which is much faster. */
@@ -264,7 +276,7 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
     const failed = new Set<number>();
     const tasks = cp.missing.map(async (i) => {
       try {
-        painted.set(i, await painter.paint(deck.slides[i].cine!.imagePrompt, quality, signal));
+        painted.set(i, await painter.paint(imagePromptFor(deck, i), quality, signal));
       } catch (err) {
         if (signal.aborted) return; // out of time: the next round paints it again
         const e = err as AIError;

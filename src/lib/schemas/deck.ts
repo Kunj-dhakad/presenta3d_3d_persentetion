@@ -145,13 +145,22 @@ export type DeckSettings = {
 
 /**
  * Cinematic presentations (deck.style "cinematic", see lib/schemas/cine.ts):
- * full-bleed AI images and bold titles instead of 3D scenes. Each slide keeps
- * the shared fields (kicker, title, notes …) and adds how it is drawn here.
+ * an AI image on every slide and bold titles instead of 3D scenes. Each slide
+ * keeps the shared fields (kicker, title, notes …) and adds how it is drawn here.
  */
 export const CINE_LOOKS = ["hero", "image", "statement", "stats", "cards", "timeline", "bullets", "closing"] as const;
-/** Looks drawn over a full-bleed AI image (the others use a CSS visual). */
-export const CINE_IMAGE_LOOKS: readonly (typeof CINE_LOOKS)[number][] = ["hero", "image", "closing"];
+/** CSS visual shown only when a slide's image could not be painted. */
 export const CINE_VISUALS = ["planet", "spiral", "orbs", "pulse", "none"] as const;
+/**
+ * The deck's style: fonts, image treatment, text animations and cuts
+ * (server/deck/cine-codegen.ts). Every deck gets one, so decks do not all look alike.
+ */
+export const CINE_STYLES = ["trailer", "editorial", "noir", "neon", "documentary", "luxury"] as const;
+export type CineStyle = (typeof CINE_STYLES)[number];
+/** Where a slide's image sits: full screen, a half on the right or left, or a framed window. */
+export const CINE_FRAMES = ["full", "right", "left", "window"] as const;
+/** How the slide cuts in: blur and flash, fade through black, push, zoom through, wipe, iris. */
+export const CINE_CUTS = ["flash", "fade", "push", "zoom", "wipe", "iris"] as const;
 /** Where a slide image may come from: this app's deckmedia route, or any https URL. */
 export const CINE_IMAGE_RE = /^(\/deckmedia\/[A-Za-z0-9_-]{8,64}\/[A-Za-z0-9_-]{8,64}\.(?:webp|png|jpe?g)|https:\/\/\S{1,1000})$/;
 const CineItemSchema = z.object({ heading: z.string(), text: z.string() });
@@ -164,6 +173,9 @@ const StoredCineSchema = z.object({
   /** The generated image ("" while it is being painted, or when painting it failed). */
   image: z.string(),
   items: z.array(CineItemSchema),
+  /** Optional: decks made before them use full-screen images and the flash cut. */
+  frame: z.enum(CINE_FRAMES).optional(),
+  cut: z.enum(CINE_CUTS).optional(),
 });
 export type CineSlide = z.infer<typeof StoredCineSchema>;
 
@@ -180,6 +192,8 @@ const StoredDeckSchema = z.object({
   title: z.string(),
   /** "cinematic": rendered by the cinematic engine (server/deck/cine-codegen.ts); missing = 3D. */
   style: z.enum(["3d", "cinematic"]).optional(),
+  /** A cinematic deck's style (missing: "trailer", the first cinematic look). */
+  cineStyle: z.enum(CINE_STYLES).optional(),
   theme: ThemeSchema,
   slides: z.array(StoredSlideSchema),
   settings: DeckSettingsInput.optional(),
@@ -268,7 +282,7 @@ export function validateDeck(input: unknown): DeckValidation {
   if (d.slides.length < DECK_LIMITS.minSlides) return { ok: false, errors: ["the deck needs at least one slide"] };
   const deck: DeckSpec = {
     title: d.title.trim().slice(0, 120) || "Untitled presentation",
-    ...(d.style === "cinematic" ? { style: "cinematic" as const } : {}),
+    ...(d.style === "cinematic" ? { style: "cinematic" as const, ...(d.cineStyle ? { cineStyle: d.cineStyle } : {}) } : {}),
     theme: d.theme,
     slides: d.slides.slice(0, DECK_LIMITS.maxSlides).map((s) => ({
       ...s,
@@ -306,6 +320,8 @@ function normalizeCine(c: CineSlide, title: string): CineSlide {
       .filter((i) => i.heading.trim() || i.text.trim())
       .slice(0, 4)
       .map((i) => ({ heading: i.heading.slice(0, 40), text: i.text.slice(0, 160) })),
+    ...(c.frame ? { frame: c.frame } : {}),
+    ...(c.cut ? { cut: c.cut } : {}),
   };
 }
 

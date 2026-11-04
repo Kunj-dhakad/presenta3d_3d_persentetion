@@ -8,7 +8,7 @@ import { MockTextProvider } from "@/server/ai/mock-provider";
 import { createProject, getFiles } from "@/server/services/projects";
 import { storage } from "@/server/storage/storage";
 import { validateDeck, type DeckSpec } from "@/lib/schemas/deck";
-import { CineSpecSchema, cineForPrompt, cineToDeck, type CineSpec } from "@/lib/schemas/cine";
+import { CineSpecSchema, cineForPrompt, cineToDeck, imagePromptFor, type CineSpec } from "@/lib/schemas/cine";
 import { applyDeckDesign, deckColors } from "@/lib/deck-design";
 import type { PipelineResult } from "@/server/pipeline/generate";
 import { createUser, waitForJob } from "../support/helpers";
@@ -25,11 +25,13 @@ const slide = (over: Partial<CineSpec["slides"][number]>): CineSpec["slides"][nu
   visual: "none",
   tone: "#4fd8e0",
   imagePrompt: "",
+  frame: "full",
+  cut: "flash",
   textEffect: "zoom",
   notes: "Narration.",
   ...over,
 });
-const spec = (slides: CineSpec["slides"]): CineSpec => ({ title: "The Last Degree", theme: { background: "#030608", text: "#f6f1ea", accent: "#ff7a1a", font: "display" }, slides });
+const spec = (slides: CineSpec["slides"], style: CineSpec["theme"]["style"] = "trailer"): CineSpec => ({ title: "The Last Degree", theme: { style, background: "#030608", text: "#f6f1ea", accent: "#ff7a1a", font: "display" }, slides });
 
 function made(s: CineSpec, previous: DeckSpec | null = null) {
   const r = cineToDeck(s, previous);
@@ -38,27 +40,61 @@ function made(s: CineSpec, previous: DeckSpec | null = null) {
 }
 
 describe("cinematic decks", () => {
-  it("turns the model's deck into a stored deck and lists the slides that need an image", () => {
+  it("gives EVERY slide its own image, and keeps the deck style, frames and cuts", () => {
     const { deck, missing } = made(
-      spec([
-        slide({ look: "hero", title: "The last degree", highlight: "degree", imagePrompt: "Earth at night, glowing cities" }),
-        slide({ look: "cards", items: [{ heading: "Fossil fuels", text: "Coal, oil and gas." }], bullets: ["ignored"], visual: "orbs" }),
-        slide({ look: "closing", imagePrompt: "" }),
-      ]),
+      spec(
+        [
+          slide({ look: "hero", title: "The last degree", highlight: "degree", imagePrompt: "Earth at night, glowing cities", cut: "flash" }),
+          slide({ look: "cards", items: [{ heading: "Fossil fuels", text: "Coal, oil and gas." }], bullets: ["ignored"], visual: "orbs", frame: "right", cut: "wipe" }),
+          slide({ look: "bullets", title: "Store and move", bullets: ["Grid batteries", "Electric trucks"], frame: "left", cut: "wipe" }),
+          slide({ look: "closing", imagePrompt: "" }),
+        ],
+        "editorial",
+      ),
     );
     expect(deck.style).toBe("cinematic");
-    expect(deck.slides.map((s) => s.layout)).toEqual(["hero", "left", "hero"]);
-    expect(missing).toEqual([0, 2]); // a closing slide without a prompt gets one from its title
-    expect(deck.slides[2].cine!.imagePrompt).toContain("There is a way");
+    expect(deck.cineStyle).toBe("editorial");
+    expect(deck.slides.map((s) => s.layout)).toEqual(["hero", "left", "left", "hero"]);
+    expect(missing).toEqual([0, 1, 2, 3]); // every slide, not only the image looks
+    // A slide without a prompt gets one from its own text.
+    expect(deck.slides[2].cine!.imagePrompt).toContain("Grid batteries");
+    expect(deck.slides[3].cine!.imagePrompt).toContain("There is a way");
     expect(deck.slides[1].bullets).toEqual([]); // only the bullets look keeps bullets
     expect(deck.slides[1].cine!.items).toHaveLength(1);
-    expect(deck.slides[0].cine!.visual).toBe("none"); // image slides use no CSS visual
+    // Cards need the whole width: their image is full screen whatever the model chose.
+    expect(deck.slides.map((s) => s.cine!.frame)).toEqual(["full", "full", "left", "full"]);
+    // Neighbouring slides never share a cut.
+    const cuts = deck.slides.map((s) => s.cine!.cut);
+    expect(cuts[1]).toBe("wipe");
+    expect(cuts[2]).not.toBe("wipe");
     // A new deck ends on the Thank-you slide.
     expect(deck.settings.thankYou.enabled).toBe(true);
   });
 
+  it("builds each image prompt from the slide's own content, the deck style and its frame", () => {
+    const { deck } = made(
+      spec(
+        [
+          slide({ look: "hero", title: "Cedar Flow", subtitle: "Payments for small shops", imagePrompt: "A shop owner taking a card payment at dawn" }),
+          slide({ look: "stats", title: "Fraud down 60%", imagePrompt: "An analyst at screens of flagged transactions", frame: "right" }),
+        ],
+        "noir",
+      ),
+    );
+    const hero = imagePromptFor(deck, 0);
+    expect(hero).toContain("A shop owner taking a card payment at dawn");
+    expect(hero).toContain("Cedar Flow — Payments for small shops");
+    expect(hero).toMatch(/black-and-white film noir/i);
+    expect(hero).toMatch(/calm, darker area in the centre/);
+    expect(hero).toMatch(/no text/i);
+    const stats = imagePromptFor(deck, 1);
+    expect(stats).toContain("flagged transactions");
+    expect(stats).toMatch(/half-screen/);
+  });
+
   it("survives validation unchanged (the engine upgrade must not turn it into a 3D deck)", () => {
-    const { deck } = made(spec([slide({ look: "hero", imagePrompt: "x" })]));
+    const { deck } = made(spec([slide({ look: "hero", imagePrompt: "x" }), slide({ look: "image", frame: "window", cut: "iris" })], "luxury"));
+    expect(deck.cineStyle).toBe("luxury");
     const again = validateDeck(JSON.parse(JSON.stringify(deck)));
     expect(again.ok && again.deck).toEqual(deck);
   });
@@ -146,14 +182,17 @@ describe("cinematic generation", () => {
     const events = first.job.events as { type: string; status?: string; message?: string; stage?: string; state?: string }[];
     // Shown first with the slides' colours, then rebuilt with the images.
     expect(events.filter((e) => e.type === "build" && e.status === "succeeded")).toHaveLength(2);
-    expect(events.some((e) => e.type === "log" && /Painting 2 images at the same time/.test(e.message ?? ""))).toBe(true);
+    expect(events.some((e) => e.type === "log" && /Painting 6 images at the same time/.test(e.message ?? ""))).toBe(true);
     expect(events.some((e) => e.type === "stage" && e.stage === "images" && e.state === "done")).toBe(true);
 
     const files = await getFiles(p.id);
     const deck = JSON.parse(files.find((f) => f.path === "deck.json")!.content) as DeckSpec;
     expect(deck.style).toBe("cinematic");
+    expect(deck.cineStyle).toBe("editorial");
+    // Every slide has its own image.
     const images = deck.slides.map((s) => s.cine!.image).filter(Boolean);
-    expect(images).toHaveLength(2);
+    expect(images).toHaveLength(deck.slides.length);
+    expect(new Set(images).size).toBe(images.length);
     for (const url of images) {
       expect(url).toMatch(/^\/deckmedia\/[^/]+\/[A-Za-z0-9_-]+\.png$/);
       expect(await storage().get(url.slice(1))).not.toBeNull();
