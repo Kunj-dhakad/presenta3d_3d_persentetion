@@ -1,10 +1,10 @@
 "use client";
 
-import { AudioLines, BarChart3, Contact, MessageCircleQuestion, Palette, Play, Stamp, Star, ThumbsUp, UserRound } from "lucide-react";
+import { AudioLines, Contact, Palette, Play, Star, ThumbsUp, UserRound } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AutoplaySection, BrandingSection, DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
-import { AvatarSection, FeedbackSection, InsightsSection, LeadSection, PresenterGate, QaSection, usePresenterSettings, VoiceSection } from "./presenter-settings";
+import { AutoplaySection, DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
+import { AvatarSection, FeedbackSection, LeadSection, PresenterGate, usePresenterSettings, VoiceSection } from "./presenter-settings";
 import { IconTile, StatePill } from "./settings-parts";
 
 type Tone = React.ComponentProps<typeof IconTile>["tone"];
@@ -30,9 +30,9 @@ function DesignPart({ d, ready, children }: { d: DesignState; ready: boolean; ch
 
 /**
  * Presentation settings in one right-side drawer: the deck's design
- * (template, colours, Thank-you slide, branding, auto-play; saved to the deck
- * and rebuilt) and the presenter (avatar, voice-over, captions, Q&A, lead
- * form, feedback, insights; saved in the PHP app).
+ * (template, colours, Thank-you slide, auto-play; saved to the deck
+ * and rebuilt) and the presenter (avatar, voice-over and its welcome text,
+ * captions, lead form, feedback; saved in the PHP app).
  */
 export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onSaved }: { projectId: string; open: boolean; onOpenChange: (o: boolean) => void; designReady: boolean; onSaved: () => void }) {
   const d = useDesignSettings(projectId, open && designReady, onSaved);
@@ -64,20 +64,11 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
             <Section value="thanks" icon={<ThumbsUp />} tone="coral" title="Thank-you slide" on={deck?.thankYou.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <ThankYouSection d={x} />}</DesignPart>
             </Section>
-            <Section value="brand" icon={<Stamp />} tone="slate" title="Branding" on={deck?.footer.enabled}>
-              <DesignPart d={d} ready={designReady}>{(x) => <BrandingSection d={x} />}</DesignPart>
-            </Section>
-            <Section value="qa" icon={<MessageCircleQuestion />} tone="blue" title="Q&A" on={form?.chat}>
-              <PresenterGate p={p}>{(x) => <QaSection p={x} />}</PresenterGate>
-            </Section>
             <Section value="lead" icon={<Contact />} tone="blue" title="Lead form" on={form?.lead_form}>
               <PresenterGate p={p}>{(x) => <LeadSection p={x} />}</PresenterGate>
             </Section>
             <Section value="feedback" icon={<Star />} tone="amber" title="Audience feedback" on={form?.feedback}>
               <PresenterGate p={p}>{(x) => <FeedbackSection p={x} />}</PresenterGate>
-            </Section>
-            <Section value="insights" icon={<BarChart3 />} tone="green" title="Insights">
-              <PresenterGate p={p}>{(x) => <InsightsSection p={x} />}</PresenterGate>
             </Section>
           </Accordion>
         </div>

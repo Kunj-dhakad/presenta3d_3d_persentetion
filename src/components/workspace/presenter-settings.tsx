@@ -18,8 +18,8 @@ import { SubHeading, ToggleRow } from "./settings-parts";
  * The presenter part of the Settings drawer: what plays over the
  * presentation on its public link and in Present (the PHP viewer,
  * views/default/presentation3d/viewer.php): narration voice, subtitles, the
- * (talking) avatar, visitors' Q&A, a welcome text, the lead and feedback
- * forms, and what visitors did (Insights). Stored by the PHP app
+ * (talking) avatar, a welcome text, and the lead and feedback forms.
+ * Q&A is kept as saved but no longer offered here. Stored by the PHP app
  * (3d-view/settings, Presentation3d_view_controller) and applied at once,
  * without rebuilding or republishing the deck.
  */
@@ -408,7 +408,7 @@ export function AvatarSection({ p }: { p: Loaded }) {
         </div>
         {data.avatars.length === 0 ? <p className="text-xs text-muted-foreground">No avatars in your library yet; the default presenter is used.</p> : null}
         <NewAvatar p={p} />
-        {!form.narration && !form.chat ? <p className="text-xs text-amber-600 dark:text-amber-400">The presenter appears when Voice-over or Q&amp;A is on. Turn one of them on below.</p> : null}
+        {!form.narration && !form.chat ? <p className="text-xs text-amber-600 dark:text-amber-400">The presenter appears with the voice-over. Turn Voice-over on below.</p> : null}
         {avatarStatus !== "none" ? (
           <p className={cn("flex items-center gap-1.5 text-xs", avatarStatus === "failed" ? "text-destructive" : "text-muted-foreground")}>
             {avatarStatus === "making" ? <Loader2 className="size-3.5 animate-spin" /> : avatarStatus === "ready" ? <Check className="size-3.5 text-brand" /> : null}
@@ -462,20 +462,10 @@ export function VoiceSection({ p }: { p: Loaded }) {
           <span className="rounded px-2 py-1 text-sm font-semibold" style={{ color: form.subtitle_text_color, background: form.subtitle_bg_color }}>Your subtitles look like this</span>
         </div>
       </ToggleRow>
-      <SaveButton p={p} />
-    </>
-  );
-}
-
-export function QaSection({ p }: { p: Loaded }) {
-  const { form } = p;
-  return (
-    <>
-      <ToggleRow id="presenter-chat" title="Q&A" hint="Viewers ask questions; answers come from this presentation's content." checked={form.chat} onChange={(v) => p.set({ chat: v })} first />
       <div className="space-y-1.5 border-t border-border pt-3">
         <Label htmlFor="presenter-welcome" className="text-sm font-semibold">Welcome text</Label>
-        <Textarea id="presenter-welcome" value={form.welcome_text} maxLength={WELCOME_MAX} rows={2} onChange={(e) => p.set({ welcome_text: e.target.value })} placeholder="Your presenter will walk you through every slide. Ask questions any time." />
-        <p className="text-right text-xs text-muted-foreground">{form.welcome_text.length}/{WELCOME_MAX}</p>
+        <Textarea id="presenter-welcome" value={form.welcome_text} maxLength={WELCOME_MAX} rows={2} onChange={(e) => p.set({ welcome_text: e.target.value })} placeholder="Your presenter will walk you through every slide." />
+        <p className="text-right text-xs text-muted-foreground">Shown on the start screen with the voice-over · {form.welcome_text.length}/{WELCOME_MAX}</p>
       </div>
       <SaveButton p={p} />
     </>
@@ -530,57 +520,5 @@ export function FeedbackSection({ p }: { p: Loaded }) {
       <ToggleRow id="presenter-feedback" title="Ask for feedback" hint="At the end, asks each visitor once for a 1-5 star rating and a comment." checked={p.form.feedback} onChange={(v) => p.set({ feedback: v })} first />
       <SaveButton p={p} />
     </>
-  );
-}
-
-export function InsightsSection({ p }: { p: Loaded }) {
-  const stats = p.data.stats;
-  const maxSlideViews = Math.max(1, ...stats.slide_views);
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          ["Views", stats.views],
-          ["Questions", stats.questions],
-          ["Leads", stats.leads],
-          ["Rating", stats.rating !== null ? `${stats.rating}★ (${stats.feedback})` : "—"],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-xl border border-border bg-surface p-3">
-            <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-            <p className="text-lg font-bold tabular-nums">{value}</p>
-          </div>
-        ))}
-      </div>
-      <section>
-        <SubHeading>Views per slide</SubHeading>
-        {stats.slide_views.length ? (
-          <div className="space-y-1.5">
-            {stats.slide_views.map((n, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                <span className="w-14 shrink-0 text-muted-foreground">Slide {i + 1}</span>
-                <span className="h-2 rounded-full bg-brand" style={{ width: `${Math.max(2, (n / maxSlideViews) * 100)}%` }} aria-hidden />
-                <span className="shrink-0 tabular-nums">{n}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No visits yet. Publish and share the link; visits to Present are not counted.</p>
-        )}
-      </section>
-      {stats.recent_feedback.length ? (
-        <section>
-          <SubHeading>Latest feedback</SubHeading>
-          <ul className="space-y-2">
-            {stats.recent_feedback.map((f, i) => (
-              <li key={i} className="text-xs">
-                <span className="text-amber-500">{"★".repeat(f.rating)}</span><span className="text-muted-foreground/50">{"★".repeat(5 - f.rating)}</span>
-                <span className="ml-2 text-muted-foreground">{f.at.slice(0, 16)}</span>
-                {f.message ? <p className="mt-0.5">{f.message}</p> : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
   );
 }
