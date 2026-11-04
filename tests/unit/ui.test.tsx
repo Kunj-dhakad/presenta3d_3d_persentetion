@@ -110,3 +110,28 @@ describe("chat panel", () => {
     expect(onSend).toHaveBeenCalledWith("build a game");
   });
 });
+
+describe("preview while a presentation is being made", () => {
+  it("shows a skeleton, never the half-made preview, then the finished presentation", async () => {
+    // Radix tooltips and the size observer need these in jsdom.
+    globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+    const { PreviewPane } = await import("@/components/workspace/preview-pane");
+    const { TooltipProvider } = await import("@/components/ui/tooltip");
+    useWorkspace.getState().reset("p1");
+    useWorkspace.setState({
+      build: { status: "succeeded", buildId: "buildaaaa1111", previewUrl: "/preview/buildaaaa1111/index.html", errors: [], warnings: [], durationMs: 1, stale: false },
+      job: { jobId: "j", status: "running", stages: { generate: { state: "done" }, images: { state: "start" } }, understanding: null, tasks: {}, files: [], logs: [], chars: 0, builds: [], error: null, progress: 0.6 } as LiveJob,
+    });
+    const view = (busy: boolean) => (
+      <TooltipProvider>
+        <PreviewPane busy={busy} onFixWithAI={() => {}} />
+      </TooltipProvider>
+    );
+    const { rerender, container } = render(view(true));
+    expect(screen.getByText(/Creating the images/)).toBeTruthy();
+    expect(screen.getByText("60%")).toBeTruthy();
+    expect(container.querySelector("iframe")).toBeNull();
+    rerender(view(false));
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain("/preview/buildaaaa1111/index.html");
+  });
+});

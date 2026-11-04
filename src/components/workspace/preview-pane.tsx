@@ -5,6 +5,7 @@ import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loa
 import { useWorkspace } from "@/stores/workspace";
 import { api } from "@/lib/api-client";
 import { formatDiagnostic, type PreviewMessage } from "@/lib/build-types";
+import type { PipelineStage } from "@/lib/jobs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -144,7 +145,9 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
       )}
 
       <div ref={boxRef} className={cn("relative min-h-0 flex-1 overflow-hidden", viewport !== "desktop" && "grid-dots flex items-center justify-center")}>
-        {src ? (
+        {busy ? (
+          <GeneratingSkeleton />
+        ) : src ? (
           <div
             style={vp.w && vp.h ? { width: vp.w, height: vp.h, transform: `scale(${scale})`, transformOrigin: "center" } : { width: "100%", height: "100%" }}
             className={cn("relative shrink-0 bg-white", viewport !== "desktop" && "overflow-hidden rounded-[18px] shadow-2xl ring-1 ring-border")}
@@ -218,6 +221,64 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** What the job is doing, in the order it happens (the latest started stage is shown). */
+const STAGE_LABELS: [PipelineStage, string][] = [
+  ["understand", "Reading your request"],
+  ["plan", "Planning the story"],
+  ["generate", "Writing the slides"],
+  ["repair", "Polishing the slides"],
+  ["review", "Reviewing the slides"],
+  ["images", "Creating the images"],
+  ["validate", "Checking everything"],
+  ["build", "Putting it all together"],
+  ["finalize", "Finishing up"],
+];
+
+/**
+ * Shown instead of the preview while a presentation is being made or changed:
+ * nothing half-made (slides without their images or scenes) is ever shown; the
+ * finished presentation appears at once when the job completes.
+ */
+function GeneratingSkeleton() {
+  const job = useWorkspace((s) => s.job);
+  const stage = [...STAGE_LABELS].reverse().find(([id]) => job?.stages[id]?.state === "start");
+  const label = stage?.[1] ?? "Getting started";
+  const pct = Math.round(Math.min(0.97, Math.max(0.03, job?.progress ?? 0)) * 100);
+  const bar = "rounded-full bg-muted-foreground/15";
+  return (
+    <div className="flex h-full items-center justify-center p-6" role="status" aria-live="polite">
+      <div className="w-full max-w-3xl">
+        <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border bg-muted/40 shadow-sm">
+          <div className="absolute inset-0 animate-pulse">
+            <div className={cn("absolute top-[28%] left-[8%] h-[3%] w-[16%]", bar)} />
+            <div className="absolute top-[36%] left-[8%] h-[9%] w-[52%] rounded-lg bg-muted-foreground/20" />
+            <div className="absolute top-[48%] left-[8%] h-[9%] w-[38%] rounded-lg bg-muted-foreground/20" />
+            <div className={cn("absolute top-[63%] left-[8%] h-[3%] w-[44%]", bar)} />
+            <div className={cn("absolute top-[69%] left-[8%] h-[3%] w-[34%]", bar)} />
+            <div className="absolute top-[20%] right-[8%] aspect-square h-[60%] rounded-full bg-muted-foreground/10" />
+            <div className={cn("absolute bottom-[6%] left-1/2 h-[3%] w-[28%] -translate-x-1/2", bar)} />
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-5 gap-2" aria-hidden="true">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="aspect-video animate-pulse rounded-lg border border-border bg-muted/40" style={{ animationDelay: `${i * 120}ms` }} />
+          ))}
+        </div>
+        <div className="mt-5 flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin text-brand" />
+          <span className="font-medium">Creating your presentation</span>
+          <span className="text-muted-foreground">· {label}…</span>
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums">{pct}%</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-brand transition-[width] duration-700" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">It appears here, complete, as soon as everything is ready.</p>
+      </div>
     </div>
   );
 }
