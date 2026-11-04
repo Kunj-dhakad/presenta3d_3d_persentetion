@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Pause, Play } from "lucide-react";
+import { Check, Loader2, Pause, Play, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { api, errorMessage } from "@/lib/api-client";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -220,7 +222,137 @@ export function usePresenterSettings(projectId: string, open: boolean) {
     }
   }
 
-  return { data, form, set, error, saving, save, previewing, playSample, voice, avatarStatus, lists, setLists, listsLoading };
+  /**
+   * Adds a photo to the business's avatar library (PHP: 3d-view/settings, action avatar_upload)
+   * and chooses it for this presentation; Save applies it.
+   */
+  async function addAvatar(photo: Blob, name: string): Promise<boolean> {
+    try {
+      const r = await phpPost<{ avatar: Avatar }>("3d-view/settings", { id: projectId, action: "avatar_upload", photo, name }, { timeoutMs: 60_000 });
+      setData((d) => (d ? { ...d, avatars: [...d.avatars.filter((a) => a.id !== r.avatar.id), r.avatar] } : d));
+      setForm((f) => (f ? { ...f, avatar: true, avatar_id: r.avatar.id } : f));
+      toast.success("Avatar added to your library. Press Save to use it.");
+      return true;
+    } catch (e) {
+      toast.error((e as Error).message);
+      return false;
+    }
+  }
+
+  return { data, form, set, error, saving, save, previewing, playSample, voice, avatarStatus, lists, setLists, listsLoading, addAvatar };
+}
+
+/**
+ * A photo as a JPEG of at most `max` pixels a side (smaller uploads, and any
+ * format the browser can open: PNG, WebP, JPEG…). Null if it cannot be read.
+ */
+async function toJpeg(file: Blob, max = 1024): Promise<Blob | null> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * k);
+    canvas.height = Math.round(bitmap.height * k);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  } catch {
+    return null;
+  }
+}
+
+/** "Upload photo" and "Create with AI": new avatars for the library, chosen at once. */
+function NewAvatar({ p }: { p: Loaded }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [description, setDescription] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState<"idle" | "painting" | "saving">("idle");
+  const [portrait, setPortrait] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setUploading(true);
+    const jpeg = await toJpeg(file);
+    if (!jpeg) toast.error("This photo could not be opened. Use a JPG, PNG or WebP photo.");
+    else await p.addAvatar(jpeg, file.name.replace(/\.[^.]+$/, "").slice(0, 60));
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function paint() {
+    setBusy("painting");
+    try {
+      const r = await api<{ image: string }>("/api/presenter/avatar-image", { method: "POST", json: { description } });
+      setPortrait(r.image);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  async function use() {
+    if (!portrait) return;
+    setBusy("saving");
+    const photo = await (await fetch(portrait)).blob();
+    const ok = await p.addAvatar(photo, name.trim() || "AI presenter");
+    setBusy("idle");
+    if (ok) {
+      setCreating(false);
+      setPortrait(null);
+      setDescription("");
+      setName("");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
+        <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? <Loader2 className="animate-spin" /> : <Upload />} Upload photo
+        </Button>
+        <Button type="button" size="sm" variant={creating ? "secondary" : "outline"} onClick={() => setCreating((v) => !v)}>
+          <Sparkles /> Create with AI
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">A clear, front-facing photo of one face works best for the talking presenter.</p>
+      {creating ? (
+        <div className="space-y-2 rounded-xl border p-3">
+          <Label htmlFor="avatar-describe">Describe your presenter</Label>
+          <Textarea
+            id="avatar-describe"
+            rows={2}
+            maxLength={500}
+            placeholder="e.g. A friendly woman in her thirties with short dark hair, navy blazer"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            disabled={busy !== "idle"}
+          />
+          <div className="flex items-center gap-3">
+            {portrait ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a generated data URL
+              <img src={portrait} alt="Your AI presenter" className="size-20 shrink-0 rounded-xl object-cover" />
+            ) : null}
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              {portrait ? <Input aria-label="Avatar name" placeholder="Name (optional)" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} disabled={busy !== "idle"} /> : null}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={portrait ? "outline" : "default"} onClick={() => void paint()} disabled={busy !== "idle" || description.trim().length < 3}>
+                  {busy === "painting" ? <Loader2 className="animate-spin" /> : <Sparkles />} {busy === "painting" ? "Creating… (about 30 s)" : portrait ? "Try again" : "Create"}
+                </Button>
+                {portrait ? (
+                  <Button type="button" size="sm" onClick={() => void use()} disabled={busy !== "idle"}>
+                    {busy === "saving" ? <Loader2 className="animate-spin" /> : <Check />} Use this avatar
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export type PresenterState = ReturnType<typeof usePresenterSettings>;
@@ -274,6 +406,7 @@ export function AvatarSection({ p }: { p: Loaded }) {
           })}
         </div>
         {data.avatars.length === 0 ? <p className="text-xs text-muted-foreground">No avatars in your library yet; the default presenter is used.</p> : null}
+        <NewAvatar p={p} />
         {avatarStatus !== "none" ? (
           <p className={cn("flex items-center gap-1.5 text-xs", avatarStatus === "failed" ? "text-destructive" : "text-muted-foreground")}>
             {avatarStatus === "making" ? <Loader2 className="size-3.5 animate-spin" /> : avatarStatus === "ready" ? <Check className="size-3.5 text-brand" /> : null}

@@ -16,17 +16,21 @@ export class PhpApiError extends Error {}
 
 export async function phpPost<T>(
   path: string,
-  fields: Record<string, string | number | boolean | null | undefined>,
+  fields: Record<string, string | number | boolean | Blob | null | undefined>,
   { timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<T> {
   const site = getParentSite();
   const token = getAccessToken();
   if (!site || !token) throw new PhpApiError("Open this presentation from your dashboard to change these settings.");
 
-  const body = new URLSearchParams({ access_token: token });
+  // A file goes as multipart form data, which is a "simple" cross-origin request too.
+  const hasFile = Object.values(fields).some((v) => v instanceof Blob);
+  const body = hasFile ? new FormData() : new URLSearchParams();
+  body.append("access_token", token);
   for (const [key, value] of Object.entries(fields)) {
     if (value === null || value === undefined) continue;
-    body.append(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+    if (value instanceof Blob) (body as FormData).append(key, value, value instanceof File ? value.name : `${key}.jpg`);
+    else body.append(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
   }
 
   const controller = new AbortController();
