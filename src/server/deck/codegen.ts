@@ -59,13 +59,13 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 .dot:hover { background: rgba(255, 255, 255, 0.4); }
 .dot.active { background: var(--accent); }
 /* Hover preview of a slide above its dot, like a video's seek bar. */
-#peek { position: fixed; z-index: 30; width: 208px; padding: 4px; border-radius: 12px; background: rgba(12, 13, 20, 0.86); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.8); pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity 0.18s, transform 0.18s; }
+#peek { position: fixed; z-index: 30; width: 112px; padding: 3px; border-radius: 9px; background: rgba(12, 13, 20, 0.86); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.8); pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity 0.18s, transform 0.18s; }
 #peek.on { opacity: 1; transform: none; }
-#peek .peek-img { position: relative; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; text-align: left; }
+#peek .peek-img { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; justify-content: center; padding: 6px 7px; text-align: left; }
 #peek .peek-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-#peek .peek-k { font-size: 7px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 3px; }
-#peek .peek-t { font-size: 12px; font-weight: 700; line-height: 1.2; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-#peek .peek-cap { display: flex; align-items: center; gap: 6px; padding: 6px 4px 2px; font-size: 11px; color: var(--text); }
+#peek .peek-k { font-size: 5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 2px; }
+#peek .peek-t { font-size: 8px; font-weight: 700; line-height: 1.2; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#peek .peek-cap { display: flex; align-items: center; gap: 4px; padding: 4px 3px 1px; font-size: 9px; color: var(--text); }
 #peek .peek-n { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
 #peek .peek-c { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
 @media (hover: none) { #peek { display: none; } }

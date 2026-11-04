@@ -74,7 +74,8 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
     return () => ro.disconnect();
   }, []);
 
-  const src = build.previewUrl ? `${build.previewUrl}?v=${nonce}` : null;
+  // editor=1: the deck knows it is the editor's preview (no hover previews over the dots).
+  const src = build.previewUrl ? `${build.previewUrl}?v=${nonce}&editor=1` : null;
   const [prevSrc, setPrevSrc] = useState(src);
   const [frameSrc, setFrameSrc] = useState(src);
   if (prevSrc !== src) {

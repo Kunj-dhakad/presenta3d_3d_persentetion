@@ -304,6 +304,8 @@ function renderSlide(slide, delay, dir = 1) {
   textTween = animateText(box, slide, Math.max(delay, TEXT_OUT + 0.05), dir);
 }
 
+// The hover preview is not for the editor's own preview (it opens the deck with ?editor=1): only the viewer and the public link.
+const IN_EDITOR = new URLSearchParams(location.search).get("editor") === "1";
 slides.forEach((_, i) => {
   const d = el("button", "dot");
   d.setAttribute("aria-label", `Go to slide ${i + 1}`);
@@ -311,10 +313,12 @@ slides.forEach((_, i) => {
     e.stopPropagation();
     go(i);
   });
-  d.addEventListener("mouseenter", () => showPeek(i, d));
-  d.addEventListener("focus", () => showPeek(i, d));
-  d.addEventListener("mouseleave", hidePeek);
-  d.addEventListener("blur", hidePeek);
+  if (!IN_EDITOR) {
+    d.addEventListener("mouseenter", () => showPeek(i, d));
+    d.addEventListener("focus", () => showPeek(i, d));
+    d.addEventListener("mouseleave", hidePeek);
+    d.addEventListener("blur", hidePeek);
+  }
   dotsEl.append(d);
 });
 
@@ -346,7 +350,7 @@ function showPeek(i, dot) {
   peekCEl.textContent = slide.title;
   const r = dot.getBoundingClientRect();
   const hud = dotsEl.parentElement.getBoundingClientRect();
-  const w = peekEl.offsetWidth || 208;
+  const w = peekEl.offsetWidth || 112;
   peekEl.style.left = `${Math.round(Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)))}px`;
   peekEl.style.bottom = `${Math.round(window.innerHeight - hud.top + 10)}px`;
   peekEl.classList.add("on");
