@@ -13,7 +13,7 @@ import { formatDiagnostic, type BuildSummary } from "@/lib/build-types";
 import { storage } from "@/server/storage/storage";
 import { deckToProjectFiles } from "./codegen";
 import { conversation, currentDeck, retryOnce } from "./pipeline";
-import { ImagePainter, canPaintImages } from "./cine-images";
+import { ImagePainter } from "./cine-images";
 import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 
 export const CINE_SYSTEM = `You are the director of Present 3D's cinematic presentations: slide decks that feel like a film trailer.
@@ -55,10 +55,10 @@ function cineBrief(): string {
   return `Art direction idea for this deck (adapt it to the topic): colour grade ${GRADES[randomInt(GRADES.length)]}.`;
 }
 
-/** Rounds (steps) the images get before the slides that are still missing one are left on their colours. */
-const MAX_IMAGE_ROUNDS = 3;
-/** An image round starts only with this much time left in the step (an image takes 15-40 s). */
-const MIN_IMAGE_WINDOW_MS = 25_000;
+/** How long the images may take in all (across steps) before slides still waiting keep their colours. */
+const MAX_IMAGE_WAIT_MS = 6 * 60_000;
+/** Pause between checks on the images being painted. */
+const IMAGE_POLL_MS = 3_000;
 const MIN_FINAL_WINDOW_MS = 15_000;
 const MAX_DECK_ATTEMPTS = 3;
 
@@ -69,7 +69,12 @@ type Checkpoint = {
   deck?: DeckSpec;
   /** Slides still waiting for their image. */
   missing?: number[];
-  rounds?: number;
+  /** Background image jobs (slide index → OpenAI response id), kept across steps. */
+  imageJobs?: Record<number, string>;
+  /** When the images were started (they get MAX_IMAGE_WAIT_MS in all). */
+  imagesSince?: number;
+  /** Why images failed (shown in the chat reply). */
+  imageErrors?: string[];
   existing?: boolean;
   preVersionId?: string | null;
   before?: Record<string, string>;
@@ -118,19 +123,29 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
     return CONTINUE;
   };
 
-  // Images still being painted when a step ends are stopped and painted again by the next step.
-  const stopImages = new AbortController();
-  const painter = new ImagePainter({
-    projectId: input.projectId,
-    signal: AbortSignal.any([ctx.signal, stopImages.signal]),
-    log: (m, level = "info") => (level === "info" ? log(m) : ctx.emit({ type: "log", level, message: m })),
-  });
-  const paintable = canPaintImages();
-  const paintAll = (deck: DeckSpec, indexes: number[]) => {
-    for (const i of indexes) {
-      const prompt = deck.slides[i]?.cine?.imagePrompt;
-      if (prompt) painter.start(i, prompt);
-    }
+  const painter = new ImagePainter(input.projectId);
+  const warn = (message: string) => ctx.emit({ type: "log", level: "warn", message });
+  /**
+   * Start the images of these slides, ALL AT ONCE (each start only queues the
+   * image with OpenAI and returns an id). Returns the ids and why any were refused.
+   */
+  const startImages = async (deck: DeckSpec, indexes: number[]) => {
+    const jobs: Record<number, string> = {};
+    const errors: string[] = [];
+    await Promise.all(
+      indexes.map(async (i) => {
+        const prompt = deck.slides[i]?.cine?.imagePrompt;
+        if (!prompt) return;
+        try {
+          jobs[i] = await painter.start(prompt, ctx.signal);
+        } catch (err) {
+          const message = (err as Error).message.slice(0, 300);
+          errors.push(message);
+          warn(`Slide ${i + 1}: the image could not be started (${message})`);
+        }
+      }),
+    );
+    return { jobs, errors };
   };
 
   const meta = (name: string, deck: DeckSpec) => ({
@@ -225,18 +240,19 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
       ctx.emit({ type: "stage", stage: "repair", state: "done" });
     }
     const deck = made.deck.deck;
-    const missing = paintable ? made.missing : [];
+    let missing = made.missing;
     log(`Received “${deck.title}”: ${deck.slides.length} slides · ${made.missing.length} image${made.missing.length === 1 ? "" : "s"} to paint`);
     ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
     ctx.progress(0.35);
 
-    // Every image starts now, together; the slides show their colours until it arrives.
+    // Every image starts now, together (OpenAI paints them in the background); the slides show their colours until it arrives.
+    let imageJobs: Record<number, string> = {};
+    let imageErrors: string[] = [];
     if (missing.length) {
       ctx.emit({ type: "stage", stage: "images", state: "start", detail: `${missing.length} at once` });
-      log(`Painting ${missing.length} cinematic image${missing.length > 1 ? "s" : ""} at the same time`);
-      paintAll(deck, missing);
-    } else if (made.missing.length) {
-      ctx.emit({ type: "log", level: "warn", message: "No image model is configured (OPENAI_IMAGE_MODEL); the slides use their colours instead of images" });
+      log(`Painting ${missing.length} cinematic image${missing.length > 1 ? "s" : ""} at the same time with ${painter.model}`);
+      ({ jobs: imageJobs, errors: imageErrors } = await startImages(deck, missing));
+      missing = missing.filter((i) => imageJobs[i]);
     }
 
     log(`Building the presentation and uploading it to ${storage().driver === "s3" ? "S3" : "local storage"}`);
@@ -249,7 +265,9 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
       deckAttempts,
       deck,
       missing,
-      rounds: 0,
+      imageJobs,
+      imagesSince: Date.now(),
+      imageErrors,
       existing: Boolean(existing),
       preVersionId: pre?.id ?? null,
       before: Object.fromEntries(files),
@@ -260,33 +278,45 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
     progressed = true;
   }
 
-  // ─── Images (all in parallel; resumable) ─────────────────────────────
+  // ─── Images: collect them as OpenAI finishes (resumable) ────────────
   let deck = cp.deck!;
   if (cp.missing?.length) {
-    const inFlight = cp.missing.filter((i) => painter.has(i));
-    if (progressed && !inFlight.length && left() < MIN_IMAGE_WINDOW_MS) return pause(cp);
     ctx.emit({ type: "stage", stage: "images", state: "start", detail: `${cp.missing.length} at once` });
-    const toStart = cp.missing.filter((i) => !painter.has(i));
-    if (toStart.length) log(`Painting ${toStart.length} image${toStart.length > 1 ? "s" : ""} at the same time${cp.rounds ? ` (round ${cp.rounds + 1})` : ""}`);
-    paintAll(deck, toStart);
-    await painter.until(ctx.deadline - 2_000);
-    if (ctx.signal.aborted) throw new DOMException("cancelled", "AbortError");
-    const settled = painter.settled();
-    deck = withImages(deck, new Map([...settled].filter((e): e is [number, string] => Boolean(e[1]))));
-    const unfinished = cp.missing.filter((i) => !settled.has(i));
-    cp = { ...cp, deck, missing: unfinished, rounds: (cp.rounds ?? 0) + 1 };
-    progressed = true;
-    if (unfinished.length) {
-      stopImages.abort();
-      if (cp.rounds! < MAX_IMAGE_ROUNDS) {
-        log(`${settled.size} image${settled.size === 1 ? "" : "s"} ready; continuing with the other ${unfinished.length}`);
+    const jobs = cp.imageJobs ?? {};
+    const errors = [...(cp.imageErrors ?? [])];
+    let waiting = cp.missing.filter((i) => jobs[i]);
+    for (;;) {
+      if (ctx.signal.aborted) throw new DOMException("cancelled", "AbortError");
+      const checks = await Promise.all(waiting.map(async (i) => [i, await painter.check(jobs[i], ctx.signal)] as const));
+      const painted = new Map<number, string>();
+      for (const [i, r] of checks) {
+        if (r.state === "done") painted.set(i, r.url);
+        if (r.state === "failed") {
+          errors.push(r.error);
+          warn(`Slide ${i + 1}: the image could not be painted (${r.error}); the slide uses its colours`);
+        }
+      }
+      if (painted.size) log(`${painted.size} image${painted.size > 1 ? "s" : ""} ready`);
+      deck = withImages(deck, painted);
+      waiting = checks.filter(([, r]) => r.state === "pending").map(([i]) => i);
+      cp = { ...cp, deck, missing: waiting, imageErrors: errors.slice(0, 10) };
+      progressed = true;
+      if (!waiting.length) break;
+      if (Date.now() - (cp.imagesSince ?? t0) > MAX_IMAGE_WAIT_MS) {
+        warn(`${waiting.length} image${waiting.length > 1 ? "s" : ""} took too long; those slides use their colours`);
+        void painter.cancel(waiting.map((i) => jobs[i]));
+        cp = { ...cp, missing: [] };
+        break;
+      }
+      // Out of time in this step: OpenAI keeps painting; the next step collects the rest.
+      if (left() < IMAGE_POLL_MS + MIN_FINAL_WINDOW_MS) {
+        log(`${waiting.length} image${waiting.length > 1 ? "s" : ""} still being painted; continuing`);
         return pause(cp);
       }
-      ctx.emit({ type: "log", level: "warn", message: `${unfinished.length} image${unfinished.length > 1 ? "s" : ""} took too long; those slides use their colours` });
-      cp = { ...cp, missing: [] };
+      await new Promise((r) => setTimeout(r, IMAGE_POLL_MS));
     }
-    const painted = deck.slides.filter((s) => s.cine?.image).length;
-    ctx.emit({ type: "stage", stage: "images", state: "done", detail: `${painted} painted` });
+    const count = deck.slides.filter((s) => s.cine?.image).length;
+    ctx.emit({ type: "stage", stage: "images", state: count ? "done" : "failed", detail: `${count} painted` });
   }
   ctx.progress(0.8);
 
@@ -328,6 +358,8 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
   if (post && build.status === "succeeded") await retryOnce(() => markWorkingVersion(input.projectId, post.id));
   const buildStatus = build.status === "succeeded" ? ("succeeded" as const) : ("failed" as const);
   const images = deck.slides.filter((s) => s.cine?.image).length;
+  const wanted = deck.slides.filter((s) => s.cine?.imagePrompt).length;
+  const imageNote = images < wanted && cp.imageErrors?.length ? ` ${wanted - images} image${wanted - images > 1 ? "s" : ""} could not be made: ${cp.imageErrors[0]}` : "";
   const summary = cp.existing
     ? `Updated “${deck.title}” — ${deck.slides.length} slides.`
     : `Created “${deck.title}” — a cinematic presentation with ${deck.slides.length} slides${images ? ` and ${images} AI image${images > 1 ? "s" : ""}` : ""}. Use the arrow keys or click to move through it.`;
@@ -338,7 +370,7 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
         data: {
           conversationId: input.conversationId,
           role: "assistant",
-          content: buildStatus === "failed" ? `${summary} The preview could not be built: ${formatDiagnostic(build.errors[0])}` : summary,
+          content: (buildStatus === "failed" ? `${summary} The preview could not be built: ${formatDiagnostic(build.errors[0])}` : summary) + imageNote,
           meta: { jobId: ctx.jobId, changedFiles: changed, preVersionId, postVersionId: post?.id ?? null, buildStatus, buildId: build.buildId, slides: deck.slides.length } as Prisma.InputJsonValue,
         },
       }),
