@@ -10,19 +10,19 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const VIEWPORTS = {
+/** The preview sizes; the switch between them sits in the editor's top bar. */
+export const VIEWPORTS = {
   desktop: { label: "Desktop", icon: Monitor, w: null as number | null, h: null as number | null },
   tablet: { label: "Tablet (820×1180)", icon: Tablet, w: 820, h: 1180 },
   mobile: { label: "Mobile (390×844)", icon: Smartphone, w: 390, h: 844 },
 };
-type ViewportId = keyof typeof VIEWPORTS;
+export type ViewportId = keyof typeof VIEWPORTS;
 
-export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: string[]) => void; busy: boolean }) {
+export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFixWithAI: (errors: string[]) => void; busy: boolean; viewport?: ViewportId }) {
   const build = useWorkspace((s) => s.build);
   const nonce = useWorkspace((s) => s.previewNonce);
   const runtimeErrors = useWorkspace((s) => s.runtimeErrors);
   const { refreshPreview, pushRuntimeError, runBuild, openFile } = useWorkspace.getState();
-  const [viewport, setViewport] = useState<ViewportId>("desktop");
   const [showIssues, setShowIssues] = useState(true);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -93,22 +93,7 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-surface px-2">
-        <div className="flex items-center gap-0.5" role="radiogroup" aria-label="Preview size">
-          {(Object.keys(VIEWPORTS) as ViewportId[]).map((id) => {
-            const V = VIEWPORTS[id];
-            return (
-              <Tooltip key={id}>
-                <TooltipTrigger asChild>
-                  <button role="radio" aria-checked={viewport === id} aria-label={V.label} onClick={() => setViewport(id)} className={cn("flex size-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground", viewport === id && "bg-accent text-foreground")}>
-                    <V.icon className="size-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>{V.label}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-        <div className="mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md bg-background/60 px-2 py-1 text-[11.5px] text-muted-foreground">
+        <div className="mr-2 flex min-w-0 flex-1 items-center gap-2 rounded-md bg-background/60 px-2 py-1 text-[11.5px] text-muted-foreground">
           {busy || build.status === "building" ? <Loader2 className="size-3 shrink-0 animate-spin text-brand" /> : build.status === "failed" ? <AlertTriangle className="size-3 shrink-0 text-destructive" /> : build.previewUrl ? <CircleCheck className="size-3 shrink-0 text-success" /> : <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" />}
           <span className="truncate font-mono">{busy ? "Working on it…" : build.status === "building" ? "Building…" : build.previewUrl ? "sandboxed preview · opaque origin" : "No preview yet"}</span>
         </div>

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /** Small upper-case heading inside a Settings section. */
 export function SubHeading({ children, first }: { children: React.ReactNode; first?: boolean }) {
-  return <h4 className={cn("mb-2.5 text-[11.5px] font-bold tracking-[0.08em] text-muted-foreground uppercase", first ? "mt-0" : "mt-5")}>{children}</h4>;
+  return <h4 className={cn("mb-2.5 text-[11.5px] font-bold tracking-[0.08em] text-muted-foreground uppercase", first ? "mt-2" : "mt-4")}>{children}</h4>;
 }
 
 /** An on/off row: title and hint on the left, a switch on the right; `children` show while it is on. */
@@ -37,13 +37,13 @@ const TILE_TONES = {
 
 /** The coloured icon tile at the start of a section header. */
 export function IconTile({ tone, children }: { tone: keyof typeof TILE_TONES; children: React.ReactNode }) {
-  return <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-[11px] [&_svg]:size-[17px]", TILE_TONES[tone])}>{children}</span>;
+  return <span className={cn("flex size-[30px] shrink-0 items-center justify-center rounded-[9px] [&_svg]:size-[15px]", TILE_TONES[tone])}>{children}</span>;
 }
 
 /** "On" / "Off" pill on a section header; nothing while unknown. */
 export function StatePill({ on }: { on: boolean | undefined }) {
   if (on === undefined) return null;
   return (
-    <span className={cn("rounded-full px-2.5 py-0.5 text-[11.5px] font-bold", on ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground")}>{on ? "On" : "Off"}</span>
+    <span className={cn("mr-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold", on ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground")}>{on ? "On" : "Off"}</span>
   );
 }

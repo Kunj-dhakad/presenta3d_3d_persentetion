@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Contact, Palette, Play, Star, ThumbsUp, UserRound } from "lucide-react";
+import { AudioLines, Contact, Info, Palette, Play, Star, ThumbsUp, UserRound } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AutoplaySection, DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
@@ -24,7 +24,12 @@ function Section({ value, icon, tone, title, on, children }: { value: string; ic
 
 /** Design sections need a finished deck; until then they say why they are empty. */
 function DesignPart({ d, ready, children }: { d: DesignState; ready: boolean; children: React.ComponentProps<typeof DesignGate>["children"] }) {
-  if (!ready) return <p className="text-sm text-muted-foreground">Available when the presentation has finished generating.</p>;
+  if (!ready)
+    return (
+      <p className="mt-2 flex items-start gap-2 rounded-[10px] bg-brand-soft px-3 py-2.5 text-[12.5px] text-foreground/80">
+        <Info className="mt-0.5 size-3.5 shrink-0 text-brand" /> Available when the presentation has finished generating.
+      </p>
+    );
   return <DesignGate d={d}>{children}</DesignGate>;
 }
 
@@ -45,10 +50,10 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
       <SheetContent aria-describedby="settings-drawer-desc">
         <SheetHeader className="border-b border-border">
           <SheetTitle>Presentation settings</SheetTitle>
-          <SheetDescription id="settings-drawer-desc">Design changes rebuild the preview; presenter changes apply at once on the public link and in Present.</SheetDescription>
+          <SheetDescription id="settings-drawer-desc">Design rebuilds the preview; the presenter applies at once in Present and on the public link.</SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 thin-scroll">
-          <Accordion type="single" collapsible defaultValue="template" className="grid gap-3">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3.5 thin-scroll">
+          <Accordion type="single" collapsible defaultValue="template" className="grid gap-2.5">
             <Section value="template" icon={<Palette />} tone="blue" title="Template & colours">
               <DesignPart d={d} ready={designReady}>{(x) => <TemplateSection d={x} />}</DesignPart>
             </Section>

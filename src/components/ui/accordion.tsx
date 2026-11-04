@@ -13,7 +13,7 @@ function AccordionItem({ className, ...props }: React.ComponentProps<typeof Acco
   return (
     <AccordionPrimitive.Item
       data-slot="accordion-item"
-      className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgb(15_29_43/0.04),0_4px_14px_-6px_rgb(15_29_43/0.08)]", className)}
+      className={cn("overflow-hidden rounded-[14px] border border-border bg-card", className)}
       {...props}
     />
   )
@@ -25,7 +25,7 @@ function AccordionTrigger({ className, children, ...props }: React.ComponentProp
       <AccordionPrimitive.Trigger
         data-slot="accordion-trigger"
         className={cn(
-          "group/acc flex flex-1 items-center gap-3 px-4 py-3.5 text-left text-[15px] font-semibold outline-none transition-colors hover:bg-surface focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset data-[state=open]:bg-brand-soft/60 data-[state=open]:text-brand",
+          "group/acc flex flex-1 items-center gap-2.5 px-4 py-3 text-left text-sm font-bold outline-none transition-colors hover:bg-surface focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset data-[state=open]:bg-brand-soft/50 data-[state=open]:text-brand",
           className
         )}
         {...props}
@@ -44,7 +44,7 @@ function AccordionContent({ className, children, ...props }: React.ComponentProp
       className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
       {...props}
     >
-      <div className={cn("border-t border-border px-4 pt-4 pb-4", className)}>{children}</div>
+      <div className={cn("px-4 pt-1 pb-4", className)}>{children}</div>
     </AccordionPrimitive.Content>
   )
 }
