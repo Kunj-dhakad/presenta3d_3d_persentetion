@@ -57,7 +57,7 @@ type Stats = {
   slide_views: number[];
   recent_feedback: { rating: number; message: string; at: string }[];
 };
-type SettingsResponse = { settings: PresenterSettings; voices: Voice[]; avatars: Avatar[]; autoresponders: Responder[]; stats: Stats };
+type SettingsResponse = { settings: PresenterSettings; voices: Voice[]; avatars: Avatar[]; default_avatar?: string; autoresponders: Responder[]; stats: Stats };
 
 const WELCOME_MAX = 300;
 /** Making a talking avatar: one background step may take ~2 minutes (narration + DupDub). */
@@ -380,8 +380,8 @@ export function AvatarSection({ p }: { p: Loaded }) {
     <>
       <ToggleRow id="presenter-avatar" title="Show AI presenter" hint="A presenter in the corner. A photo avatar becomes a talking video of slide 1." checked={form.avatar} onChange={(v) => p.set({ avatar: v })} first>
         <SubHeading first>Profile image</SubHeading>
-        <div className="grid max-h-60 grid-cols-4 gap-2 overflow-y-auto p-0.5 sm:grid-cols-5" role="radiogroup" aria-label="Avatar">
-          {[{ id: 0, name: "Default", image: "", video: "" } as Avatar, ...data.avatars].map((a) => {
+        <div className="grid max-h-72 grid-cols-4 gap-2 overflow-y-auto p-0.5 sm:grid-cols-5" role="radiogroup" aria-label="Avatar">
+          {[{ id: 0, name: "Default", image: data.default_avatar ?? "", video: "" } as Avatar, ...data.avatars].map((a) => {
             const chosen = (form.avatar_id ?? 0) === a.id;
             return (
               <button
@@ -399,6 +399,7 @@ export function AvatarSection({ p }: { p: Loaded }) {
                 ) : (
                   <span className="flex size-full items-center justify-center text-xs text-muted-foreground">Default</span>
                 )}
+                {a.id === 0 && a.image ? <span className="absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-center text-[10px] text-white">Default</span> : null}
                 {a.video ? <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 text-[10px] text-white">video</span> : null}
                 {chosen ? <Check className="absolute top-1 right-1 size-4 rounded-full bg-brand p-0.5 text-brand-foreground" /> : null}
               </button>
