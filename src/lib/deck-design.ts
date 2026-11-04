@@ -58,10 +58,9 @@ export const DECK_PALETTES: { id: string; name: string; colors: DeckColors }[] =
 
 /** The deck's current colours, as the Design panel shows them (scene colours are taken from slide 1). */
 export function deckColors(deck: Pick<DeckSpec, "theme" | "slides" | "style">): DeckColors {
-  // Cinematic decks: the two colours are the slides' glow tones (alternating).
+  // Cinematic decks are image-led: the accent is their only extra colour.
   if (deck.style === "cinematic") {
-    const tone = (i: number) => deck.slides[i]?.cine?.tone ?? deck.theme.accent;
-    return { background: deck.theme.background, text: deck.theme.text, accent: deck.theme.accent, primary: tone(0), secondary: tone(1) };
+    return { background: deck.theme.background, text: deck.theme.text, accent: deck.theme.accent, primary: deck.theme.accent, secondary: deck.theme.accent };
   }
   const first = deck.slides[0]?.scene;
   return { background: deck.theme.background, text: deck.theme.text, accent: deck.theme.accent, primary: first?.primary ?? deck.theme.accent, secondary: first?.secondary ?? deck.theme.accent };
@@ -84,8 +83,7 @@ export function applyDeckDesign(deck: DeckSpec, design: DeckDesign): DeckSpec {
       ? deck.slides.map((s, i) => {
           const a = primary ?? s.scene.primary;
           const b = secondary ?? s.scene.secondary;
-          const cine = deck.style === "cinematic" && s.cine ? { cine: { ...s.cine, tone: i % 2 ? (secondary ?? s.cine.tone) : (primary ?? s.cine.tone) } } : {};
-          return { ...s, scene: { ...s.scene, primary: i % 2 ? b : a, secondary: i % 2 ? a : b }, ...cine };
+          return { ...s, scene: { ...s.scene, primary: i % 2 ? b : a, secondary: i % 2 ? a : b } };
         })
       : deck.slides;
   return { ...deck, theme, slides };

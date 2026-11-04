@@ -1,128 +1,152 @@
 import { z } from "zod";
-import { CINE_CUTS, CINE_FRAMES, CINE_LOOKS, CINE_STYLES, CINE_VISUALS, TEXT_EFFECTS, defaultDeckSettings, validateDeck, type CineStyle, type DeckSlide, type DeckSpec, type DeckValidation } from "./deck";
+import {
+  CINE_CAMERA_MOVES,
+  CINE_PACES,
+  CINE_TEXT_STYLES,
+  CINE_TRANSITIONS,
+  ENVIRONMENTS,
+  ENVIRONMENT_HINTS,
+  defaultDeckSettings,
+  validateDeck,
+  type DeckSpec,
+  type DeckValidation,
+} from "./deck";
 
 /**
  * Cinematic presentations: what the model writes (CineSpec), and how it is
- * stored in deck.json (a DeckSpec with style "cinematic", a deck style and a
- * `cine` block on every slide). Storing it as a DeckSpec keeps everything that
- * works on decks working: chat edits, the Settings drawer (Thank-you slide,
- * footer, auto-play), narration notes, versions, Present and Publish. Only the
- * engine differs (server/deck/cine-codegen.ts); the 3D scene fields are placeholders.
+ * stored in deck.json (a DeckSpec with style "cinematic" and a `cine` block on
+ * every slide). Storing it as a DeckSpec keeps everything that works on decks
+ * working: chat edits, the Settings drawer (Thank-you slide, footer, auto-play),
+ * narration notes, versions, Present and Publish. Only the engine differs
+ * (server/deck/cine-codegen.ts): each slide is a unique AI photograph animated
+ * with film-like moves and kinetic typography. The image prompts are derived by
+ * the server from each slide's own words, never written by the model.
  * Every field is required so the schema works with OpenAI strict structured outputs.
  */
 
 const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "expected #rrggbb");
 
+const MotionSchema = z
+  .object({
+    text: z
+      .enum(CINE_TEXT_STYLES)
+      .describe(
+        "How the title and text animate in: glitch (tech, disruption), zoom (big statements), split (contrasts, two sides), rotate3d (products, reveals), wipe (clean corporate, data), letters (names, short powerful titles), fadeUp (calm, storytelling).",
+      ),
+    camera: z
+      .enum(CINE_CAMERA_MOVES)
+      .describe("The camera's slow move while the slide is shown: push (in, focus), pull (out, scale), orbit (around the scene, products/objects), crane (rise above, overview), drift (gentle sideways), static."),
+    transition: z
+      .enum(CINE_TRANSITIONS)
+      .describe("How the camera travels to this slide: glide (zoom out, sideways, zoom in), whip (fast whip pan, energy), rise (crane up and over), spiral (rolling arc, drama), zoom (lens zoom through)."),
+    pace: z.enum(CINE_PACES).describe("Timing: calm (slow, elegant), normal, energetic (snappy)."),
+  })
+  .describe("Cinematic motion for this slide. Vary it from slide to slide; never repeat the same text style or transition on consecutive slides.");
+export type CineMotion = z.infer<typeof MotionSchema>;
+
 export const CineSlideSchema = z.object({
-  look: z
-    .enum(CINE_LOOKS)
-    .describe(
-      "hero = opening title; image = one big statement over its picture; statement = one huge turning-point line; stats = 2-3 huge numbers; cards = 3 numbered cards (items); timeline = 3-4 milestones on a line (items: heading = when, text = what); bullets = 2-4 short bullets; closing = the final line.",
-    ),
-  kicker: z.string().describe("Short line above the title, e.g. 'THE CAUSE' or 'SOLUTION 01'. Empty string for none."),
-  title: z.string().describe("The headline, 2-7 punchy words."),
-  highlight: z.string().describe("The key word(s) of the title to set in the slide's tone, copied exactly from the title. Empty string for none."),
-  subtitle: z.string().describe("One short supporting sentence. Empty string for none."),
-  bullets: z.array(z.string()).describe("For look 'bullets': 2-4 bullets of at most 8 words. Otherwise empty."),
-  stats: z.array(z.object({ value: z.string().describe("e.g. '420+' or '~1.2°C'"), label: z.string() })).describe("For look 'stats': 2-3 items. Otherwise empty."),
-  items: z.array(z.object({ heading: z.string(), text: z.string() })).describe("For 'cards' (3 items: short heading + one sentence) and 'timeline' (3-4 items: heading = a date or stage, text = 2-5 words). Otherwise empty."),
-  imagePrompt: z
+  layout: z
+    .enum(["hero", "left", "right", "center", "stats"])
+    .describe("hero = big title slide; left/right = text on that side with the main image subject on the other; center = text over the image; stats = up to 4 big numbers."),
+  kicker: z.string().describe("Short uppercase label above the title, e.g. 'CHAPTER 02'. Empty string for none."),
+  title: z.string().describe("Slide title, at most ~8 words."),
+  subtitle: z.string().describe("One supporting sentence. Empty string for none."),
+  bullets: z.array(z.string()).describe("0-4 concise bullet points (at most ~12 words each)."),
+  stats: z.array(z.object({ value: z.string().describe("e.g. '3.2x' or '$4M'"), label: z.string() })).describe("2-4 items for layout 'stats', otherwise empty."),
+  motion: MotionSchema,
+  notes: z
     .string()
     .describe(
-      "EVERY slide: the photograph that shows THIS slide's own content — name the concrete people, objects, places and actions from its title, subtitle, bullets, numbers or items (never a generic stock scene, never the same scene twice). Say the shot (wide establishing, close-up, aerial, macro detail, portrait, over-the-shoulder, silhouette), the setting, the light and the mood. No text, letters, logos or UI in the image.",
+      "What the presenter says on this slide; it is read aloud as narration with subtitles. 2-4 natural spoken sentences (about 30-60 words) that add to the slide rather than repeat it word for word. Same language as the slides. Never empty.",
     ),
-  frame: z
-    .enum(CINE_FRAMES)
-    .describe("Where the image sits: full = the whole screen behind the text; right / left = the image fills that half and the text sits on the other; window = the image in a framed panel on the right. hero, closing and statement use full; cards and timeline use full; vary the others, never the same frame on more than two slides in a row."),
-  cut: z
-    .enum(CINE_CUTS)
-    .describe("How this slide cuts in: flash (blur and light flash), fade (through black), push (slides in), zoom (zooms through), wipe (revealed from the side), iris (opens from the centre). Never the same cut on neighbouring slides; use at least 4 different cuts in a deck."),
-  visual: z.enum(CINE_VISUALS).describe("A glowing shape shown only if the image cannot be made: planet, spiral, orbs, pulse, or none."),
-  tone: Hex.describe("This slide's highlight colour. Readable on the image; vary it with the story within the deck's palette."),
-  textEffect: z.enum(TEXT_EFFECTS).describe("How the title appears: zoom, rise, letters (letter by letter), slide, blur, flip, drop. Never the same on neighbouring slides."),
-  notes: z.string().describe("What the presenter says on this slide (read aloud with subtitles): 2-4 natural spoken sentences, never empty. Same language as the slides."),
 });
 
 export const CineSpecSchema = z.object({
   title: z.string(),
   theme: z.object({
-    style: z
-      .enum(CINE_STYLES)
-      .describe(
-        "The deck's look: trailer = blockbuster trailer, huge condensed capitals, embers and flashes; editorial = magazine, elegant serif titles, calm fades; noir = black-and-white photographs, red accent, hard cuts; neon = futuristic night, glowing wide type; documentary = photojournalism, bold sans titles on lower-third panels; luxury = campaign photography, refined serif, gold, slow and quiet.",
-      ),
-    background: Hex.describe("Dark base colour behind the images, tinted to the palette"),
-    text: Hex.describe("Title and text colour, light"),
-    accent: Hex.describe("The deck's accent (kickers, lines, buttons), fitting the style"),
-    font: z.enum(["display", "sans", "serif", "mono"]).describe("Kept for the Settings drawer; the style sets the fonts. Use display."),
+    background: Hex.describe("Dark background color behind the images, near black, tinted toward the palette, e.g. #05060a"),
+    text: Hex,
+    accent: Hex,
+    font: z.enum(["sans", "serif", "display", "mono"]).describe("Title font. Prefer display or sans; serif only for elegant, literary or luxury topics."),
+    environment: z.enum(ENVIRONMENTS).describe("The atmospheric background treatment for generated slide images; pick what fits the topic."),
   }),
   slides: z.array(CineSlideSchema),
 });
 export type CineSpec = z.infer<typeof CineSpecSchema>;
 type CineSpecSlide = CineSpec["slides"][number];
 
-/** Stored slide layout for each look (used by anything that reads decks generically). */
-const LAYOUT: Record<(typeof CINE_LOOKS)[number], DeckSlide["layout"]> = {
-  hero: "hero",
-  image: "left",
-  statement: "center",
-  stats: "stats",
-  cards: "left",
-  timeline: "left",
-  bullets: "left",
-  closing: "hero",
-};
+/**
+ * The prompt for one slide's generated image, derived from the slide's own
+ * words so every image shows that slide's subject, composed so the text's side
+ * stays calm and dark.
+ */
+function cineImagePrompt(slide: CineSpecSlide, index: number, total: number, theme: CineSpec["theme"]): string {
+  const layout =
+    slide.layout === "left"
+      ? "Place the main subject on the RIGHT half, leaving the LEFT third dark, uncluttered and low contrast for presentation text."
+      : slide.layout === "right"
+        ? "Place the main subject on the LEFT half, leaving the RIGHT third dark, uncluttered and low contrast for presentation text."
+        : "Compose a clear cinematic focal subject with a darker, low-detail central area where presentation text can remain readable.";
+  return [
+    `Create a polished cinematic widescreen presentation background for slide ${index + 1} of ${total}.`,
+    `Presentation topic: ${slide.title}.`,
+    slide.subtitle ? `Key idea: ${slide.subtitle}.` : "",
+    slide.bullets.length ? `Supporting ideas: ${slide.bullets.join("; ")}.` : "",
+    `Art direction: colors that harmonize with ${theme.accent} over a deep ${theme.background} atmosphere. Image atmosphere: ${ENVIRONMENT_HINTS[theme.environment]}.`,
+    layout,
+    "Make the visual specifically recognizable as this slide's subject, photorealistic or refined editorial illustration as appropriate. Rich detail in the subject, elegant lighting, subtle depth, presentation-ready. No words, letters, labels, logos, watermarks, UI, charts with text, borders, or collages.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
-/** Looks that need the whole width for their text: their image is always full screen. */
-const FULL_WIDTH_LOOKS = new Set<string>(["hero", "statement", "closing", "cards", "timeline"]);
+/** Neighbouring slides never share a text style, camera move or transition. */
+function varyMotion(m: CineMotion, prev: CineMotion | null, i: number): CineMotion {
+  if (!prev) return m;
+  const next = <T,>(xs: readonly T[], v: T, avoid: T) => (v !== avoid ? v : xs[(xs.indexOf(v) + 1 + (i % (xs.length - 1))) % xs.length]);
+  let text = next(CINE_TEXT_STYLES, m.text, prev.text);
+  if (text === prev.text) text = CINE_TEXT_STYLES[(CINE_TEXT_STYLES.indexOf(text) + 1) % CINE_TEXT_STYLES.length];
+  let camera = next(CINE_CAMERA_MOVES, m.camera, prev.camera);
+  if (camera === prev.camera && camera !== "static") camera = CINE_CAMERA_MOVES[(CINE_CAMERA_MOVES.indexOf(camera) + 1) % CINE_CAMERA_MOVES.length];
+  let transition = next(CINE_TRANSITIONS, m.transition, prev.transition);
+  if (transition === prev.transition) transition = CINE_TRANSITIONS[(CINE_TRANSITIONS.indexOf(transition) + 1) % CINE_TRANSITIONS.length];
+  return { ...m, text, camera, transition };
+}
 
 /**
- * The model's cinematic deck → a stored deck. Every slide gets an image; images
- * of slides whose prompt did not change are kept from `previous` (an edit does
- * not repaint them). Returns the deck and the slides that still need an image.
+ * The model's cinematic deck → a stored deck. Every slide gets an image prompt
+ * derived from its words; images of slides whose prompt did not change are kept
+ * from `previous` (an edit does not repaint them). Returns the deck and the
+ * slides that still need an image.
  */
 export function cineToDeck(spec: CineSpec, previous: DeckSpec | null): { deck: DeckValidation; missing: number[] } {
   const painted = new Map<string, string>();
   for (const s of previous?.slides ?? []) if (s.cine?.image && s.cine.imagePrompt) painted.set(imageKey(s.cine.imagePrompt), s.cine.image);
   const missing: number[] = [];
-  let prevCut = "";
+  let prev: CineMotion | null = null;
   const slides = spec.slides.map((s: CineSpecSlide, i) => {
-    const prompt = s.imagePrompt.trim() || [s.title, s.subtitle, ...s.bullets, ...s.items.map((x) => `${x.heading}: ${x.text}`)].filter(Boolean).join(". ");
+    const motion = varyMotion(s.motion, prev, i);
+    prev = motion;
+    const prompt = cineImagePrompt(s, i, spec.slides.length, spec.theme);
     const image = painted.get(imageKey(prompt)) ?? "";
     if (!image) missing.push(i);
-    // Neighbouring slides never cut in the same way, whatever the model chose.
-    const cut = s.cut === prevCut ? CINE_CUTS[(CINE_CUTS.indexOf(s.cut) + 1) % CINE_CUTS.length] : s.cut;
-    prevCut = cut;
     return {
-      layout: LAYOUT[s.look],
+      layout: s.layout,
       kicker: s.kicker,
       title: s.title,
       subtitle: s.subtitle,
-      bullets: s.look === "bullets" ? s.bullets : [],
-      stats: s.look === "stats" ? s.stats : [],
+      bullets: s.bullets,
+      stats: s.layout === "stats" ? s.stats : [],
       notes: s.notes,
-      textEffect: s.textEffect,
       // The 3D fields are not used by the cinematic engine; kept valid for generic readers.
-      scene: { kind: "particles", primary: s.tone, secondary: spec.theme.accent, speed: 1, density: 0.6, values: [] },
-      cine: {
-        look: s.look,
-        highlight: s.highlight,
-        tone: s.tone,
-        visual: s.visual,
-        imagePrompt: prompt,
-        image,
-        items: s.look === "cards" || s.look === "timeline" ? s.items : [],
-        frame: FULL_WIDTH_LOOKS.has(s.look) ? ("full" as const) : s.frame,
-        cut,
-      },
+      scene: { kind: "particles", primary: spec.theme.accent, secondary: spec.theme.accent, speed: 1, density: 0.6, values: [] },
+      cine: { ...motion, imagePrompt: prompt, image },
     };
   });
-  const { style, ...theme } = spec.theme;
   const deck = validateDeck({
     title: spec.title,
     style: "cinematic",
-    cineStyle: style,
-    theme: { ...theme, environment: "space", transition: "side" },
+    theme: { ...spec.theme, transition: "side" },
     slides,
     // New decks get the default settings (they end on a Thank-you slide); edits keep the owner's.
     settings: previous?.settings ?? defaultDeckSettings(),
@@ -132,57 +156,30 @@ export function cineToDeck(spec: CineSpec, previous: DeckSpec | null): { deck: D
 
 const imageKey = (prompt: string) => prompt.trim().toLowerCase().replace(/\s+/g, " ");
 
-/** A stored cinematic deck in the model's format (for edits: the model sees what it wrote, without image URLs). */
+/** A stored cinematic deck in the model's format (for edits: the model sees what it wrote, without prompts or image URLs). */
 export function cineForPrompt(deck: DeckSpec): CineSpec {
   return {
     title: deck.title,
-    theme: { style: deck.cineStyle ?? "trailer", background: deck.theme.background, text: deck.theme.text, accent: deck.theme.accent, font: deck.theme.font },
+    theme: { background: deck.theme.background, text: deck.theme.text, accent: deck.theme.accent, font: deck.theme.font, environment: deck.theme.environment },
     slides: deck.slides.map((s) => ({
-      look: s.cine?.look ?? "statement",
+      layout: s.layout,
       kicker: s.kicker,
       title: s.title,
-      highlight: s.cine?.highlight ?? "",
       subtitle: s.subtitle,
       bullets: s.bullets,
       stats: s.stats,
-      items: s.cine?.items ?? [],
-      imagePrompt: s.cine?.imagePrompt ?? "",
-      frame: s.cine?.frame ?? "full",
-      cut: s.cine?.cut ?? "flash",
-      visual: s.cine?.visual ?? "none",
-      tone: s.cine?.tone ?? deck.theme.accent,
-      textEffect: s.textEffect ?? "rise",
+      motion: {
+        text: s.cine?.text ?? "fadeUp",
+        camera: s.cine?.camera ?? "static",
+        transition: s.cine?.transition ?? "glide",
+        pace: s.cine?.pace ?? "normal",
+      },
       notes: s.notes,
     })),
   };
 }
 
-/** The photographic direction of each deck style, added to every image of the deck so they belong together. */
-export const STYLE_ART: Record<CineStyle, string> = {
-  trailer: "Epic blockbuster film still, anamorphic lens, dramatic volumetric light, teal-and-orange colour grade, haze and atmosphere",
-  editorial: "Editorial magazine photograph, natural soft window light, refined composition, muted elegant tones, fine grain",
-  noir: "Black-and-white film noir photograph, hard directional light, deep shadows, high contrast, rain or smoke where it fits",
-  neon: "Futuristic night scene, neon light and reflections, saturated magenta and cyan, glossy surfaces, cyberpunk mood",
-  documentary: "Documentary photojournalism, an authentic real-world moment, natural available light, candid, true colours",
-  luxury: "Luxury brand campaign photograph, soft golden light, minimal composition, rich textures, shallow depth of field",
-};
-
-/**
- * The full prompt for one slide's image: what the slide is about (its own
- * prompt), the deck's photographic style, and the composition its layout needs
- * (calm space where the text goes on a full-screen image).
- */
+/** The full prompt for one slide's image (stored on the slide when the deck was made). */
 export function imagePromptFor(deck: DeckSpec, index: number): string {
-  const slide = deck.slides[index];
-  const c = slide.cine!;
-  const style = STYLE_ART[deck.cineStyle ?? "trailer"];
-  const centred = c.look === "hero" || c.look === "statement" || c.look === "closing";
-  const composition =
-    (c.frame ?? "full") !== "full"
-      ? "One strong, clear subject, well composed for a half-screen crop."
-      : centred
-        ? "Keep a calm, darker area in the centre where a headline will sit."
-        : "Keep the left half calm and darker where text will sit; the subject on the right.";
-  const about = [slide.title, slide.subtitle].filter(Boolean).join(" — ");
-  return `${c.imagePrompt}\n\nThis image illustrates the slide "${about}".\nStyle: ${style}.\n${composition}\nWidescreen 16:9 photograph. Absolutely no text, letters, numbers, captions, watermarks or logos.`;
+  return deck.slides[index]?.cine?.imagePrompt ?? "";
 }

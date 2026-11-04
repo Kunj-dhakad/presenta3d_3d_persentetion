@@ -145,37 +145,29 @@ export type DeckSettings = {
 
 /**
  * Cinematic presentations (deck.style "cinematic", see lib/schemas/cine.ts):
- * an AI image on every slide and bold titles instead of 3D scenes. Each slide
- * keeps the shared fields (kicker, title, notes …) and adds how it is drawn here.
+ * an AI photograph on every slide, animated with film-like moves and kinetic
+ * typography instead of 3D scenes (engine: server/deck/cine-runtime.js.txt).
+ * Each slide keeps the shared fields (layout, kicker, title, notes …) and
+ * adds its cinematic motion and image here.
  */
-export const CINE_LOOKS = ["hero", "image", "statement", "stats", "cards", "timeline", "bullets", "closing"] as const;
-/** CSS visual shown only when a slide's image could not be painted. */
-export const CINE_VISUALS = ["planet", "spiral", "orbs", "pulse", "none"] as const;
-/**
- * The deck's style: fonts, image treatment, text animations and cuts
- * (server/deck/cine-codegen.ts). Every deck gets one, so decks do not all look alike.
- */
-export const CINE_STYLES = ["trailer", "editorial", "noir", "neon", "documentary", "luxury"] as const;
-export type CineStyle = (typeof CINE_STYLES)[number];
-/** Where a slide's image sits: full screen, a half on the right or left, or a framed window. */
-export const CINE_FRAMES = ["full", "right", "left", "window"] as const;
-/** How the slide cuts in: blur and flash, fade through black, push, zoom through, wipe, iris. */
-export const CINE_CUTS = ["flash", "fade", "push", "zoom", "wipe", "iris"] as const;
+/** Kinetic typography styles for a cinematic slide's text (cine engine: animateText). */
+export const CINE_TEXT_STYLES = ["glitch", "zoom", "split", "rotate3d", "wipe", "letters", "fadeUp"] as const;
+/** The image's slow move while a cinematic slide is on screen. */
+export const CINE_CAMERA_MOVES = ["push", "pull", "orbit", "crane", "drift", "static"] as const;
+/** How a cinematic slide arrives. */
+export const CINE_TRANSITIONS = ["glide", "whip", "rise", "spiral", "zoom"] as const;
+export const CINE_PACES = ["calm", "normal", "energetic"] as const;
 /** Where a slide image may come from: this app's deckmedia route, or any https URL. */
 export const CINE_IMAGE_RE = /^(\/deckmedia\/[A-Za-z0-9_-]{8,64}\/[A-Za-z0-9_-]{8,64}\.(?:webp|png|jpe?g)|https:\/\/\S{1,1000})$/;
-const CineItemSchema = z.object({ heading: z.string(), text: z.string() });
 const StoredCineSchema = z.object({
-  look: z.enum(CINE_LOOKS),
-  highlight: z.string(),
-  tone: Hex,
-  visual: z.enum(CINE_VISUALS),
+  text: z.enum(CINE_TEXT_STYLES),
+  camera: z.enum(CINE_CAMERA_MOVES),
+  transition: z.enum(CINE_TRANSITIONS),
+  pace: z.enum(CINE_PACES),
+  /** The slide's image prompt, derived by the server from the slide's own words. */
   imagePrompt: z.string(),
   /** The generated image ("" while it is being painted, or when painting it failed). */
   image: z.string(),
-  items: z.array(CineItemSchema),
-  /** Optional: decks made before them use full-screen images and the flash cut. */
-  frame: z.enum(CINE_FRAMES).optional(),
-  cut: z.enum(CINE_CUTS).optional(),
 });
 export type CineSlide = z.infer<typeof StoredCineSchema>;
 
@@ -192,8 +184,6 @@ const StoredDeckSchema = z.object({
   title: z.string(),
   /** "cinematic": rendered by the cinematic engine (server/deck/cine-codegen.ts); missing = 3D. */
   style: z.enum(["3d", "cinematic"]).optional(),
-  /** A cinematic deck's style (missing: "trailer", the first cinematic look). */
-  cineStyle: z.enum(CINE_STYLES).optional(),
   theme: ThemeSchema,
   slides: z.array(StoredSlideSchema),
   settings: DeckSettingsInput.optional(),
@@ -245,6 +235,37 @@ const DEFAULT_COMPOSE: ComposeSpec = { shape: "icosahedron", arrangement: "ring"
 
 const clamp = (n: number, lo: number, hi: number, fallback: number) => (Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback);
 
+const rgbOf = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const hexOf = (rgb: number[]) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
+/** WCAG relative luminance of a #rrggbb colour. */
+export function luminance(hex: string): number {
+  const [r, g, b] = rgbOf(hex).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+/** WCAG contrast ratio of two #rrggbb colours (1-21). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+/** `color`, moved toward black on a light background or white on a dark one until it reaches `min` contrast. */
+function readableOn(color: string, background: string, min: number): string {
+  if (contrastRatio(color, background) >= min) return color;
+  const target = luminance(background) > 0.18 ? [0, 0, 0] : [255, 255, 255];
+  const from = rgbOf(color);
+  for (let t = 0.1; t < 1; t += 0.1) {
+    const mixed = hexOf(from.map((v, i) => v + (target[i] - v) * t));
+    if (contrastRatio(mixed, background) >= min) return mixed;
+  }
+  return hexOf(target);
+}
+/** Text is always readable on the background (WCAG AA), and the accent stands out from it. */
+function readableTheme<T extends { background: string; text: string; accent: string }>(theme: T): T {
+  return { ...theme, text: readableOn(theme.text, theme.background, 4.5), accent: readableOn(theme.accent, theme.background, 3) };
+}
+
 export type DeckValidation = { ok: true; deck: DeckSpec } | { ok: false; errors: string[] };
 
 function expandPreset(scene: Record<string, unknown>): Record<string, unknown> {
@@ -263,10 +284,12 @@ function withLegacyDefaults(input: unknown): unknown {
   if (Array.isArray(d.slides)) {
     out.slides = d.slides.map((s) => {
       if (!s || typeof s !== "object") return s;
-      const slide = s as { scene?: unknown };
+      const slide = s as { scene?: unknown; cine?: unknown };
       // A scene from the model has a preset and no kind yet; the kind is filled in from the catalog below.
       const scene = slide.scene && typeof slide.scene === "object" ? expandPreset(slide.scene as Record<string, unknown>) : slide.scene;
-      return { ...slide, scene };
+      // Cinematic slides from before the image-led engine (they had a "look"): their cine block is dropped; the engine uses its defaults.
+      const cine = slide.cine && typeof slide.cine === "object" && !("text" in (slide.cine as object)) ? undefined : slide.cine;
+      return { ...slide, scene, cine };
     });
   }
   return out;
@@ -282,8 +305,8 @@ export function validateDeck(input: unknown): DeckValidation {
   if (d.slides.length < DECK_LIMITS.minSlides) return { ok: false, errors: ["the deck needs at least one slide"] };
   const deck: DeckSpec = {
     title: d.title.trim().slice(0, 120) || "Untitled presentation",
-    ...(d.style === "cinematic" ? { style: "cinematic" as const, ...(d.cineStyle ? { cineStyle: d.cineStyle } : {}) } : {}),
-    theme: d.theme,
+    ...(d.style === "cinematic" ? { style: "cinematic" as const } : {}),
+    theme: readableTheme(d.theme),
     slides: d.slides.slice(0, DECK_LIMITS.maxSlides).map((s) => ({
       ...s,
       kicker: s.kicker.slice(0, 60),
@@ -299,29 +322,22 @@ export function validateDeck(input: unknown): DeckValidation {
         values: s.scene.values.filter((v) => Number.isFinite(v) && v >= 0).slice(0, DECK_LIMITS.maxValues),
         ...(s.scene.compose ? { compose: { ...s.scene.compose, count: Math.round(clamp(s.scene.compose.count, 1, DECK_LIMITS.maxCount, 12)) } } : {}),
       },
-      ...(s.cine ? { cine: normalizeCine(s.cine, s.title) } : {}),
+      ...(s.cine ? { cine: normalizeCine(s.cine) } : {}),
     })),
     settings: normalizeSettings(d.settings),
   };
   return { ok: true, deck };
 }
 
-/** Trim a cinematic slide's fields; an image from anywhere else, or a highlight not in the title, is dropped. */
-function normalizeCine(c: CineSlide, title: string): CineSlide {
-  const highlight = c.highlight.trim().slice(0, 80);
+/** Trim a cinematic slide's fields; an image from anywhere else is dropped. */
+function normalizeCine(c: CineSlide): CineSlide {
   return {
-    look: c.look,
-    highlight: highlight && title.toLowerCase().includes(highlight.toLowerCase()) ? highlight : "",
-    tone: c.tone,
-    visual: c.visual,
-    imagePrompt: c.imagePrompt.slice(0, 1200),
+    text: c.text,
+    camera: c.camera,
+    transition: c.transition,
+    pace: c.pace,
+    imagePrompt: c.imagePrompt.slice(0, 1600),
     image: CINE_IMAGE_RE.test(c.image) ? c.image : "",
-    items: c.items
-      .filter((i) => i.heading.trim() || i.text.trim())
-      .slice(0, 4)
-      .map((i) => ({ heading: i.heading.slice(0, 40), text: i.text.slice(0, 160) })),
-    ...(c.frame ? { frame: c.frame } : {}),
-    ...(c.cut ? { cut: c.cut } : {}),
   };
 }
 

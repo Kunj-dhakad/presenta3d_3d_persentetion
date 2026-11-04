@@ -1,300 +1,348 @@
-// Present 3D cinematic presentation engine. Reads deck.json (style "cinematic")
-// and plays it like a film trailer: full-bleed AI images with Ken Burns motion,
-// big titles that zoom, rise or type in, glowing particles and visuals, and a
-// blur-and-flash cut between slides.
+// Present 3D cinematic presentation engine. Reads deck.json and renders each
+// slide as an AI photograph animated with film-like moves and kinetic typography.
 // Keys: → / Space next · ← previous · Home/End · F fullscreen · N speaker notes · P auto-play.
-// Hosting pages: posts { source: "deck3d-preview", type: "slide", index } (1-based) on every
-// change and obeys { type: "deck3d-deck", action: next|prev|first|last|autoplay } from its parent.
+import gsap from "gsap";
 
 const deck = await fetch("./deck.json").then((r) => r.json());
+// Older decks have no settings; the server validates links, this only guards the engine.
 const settings = deck.settings || {};
 const webLink = (u, schemes = /^https?:\/\//i) => (typeof u === "string" && schemes.test(u) ? u : "");
-// Images come from this app (/deckmedia/…) or https only.
-const imageUrl = (u) => (typeof u === "string" && /^(\/deckmedia\/[A-Za-z0-9_\/-]+\.(webp|png|jpe?g)|https:\/\/\S+)$/.test(u) ? u : "");
 const slides = [...deck.slides];
-
-// The owner's Thank-you slide closes the deck, over the opening image.
+// The owner's Thank You slide closes the deck, with its call-to-action buttons.
 const thankYou = settings.thankYou;
 if (thankYou?.enabled) {
-  const opening = slides.find((s) => s.cine?.image);
   slides.push({
+    layout: "hero",
     kicker: "",
     title: thankYou.title || "Thank you",
     subtitle: thankYou.message || "",
     bullets: [],
     stats: [],
     notes: "",
-    textEffect: "zoom",
     buttons: (thankYou.buttons || []).filter((b) => b && b.label && webLink(b.url, /^(https?:\/\/|mailto:|tel:)/i)),
-    cine: { look: "closing", highlight: "", tone: deck.theme.accent, visual: "none", imagePrompt: "", image: opening?.cine.image || "", items: [], frame: "full", cut: "fade" },
+    // It closes calmly, over the last slide's photograph, in a text style the last slide did not use.
+    cine: { text: slides[slides.length - 1]?.cine?.text === "fadeUp" ? "zoom" : "fadeUp", camera: "drift", transition: "glide", pace: "calm", imagePrompt: "", image: slides[slides.length - 1]?.cine?.image || "" },
   });
 }
 document.title = deck.title;
 
+// ─── Theme ──────────────────────────────────────────────────────────────
 const root = document.documentElement;
 root.style.setProperty("--bg", deck.theme.background);
 root.style.setProperty("--text", deck.theme.text);
 root.style.setProperty("--accent", deck.theme.accent);
-// The deck's style sets fonts, image treatment, highlights and motion (see the styles in cine-codegen.ts).
-const STYLE = ["trailer", "editorial", "noir", "neon", "documentary", "luxury"].includes(deck.cineStyle) ? deck.cineStyle : "trailer";
-document.body.dataset.style = STYLE;
-// Letterbox bars close in on the flash cut in the film-like styles.
-const BARS = STYLE === "trailer" || STYLE === "noir" || STYLE === "neon";
-const CUTS = ["flash", "fade", "push", "zoom", "wipe", "iris"];
-const FRAMES = ["full", "right", "left", "window"];
-/** Looks that need the whole width for their text: always a full-screen image. */
-const FULL = ["hero", "statement", "closing", "cards", "timeline"];
-const cutOf = (slide) => (CUTS.includes(slide?.cine?.cut) ? slide.cine.cut : "flash");
+document.body.dataset.font = deck.theme.font;
 
-const stage = document.getElementById("stage");
-const flash = document.getElementById("flash");
+// ─── Readability ────────────────────────────────────────────────────────
+// Text must always read clearly over its photograph. Each image is measured
+// where the slide's text sits: over a bright area the text turns dark on a light
+// shade, over a dark area it is light on a dark shade (slide data-backdrop).
+const hexLum = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(String(hex).slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const textIsLight = hexLum(deck.theme.text) > 0.5;
+root.style.setProperty("--ink-light", textIsLight ? deck.theme.text : "#f6f3ee");
+root.style.setProperty("--ink-dark", textIsLight ? "#15120f" : deck.theme.text);
+const THEME_BACKDROP = textIsLight ? "dark" : "light";
+// The part of the picture behind the text, per layout: [x0, y0, x1, y1] as fractions.
+const TEXT_AREA = { left: [0, 0.2, 0.5, 0.85], right: [0.5, 0.2, 1, 0.85], hero: [0.15, 0.25, 0.85, 0.75], center: [0.15, 0.25, 0.85, 0.75], stats: [0.12, 0.4, 0.88, 0.95] };
+const backdrops = new Map(); // slide index → "light" | "dark"
+
+/** Mean brightness (0-1) of the image where the text sits, or null if it cannot be read (e.g. another site's image). */
+function measure(img, layout) {
+  try {
+    const W = 64, H = 36;
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(img, 0, 0, W, H);
+    const [x0, y0, x1, y1] = TEXT_AREA[layout] ?? TEXT_AREA.center;
+    const d = g.getImageData(Math.floor(x0 * W), Math.floor(y0 * H), Math.max(1, Math.round((x1 - x0) * W)), Math.max(1, Math.round((y1 - y0) * H))).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+    return sum / (d.length / 4);
+  } catch {
+    return null;
+  }
+}
+const backdropFor = (brightness) => (brightness === null ? THEME_BACKDROP : brightness > 0.58 ? "light" : brightness < 0.42 ? "dark" : THEME_BACKDROP);
+// Every image is loaded and measured up front, so a slide's colours are right from its first frame.
+slides.forEach((s, i) => {
+  if (!s.cine?.image) return;
+  const img = new Image();
+  img.addEventListener("load", () => backdrops.set(i, backdropFor(measure(img, s.layout))));
+  img.src = s.cine.image;
+});
+
+// ─── Kinetic typography ─────────────────────────────────────────────────
+// Every slide's text animates in with its own style (slide.cine.text).
+// Text is split into words/characters for the animation only; the element keeps
+// its full text as an aria-label so screen readers read it normally.
+// Animations run on real time even when frames are slow: GSAP's default lag
+// smoothing would otherwise slow them down until text appears stuck.
+gsap.ticker.lagSmoothing(0);
+const REDUCED_MOTION = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+const PACE = { calm: 1.3, normal: 1, energetic: 0.72 };
+const motionOf = (slide) => slide.cine ?? { text: "fadeUp", camera: "static", transition: "glide", pace: "normal" };
+const paceOf = (slide) => PACE[motionOf(slide).pace] ?? 1;
+
+function splitText(node, mode) {
+  const text = node.textContent;
+  node.setAttribute("aria-label", text);
+  node.textContent = "";
+  const words = text.split(/(\s+)/);
+  const parts = [];
+  for (const w of words) {
+    if (!w) continue;
+    if (/^\s+$/.test(w)) {
+      node.append(document.createTextNode(" "));
+      continue;
+    }
+    const word = el("span", "kw");
+    word.setAttribute("aria-hidden", "true");
+    if (mode === "chars") {
+      for (const c of w) {
+        const ch = el("span", "kc", c);
+        word.append(ch);
+        parts.push(ch);
+      }
+    } else parts.push(word), (word.textContent = w);
+    node.append(word);
+  }
+  return parts;
+}
+
+const rand = (a, b) => a + Math.random() * (b - a);
+
+/** Animate a freshly built slide's text. Returns the GSAP timeline. */
+function animateText(box, slide, delay, dir) {
+  const style = REDUCED_MOTION ? "fadeUp" : motionOf(slide).text;
+  const k = paceOf(slide);
+  const title = box.querySelector(".title");
+  const rest = [...box.children].filter((c) => c !== title);
+  const tl = gsap.timeline({ delay });
+  box.dataset.style = style;
+  gsap.set(box.children, { opacity: 1 });
+
+  if (style === "glitch") {
+    const chars = splitText(title, "chars");
+    gsap.set(chars, { opacity: 0 });
+    title.classList.add("glitching");
+    tl.fromTo(chars, { opacity: 0, x: () => rand(-18, 18), y: () => rand(-6, 6), skewX: () => rand(-30, 30) }, { opacity: 1, x: 0, y: 0, skewX: 0, duration: 0.09 * k, ease: "steps(3)", stagger: { each: 0.022 * k, from: "random" } });
+    tl.call(() => title.classList.remove("glitching"), [], "+=0.25");
+    tl.fromTo(rest, { opacity: 0, x: () => rand(-10, 10), filter: "blur(4px)" }, { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.35 * k, ease: "power2.out", stagger: 0.06 * k }, 0.35 * k);
+  } else if (style === "zoom") {
+    tl.fromTo(title, { opacity: 0, scale: 1.9, filter: "blur(18px)", letterSpacing: "0.25em" }, { opacity: 1, scale: 1, filter: "blur(0px)", letterSpacing: "", duration: 1.15 * k, ease: "expo.out", clearProps: "letterSpacing,filter" });
+    tl.fromTo(rest, { opacity: 0, scale: 0.92 }, { opacity: 1, scale: 1, duration: 0.7 * k, ease: "power3.out", stagger: 0.08 * k }, 0.45 * k);
+  } else if (style === "split") {
+    const words = splitText(title, "words");
+    tl.fromTo(words, { opacity: 0, x: (i) => (i % 2 ? 1 : -1) * 110, filter: "blur(6px)" }, { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.9 * k, ease: "power4.out", stagger: 0.05 * k });
+    tl.fromTo(rest, { opacity: 0, x: (i) => (i % 2 ? 1 : -1) * 50 }, { opacity: 1, x: 0, duration: 0.7 * k, ease: "power3.out", stagger: 0.07 * k }, 0.3 * k);
+  } else if (style === "rotate3d") {
+    const words = splitText(title, "words");
+    tl.fromTo(words, { opacity: 0, rotateX: -100, y: 24, transformOrigin: "50% 100% -30px" }, { opacity: 1, rotateX: 0, y: 0, duration: 0.95 * k, ease: "back.out(1.4)", stagger: 0.07 * k });
+    tl.fromTo(rest, { opacity: 0, rotateY: 35 * dir, transformOrigin: dir > 0 ? "0% 50%" : "100% 50%" }, { opacity: 1, rotateY: 0, duration: 0.8 * k, ease: "power3.out", stagger: 0.08 * k }, 0.35 * k);
+  } else if (style === "wipe") {
+    // An accent bar sweeps across; the title is revealed behind it as it retracts.
+    const inner = el("span", "wt", title.textContent);
+    const bar = el("span", "wipe-bar");
+    bar.setAttribute("aria-hidden", "true");
+    title.textContent = "";
+    title.append(inner, bar);
+    gsap.set(inner, { clipPath: "inset(0 100% 0 0)" });
+    tl.fromTo(bar, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.45 * k, ease: "power3.inOut" });
+    tl.set(inner, { clipPath: "inset(0 0% 0 0)" });
+    tl.to(bar, { scaleX: 0, transformOrigin: "100% 50%", duration: 0.45 * k, ease: "power3.inOut" });
+    tl.call(() => bar.remove());
+    tl.set(inner, { clearProps: "clipPath" });
+    tl.fromTo(rest, { opacity: 0, clipPath: "inset(0 100% 0 0)" }, { opacity: 1, clipPath: "inset(0 0% 0 0)", duration: 0.6 * k, ease: "power3.out", stagger: 0.08 * k, clearProps: "clipPath" }, 0.5 * k);
+  } else if (style === "letters") {
+    const chars = splitText(title, "chars");
+    tl.fromTo(chars, { opacity: 0, y: 46, rotate: 10 }, { opacity: 1, y: 0, rotate: 0, duration: 0.7 * k, ease: "power4.out", stagger: Math.min(0.045, 1.1 / chars.length) * k });
+    tl.fromTo(rest, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.6 * k, ease: "power3.out", stagger: 0.07 * k }, "-=0.35");
+  } else {
+    // fadeUp: smooth slide-in in the travel direction
+    tl.fromTo(box.children, { opacity: 0, y: 34, x: 30 * dir }, { opacity: 1, y: 0, x: 0, duration: 0.85 * k, ease: "power3.out", stagger: 0.08 * k });
+  }
+  // Bullets, stats and buttons cascade in after their block.
+  const items = box.querySelectorAll(".bullets li, .stat, .cta-btn");
+  if (items.length && style !== "fadeUp") tl.fromTo(items, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5 * k, ease: "power2.out", stagger: 0.07 * k }, "-=0.3");
+  return tl;
+}
+
+/** The leaving text exits in a way that matches how it came in. */
+function exitText(page, dir) {
+  const style = page.querySelector(".content")?.dataset.style;
+  const out = { opacity: 0, duration: TEXT_OUT, ease: "power2.in", onComplete: () => page.remove() };
+  if (style === "zoom") gsap.to(page, { ...out, scale: 1.15, filter: "blur(10px)" });
+  else if (style === "glitch") gsap.to(page, { ...out, x: -40 * dir, skewX: 20, ease: "steps(4)" });
+  else if (style === "rotate3d") gsap.to(page, { ...out, rotateY: -25 * dir, transformOrigin: dir > 0 ? "0% 50%" : "100% 50%" });
+  else gsap.to(page, { ...out, x: -70 * dir });
+}
+
+// ─── HUD and slides ─────────────────────────────────────────────────────
+const slideEl = document.getElementById("slide");
 const dotsEl = document.getElementById("dots");
 const counterEl = document.getElementById("counter");
 const chipTitleEl = document.getElementById("chip-title");
 const progressEl = document.getElementById("progress");
 const notesEl = document.getElementById("notes");
 const hintEl = document.getElementById("hint");
-
-const el = (tag, cls, text) => {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text != null) n.textContent = text;
-  return n;
-};
 const pad = (n) => String(n).padStart(2, "0");
 
-// ─── Full screen like the 3D engine; a slide's content sits on a 1920×1080 frame (1080×1920 on portrait screens) scaled to fit ──
-function fit() {
-  const w = window.innerWidth, h = window.innerHeight;
-  const portrait = h > w * 1.1;
-  document.body.classList.toggle("portrait", portrait);
-  const sw = portrait ? 1080 : 1920, sh = portrait ? 1920 : 1080;
-  stage.style.setProperty("--k", String(Math.min(w / sw, h / sh)));
-}
-window.addEventListener("resize", fit);
-fit();
-
-// ─── Building a slide ───────────────────────────────────────────────────
-const EFFECTS = { rise: "a-rise", zoom: "a-zoom", slide: "a-slide", drop: "a-drop", blur: "a-blur", flip: "a-flip", letters: "letters" };
-
-function animate(node, name, delay) {
-  node.classList.add("a", name);
-  node.style.animationDelay = `${delay}s`;
-  return node;
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text; // text only: deck content is never parsed as HTML
+  return e;
 }
 
-/** The title, with its highlight words coloured; "letters" splits it into animated letters. */
-function title(slide, effect, delay) {
-  const h = el(slide.cine?.look === "hero" ? "h1" : "h2", "title");
-  const text = slide.title || "";
-  const hl = (slide.cine?.highlight || "").trim();
-  const at = hl ? text.toLowerCase().indexOf(hl.toLowerCase()) : -1;
-  const parts = at >= 0 ? [[text.slice(0, at), false], [text.slice(at, at + hl.length), true], [text.slice(at + hl.length), false]] : [[text, false]];
-  let n = 0;
-  for (const [part, isHl] of parts) {
-    if (!part) continue;
-    const span = isHl ? el("span", "hl") : document.createDocumentFragment();
-    if (effect === "letters") {
-      for (const word of part.split(/(\s+)/)) {
-        if (!word) continue;
-        if (/^\s+$/.test(word)) { span.append(" "); continue; }
-        const w = el("span", "ch");
-        w.style.whiteSpace = "nowrap";
-        for (const c of word) {
-          const ch = animate(el("span", "ch", c), "a-letter", delay + n * 0.045);
-          n++;
-          w.append(ch);
-        }
-        span.append(w);
-      }
-    } else span.append(part);
-    h.append(span);
-  }
-  if (effect !== "letters") animate(h, EFFECTS[effect] || "a-zoom", delay);
-  return h;
-}
-
-function particles(seed) {
-  const box = el("div", "particles");
-  for (let i = 0; i < 34; i++) {
-    const p = el("span", "particle");
-    const size = 3 + ((i * 7 + seed) % 9);
-    Object.assign(p.style, {
-      width: `${size}px`,
-      height: `${size}px`,
-      left: `${(i * 37 + seed * 11) % 100}%`,
-      bottom: `${-((i * 13) % 20)}%`,
-      animationDuration: `${i % 2 ? 13 : 8}s`,
-      animationDelay: `${-((i * 3) % 12)}s`,
-    });
-    box.append(p);
-  }
-  return box;
-}
-
-function visual(kind) {
-  if (!kind || kind === "none") return null;
-  const v = el("div", `visual v-${kind}`);
-  v.setAttribute("aria-hidden", "true");
-  if (kind === "planet") v.append(el("div", "orb"), el("div", "ring"));
-  if (kind === "spiral") for (let i = 0; i < 4; i++) v.append(el("div", "ring"));
-  if (kind === "orbs") v.append(el("div", "orb big"), el("div", "orb small"), el("div", "orb small"), el("div", "orb small"));
-  if (kind === "pulse") v.append(el("div", "wave"), el("div", "wave"), el("div", "wave"), el("div", "orb"));
-  return v;
-}
-
-function buildSlide(slide, i) {
-  const c = slide.cine || { look: "statement", tone: deck.theme.accent, visual: "none", image: "", items: [] };
-  const look = c.look || "statement";
-  const frame = FULL.includes(look) || !FRAMES.includes(c.frame) ? "full" : c.frame;
-  const node = el("section", `slide look-${look} frame-${frame}`);
-  node.style.setProperty("--tone", c.tone || deck.theme.accent);
-  node.setAttribute("aria-label", `Slide ${i + 1} of ${slides.length}`);
-
-  const bg = el("div", "bg");
-  const src = imageUrl(c.image);
-  if (src) {
-    bg.classList.add("has-img");
-    const pic = el("div", "pic");
-    // A different camera move on each slide: zoom in, zoom out, pan left, pan right.
-    const img = el("img", `kb-${i % 4}`);
-    img.alt = "";
-    img.decoding = "async";
-    img.src = src;
-    img.addEventListener("error", () => bg.classList.add("painting"));
-    pic.append(img);
-    bg.append(pic);
-  }
-  node.append(bg, particles(i * 5 + 3), el("div", "vignette"), el("div", "grain"));
-  const stageFrame = el("div", "frame");
-  node.append(stageFrame);
-  // The glowing visual only stands in for an image that could not be painted.
-  if (!src) {
-    const v = visual(c.visual);
-    if (v) {
-      node.classList.add("has-visual");
-      stageFrame.append(animate(v, "a-fade", 0.9));
+let textTween = null;
+const TEXT_OUT = 0.32;
+// Each slide lives in its own page element. On a change, every page on screen
+// leaves (in the travel direction) before the new one comes in, so two slides
+// are never visible together, even when navigating quickly.
+function renderSlide(slide, delay, dir = 1) {
+  textTween?.kill();
+  for (const old of [...slideEl.children]) {
+    gsap.killTweensOf([old, ...old.querySelectorAll("*")]);
+    if (old.dataset.leaving) {
+      old.remove(); // already on its way out: drop it now
+      continue;
     }
+    old.dataset.leaving = "1";
+    old.setAttribute("aria-hidden", "true");
+    exitText(old, dir);
   }
-
-  const effect = slide.textEffect || "zoom";
-  const content = el("div", "content");
-  let t = 0.5;
-  if (slide.kicker) content.append(animate(el("p", "kicker", slide.kicker), "a-rise", t));
-  t += 0.3;
-  content.append(title(slide, effect, t));
-  t += effect === "letters" ? 0.5 : 0.45;
-  if (slide.subtitle) {
-    content.append(animate(el("p", "subtitle", slide.subtitle), "a-rise", t));
-    t += 0.25;
-  }
-  if (look === "statement") content.append(animate(el("div", "rule"), "a-line", t));
-  if (slide.stats?.length) {
-    const box = el("div", "stats");
-    slide.stats.forEach((s, k) => {
-      const st = animate(el("div", "stat"), "a-rise", t + k * 0.18);
-      st.append(el("strong", "", s.value), el("span", "", s.label));
-      box.append(st);
+  const page = el("div", `slide layout-${slide.layout}`);
+  const at = slides.indexOf(slide);
+  page.dataset.backdrop = backdrops.get(at) ?? THEME_BACKDROP;
+  if (slide.cine?.image) {
+    const art = el("img", "slide-art");
+    // Not measured yet (still loading): measured as soon as it arrives.
+    if (!backdrops.has(at)) {
+      art.addEventListener("load", () => {
+        backdrops.set(at, backdropFor(measure(art, slide.layout)));
+        page.dataset.backdrop = backdrops.get(at);
+      });
+    }
+    art.src = slide.cine.image;
+    art.alt = "";
+    art.setAttribute("aria-hidden", "true");
+    page.append(art, el("div", "slide-shade"));
+    const pace = paceOf(slide);
+    const transition = REDUCED_MOTION ? "glide" : motionOf(slide).transition;
+    const cameraMove = REDUCED_MOTION ? "static" : motionOf(slide).camera;
+    // The image's slow move while the slide is on screen (slide.cine.camera).
+    const imageMoves = {
+      push: [{ scale: 1.025 }, { scale: 1.085 }],
+      pull: [{ scale: 1.09 }, { scale: 1.025 }],
+      orbit: [{ scale: 1.06, x: -14 }, { scale: 1.06, x: 14 }],
+      crane: [{ scale: 1.055, y: 10 }, { scale: 1.055, y: -10 }],
+      drift: [{ scale: 1.055, x: -16 }, { scale: 1.055, x: 16 }],
+      static: [{ scale: 1.025 }, { scale: 1.025 }],
+    };
+    const from = transition === "whip" ? { opacity: 0, x: -dir * 90, scale: 1.12, filter: "blur(8px)" }
+      : transition === "rise" ? { opacity: 0, y: 70, scale: 1.06 }
+        : transition === "spiral" ? { opacity: 0, scale: 1.2, rotate: dir * 2, filter: "blur(10px)" }
+          : transition === "zoom" ? { opacity: 0, scale: 1.22, filter: "blur(12px)" }
+            : { opacity: 0, x: dir * 42, scale: 1.1 };
+    gsap.fromTo(art, from, {
+      opacity: 1, x: 0, y: 0, scale: 1.02, rotate: 0, filter: "blur(0px)",
+      duration: (transition === "whip" ? 0.72 : 1.15) * pace,
+      ease: transition === "whip" ? "power4.out" : "power3.out",
+      delay: Math.max(0, delay * 0.45),
+      onComplete: () => {
+        if (!REDUCED_MOTION && page.isConnected) {
+          const [from, to] = imageMoves[cameraMove] ?? imageMoves.static;
+          gsap.fromTo(art, from, { ...to, duration: 10 * pace, ease: "sine.inOut", yoyo: true, repeat: -1 });
+        }
+      },
     });
-    content.append(box);
+    gsap.fromTo(page.querySelector(".slide-shade"), { opacity: 0.45 }, { opacity: 1, duration: 0.8 * pace, delay: Math.max(0, delay * 0.45) });
   }
-  if (look === "cards" && c.items?.length) {
-    const box = el("div", "cards");
-    box.style.setProperty("--n", String(c.items.length));
-    c.items.forEach((it, k) => {
-      const card = animate(el("div", "card"), "a-flip", t + k * 0.2);
-      card.append(el("div", "num", pad(k + 1)), el("h3", "", it.heading), el("p", "", it.text));
-      box.append(card);
-    });
-    content.append(box);
-  }
-  if (look === "timeline" && c.items?.length) {
-    const box = el("div", "timeline");
-    box.style.setProperty("--n", String(c.items.length));
-    box.append(animate(el("div", "line"), "a-line", t));
-    c.items.forEach((it, k) => {
-      const step = animate(el("div", "step"), "a-rise", t + 0.3 + k * 0.25);
-      step.append(el("div", "node"), el("h3", "", it.heading), el("p", "", it.text));
-      box.append(step);
-    });
-    content.append(box);
-  }
-  if (slide.bullets?.length) {
+  const box = el("div", "content");
+  if (slide.kicker) box.append(el("p", "kicker", slide.kicker));
+  box.append(el(slide.layout === "hero" ? "h1" : "h2", "title", slide.title));
+  if (slide.subtitle) box.append(el("p", "subtitle", slide.subtitle));
+  if (slide.bullets.length) {
     const ul = el("ul", "bullets");
-    slide.bullets.forEach((b, k) => ul.append(animate(el("li", "", b), "a-slide", t + k * 0.15)));
-    content.append(ul);
+    for (const b of slide.bullets) ul.append(el("li", "", b));
+    box.append(ul);
+  }
+  if (slide.layout === "stats" && slide.stats.length) {
+    const grid = el("div", "stats");
+    grid.style.setProperty("--n", String(Math.min(4, slide.stats.length)));
+    for (const s of slide.stats) {
+      const card = el("div", "stat");
+      card.append(el("strong", "", s.value), el("span", "", s.label));
+      grid.append(card);
+    }
+    box.append(grid);
   }
   if (slide.buttons?.length) {
-    const box = animate(el("div", "cta"), "a-rise", t + 0.2);
-    slide.buttons.forEach((b, k) => {
-      const a = el("a", k === 0 ? "primary" : "", b.label);
+    const row = el("div", "cta");
+    slide.buttons.forEach((b, i) => {
+      const a = el("a", i === 0 ? "cta-btn primary" : "cta-btn", b.label);
       a.href = b.url;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      box.append(a);
+      a.addEventListener("click", (e) => e.stopPropagation());
+      row.append(a);
     });
-    content.append(box);
+    box.append(row);
   }
-  stageFrame.append(content);
-  return node;
+  page.append(box);
+  slideEl.append(page);
+  notesEl.textContent = slide.notes || "No speaker notes for this slide.";
+  // The new text starts only after the old text has left, in this slide's own style.
+  gsap.set(box.children, { opacity: 0 });
+  textTween = animateText(box, slide, Math.max(delay, TEXT_OUT + 0.05), dir);
 }
 
-// Images of the next slides are fetched ahead, so a cut never shows an empty frame.
-const preloaded = new Set();
-function preload(i) {
-  const src = imageUrl(slides[i]?.cine?.image);
-  if (!src || preloaded.has(src)) return;
-  preloaded.add(src);
-  const img = new Image();
-  img.src = src;
-}
+slides.forEach((_, i) => {
+  const d = el("button", "dot");
+  d.setAttribute("aria-label", `Go to slide ${i + 1}`);
+  d.addEventListener("click", (e) => {
+    e.stopPropagation();
+    go(i);
+  });
+  dotsEl.append(d);
+});
 
-// ─── Navigation ─────────────────────────────────────────────────────────
+// ─── Travel ─────────────────────────────────────────────────────────────
 let index = -1;
-let current = null;
 let lastNav = 0;
 
 function go(next, instant = false) {
   next = Math.max(0, Math.min(slides.length - 1, next));
   if (next === index) return;
+  // Allow quick consecutive presses: a new target simply re-aims the travel.
   const now = performance.now();
-  if (now - lastNav < 350 && !instant) return;
+  if (now - lastNav < 250 && !instant) return;
   lastNav = now;
-  const back = next < index;
+  const distance = index < 0 ? 0 : Math.abs(next - index);
+  const dir = index < 0 || next > index ? 1 : -1;
   index = next;
   const slide = slides[next];
-  // Both slides play the entering slide's cut; going back reverses push and wipe.
-  const cut = cutOf(slide);
-  stage.classList.toggle("back", back);
-  for (const old of stage.querySelectorAll(".slide.exit")) old.remove();
-  if (current) {
-    const old = current;
-    old.className = old.className.replace(/\b(enter|cut-\w+)\b/g, "").trim();
-    old.classList.add("exit", `cut-${cut}`);
-    setTimeout(() => old.remove(), 1500);
+  if (instant || distance === 0) renderSlide(slide, 0.1, dir);
+  else {
+    // The transition's length paces the hand-over (slide.cine.transition shapes the image's entry).
+    const kind = REDUCED_MOTION ? "glide" : motionOf(slide).transition;
+    const k = paceOf(slide);
+    const duration = (kind === "whip" ? 0.95 : Math.min(2.6, 1.6 + 0.25 * (distance - 1))) * k;
+    renderSlide(slide, duration * 0.5, dir);
   }
-  const node = buildSlide(slide, next);
-  node.classList.add(...(instant ? [] : ["enter", `cut-${cut}`]));
-  stage.append(node);
-  current = node;
-  if (!instant && cut === "flash") {
-    stage.classList.remove("cut");
-    flash.classList.remove("on");
-    void stage.offsetWidth; // restart the animations
-    if (BARS) stage.classList.add("cut");
-    flash.classList.add("on");
-  }
-  preload(next + 1);
-  preload(next + 2);
-
-  [...dotsEl.children].forEach((d, k) => d.classList.toggle("active", k <= next));
-  counterEl.textContent = `${pad(next + 1)} / ${pad(slides.length)}`;
+  [...dotsEl.children].forEach((d, i) => d.classList.toggle("active", i <= index));
+  counterEl.textContent = `${pad(index + 1)} / ${pad(slides.length)}`;
   chipTitleEl.textContent = slide.title;
-  progressEl.style.transform = `scaleX(${(next + 1) / slides.length})`;
-  notesEl.textContent = slide.notes || "No speaker notes for this slide.";
-  history.replaceState(null, "", `#${next + 1}`);
+  progressEl.style.transform = `scaleX(${(index + 1) / slides.length})`;
+  history.replaceState(null, "", `#${index + 1}`);
+  // Tell the hosting page which slide is shown (the editor reopens a rebuilt preview on it).
   try {
-    if (window.parent !== window) window.parent.postMessage({ source: "deck3d-preview", type: "slide", index: next + 1 }, "*");
+    if (window.parent !== window) window.parent.postMessage({ source: "deck3d-preview", type: "slide", index: index + 1 }, "*");
   } catch {
     /* no parent */
   }
@@ -319,9 +367,9 @@ window.addEventListener("keydown", (e) => {
   else if (e.key === "End") go(slides.length - 1);
   else if (e.key.toLowerCase() === "f") toggleFullscreen();
   else if (e.key.toLowerCase() === "n") document.body.classList.toggle("show-notes");
-  else if (e.key.toLowerCase() === "p") setPlaying(!playing);
+  else if (e.key.toLowerCase() === "p") { if (!playing && index >= slides.length - 1) go(0); setPlaying(!playing); }
 });
-stage.addEventListener("click", (e) => {
+document.getElementById("stage").addEventListener("click", (e) => {
   if (e.target.closest("button, a")) return;
   (e.clientX < window.innerWidth * 0.25 ? prev : next)();
 });
@@ -333,7 +381,9 @@ window.addEventListener("touchend", (e) => {
   if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
   touchX = null;
 });
-// One slide per wheel / trackpad gesture.
+
+// Mouse wheel / trackpad: one slide per gesture (accumulate, then lock until the
+// gesture's events stop, so trackpad inertia does not skip several slides).
 let wheelAcc = 0;
 let wheelLockUntil = 0;
 window.addEventListener(
@@ -349,13 +399,14 @@ window.addEventListener(
     if (Math.abs(wheelAcc) >= 40) {
       (wheelAcc > 0 ? next : prev)();
       wheelAcc = 0;
-      wheelLockUntil = now + 800;
+      wheelLockUntil = now + 700;
     }
   },
   { passive: false },
 );
 
-// Commands from the hosting page (the PHP viewer narrates and moves the deck on).
+// Navigation commands from the page hosting this deck (it forwards keys when the
+// frame does not have focus). Only the direct parent is accepted, and only these actions.
 window.addEventListener("message", (e) => {
   if (e.source !== window.parent || !e.data || e.data.type !== "deck3d-deck") return;
   const action = e.data.action;
@@ -363,28 +414,21 @@ window.addEventListener("message", (e) => {
   else if (action === "prev") prev();
   else if (action === "first") go(0);
   else if (action === "last") go(slides.length - 1);
+  // The PHP viewer narrates the deck and moves it on when a slide's voice ends;
+  // the deck's own timer must not move it as well.
   else if (action === "autoplay") setPlaying(Boolean(e.data.on));
 });
+
 window.addEventListener("hashchange", () => {
   const n = parseInt(location.hash.slice(1), 10);
-  // A jump asked for by the hosting page (e.g. the publish page's slide strip) is never throttled.
-  if (Number.isFinite(n)) { lastNav = 0; go(n - 1); }
+  if (Number.isFinite(n)) go(n - 1);
 });
 
-// One dot per slide, as in the 3D engine.
-slides.forEach((_, i) => {
-  const d = el("button", "dot");
-  d.setAttribute("aria-label", `Go to slide ${i + 1}`);
-  d.addEventListener("click", (e) => {
-    e.stopPropagation();
-    go(i);
-  });
-  dotsEl.append(d);
-});
 // The "← → or scroll to travel" hint fades after a few seconds.
 setTimeout(() => hintEl?.classList.add("hidden"), 5000);
 
-// ─── Auto-play (no narration) ───────────────────────────────────────────
+// ─── Auto-play ──────────────────────────────────────────────────────────
+// Moves on by itself every few seconds (no narration) and stops on the last slide.
 const playBtn = document.getElementById("play");
 const autoplaySeconds = Math.min(60, Math.max(3, Number(settings.autoplay?.seconds) || 7));
 let playing = false;
@@ -411,6 +455,7 @@ function setPlaying(on) {
 }
 playBtn.addEventListener("click", (e) => {
   e.stopPropagation();
+  // Playing from the last slide starts again from the first.
   if (!playing && index >= slides.length - 1) go(0);
   setPlaying(!playing);
 });
@@ -431,6 +476,7 @@ if (footer?.enabled && (footer.name || brandLogo)) {
     const img = el("img");
     img.src = brandLogo;
     img.alt = footer.name || "";
+    img.addEventListener("error", () => img.remove());
     wrap.append(img);
   }
   if (footer.name) wrap.append(el("span", "", footer.name));

@@ -39,7 +39,7 @@ describe("cinematic images across job steps", () => {
       input: { runner: "deck", prompt: "Climate change", mode: "auto", conversationId: conversation.id, startedAt: new Date().toISOString() },
     });
     const step = async () => {
-      const run = await startDeferredJob(await db.generationJob.findUniqueOrThrow({ where: { id: jobId } }), { budgetMs: 20_000 });
+      const run = await startDeferredJob(await db.generationJob.findUniqueOrThrow({ where: { id: jobId } }), { budgetMs: 17_000 });
       await run!.done;
       return db.generationJob.findUniqueOrThrow({ where: { id: jobId } });
     };
@@ -49,7 +49,7 @@ describe("cinematic images across job steps", () => {
     expect(painted).toHaveLength(0);
 
     // Step 2: every image starts together, but the step ends before they finish.
-    // (A 20 s step has no time for medium quality, so they are painted at low quality from the start.)
+    // (A 17 s step has no time for medium quality, so they are painted at low quality from the start.)
     round = 1;
     expect((await step()).status).not.toBe("succeeded");
     expect(painted).toEqual(Array(6).fill({ quality: "low", round: 1 })); // all six slides at once

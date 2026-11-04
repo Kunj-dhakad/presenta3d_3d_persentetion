@@ -33,17 +33,17 @@ function mockCine(input: string, request: string): CineSpec {
     return deck;
   }
   const topic = request.replace(/\s+/g, " ").split(/[.!\n]/)[0].slice(0, 40) || "Present 3D";
-  const base = { subtitle: "", bullets: [], stats: [], items: [], visual: "none" as const, highlight: "", frame: "full" as const, notes: "A short line the presenter says." };
+  const base = { subtitle: "", bullets: [], stats: [], notes: "A short line the presenter says." };
   return {
     title: topic,
-    theme: { style: "editorial", background: "#0c0a08", text: "#f6f1ea", accent: "#d9a441", font: "display" },
+    theme: { background: "#0c0a08", text: "#f6f1ea", accent: "#d9a441", font: "display", environment: "aurora" },
     slides: [
-      { ...base, look: "hero", kicker: "THIS SEASON", title: topic, subtitle: "A story told like a film.", tone: "#d9a441", textEffect: "zoom", cut: "flash", imagePrompt: `A dramatic wide shot about ${topic}` },
-      { ...base, look: "stats", kicker: "IN A WORLD", title: "Where numbers speak", highlight: "numbers", stats: [{ value: "420+", label: "things counted" }, { value: "1.2x", label: "faster" }], visual: "planet", frame: "right", tone: "#d9a441", textEffect: "rise", cut: "push", imagePrompt: "A close-up of a hand counting coins on a desk" },
-      { ...base, look: "cards", kicker: "THE CAUSE", title: "Three reasons", items: [{ heading: "One", text: "First reason." }, { heading: "Two", text: "Second reason." }, { heading: "Three", text: "Third reason." }], tone: "#d9a441", textEffect: "slide", cut: "wipe", imagePrompt: "Three paths splitting in a misty forest, aerial view" },
-      { ...base, look: "statement", kicker: "BUT", title: "There is a way", highlight: "a way", tone: "#4fd8e0", textEffect: "letters", cut: "fade", imagePrompt: "A single lit doorway in a dark corridor" },
-      { ...base, look: "timeline", kicker: "THE COUNTDOWN", title: "The mission", highlight: "mission", items: [{ heading: "NOW", text: "Start" }, { heading: "2030", text: "Halfway" }, { heading: "2050", text: "Done" }], tone: "#5fd36a", textEffect: "blur", cut: "zoom", imagePrompt: "A long road to the horizon at dawn" },
-      { ...base, look: "closing", kicker: "COMING SOON", title: "The future is not written", subtitle: "We write it.", tone: "#5fd36a", textEffect: "zoom", cut: "iris", imagePrompt: `A hopeful sunrise over the world, about ${topic}` },
+      { ...base, layout: "hero", kicker: "THIS SEASON", title: topic, subtitle: "A story told like a film.", motion: { text: "zoom", camera: "push", transition: "glide", pace: "normal" } },
+      { ...base, layout: "stats", kicker: "IN A WORLD", title: "Where numbers speak", stats: [{ value: "420+", label: "things counted" }, { value: "1.2x", label: "faster" }], motion: { text: "wipe", camera: "crane", transition: "rise", pace: "normal" } },
+      { ...base, layout: "left", kicker: "THE CAUSE", title: "Three reasons", bullets: ["First reason", "Second reason", "Third reason"], motion: { text: "split", camera: "orbit", transition: "whip", pace: "energetic" } },
+      { ...base, layout: "center", kicker: "BUT", title: "There is a way", motion: { text: "letters", camera: "drift", transition: "zoom", pace: "normal" } },
+      { ...base, layout: "right", kicker: "THE COUNTDOWN", title: "The mission", bullets: ["Start now", "Halfway by 2030", "Done by 2050"], motion: { text: "rotate3d", camera: "pull", transition: "spiral", pace: "normal" } },
+      { ...base, layout: "hero", kicker: "COMING SOON", title: "The future is not written", subtitle: "We write it.", motion: { text: "fadeUp", camera: "static", transition: "glide", pace: "calm" } },
     ],
   };
 }
