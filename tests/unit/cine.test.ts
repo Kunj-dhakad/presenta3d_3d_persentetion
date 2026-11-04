@@ -100,6 +100,19 @@ describe("cinematic decks", () => {
     expect(deckColors(changed)).toMatchObject({ primary: "#111111", secondary: "#222222" });
   });
 
+  it("has exactly the 3D engine's full-screen controls (only the slides differ)", () => {
+    const { deck } = made(spec([slide({})]));
+    const cine = deckToProjectFiles(deck)[0].content;
+    const threeD = deckToProjectFiles(validateDeck({ ...deck, style: undefined }).ok ? { ...deck, style: undefined } : deck)[0].content;
+    // The controls' markup, from the progress bar to the dots bar.
+    const chrome = (html: string) => html.slice(html.indexOf('<div class="progress"'), html.indexOf("</nav>") + 6);
+    expect(chrome(cine)).toBe(chrome(threeD));
+    // Every control rule of the 3D engine is in the cinematic one, unchanged.
+    const rules = threeD.split("\n").filter((l) => /^(\.pill|#chip|#counter|#hint|\.hud|#dots|\.dot|\.nav-btn|\.progress|#progress|#notes|body\.show-notes|#play\.playing|#brand)\b/.test(l));
+    expect(rules.length).toBeGreaterThan(15);
+    for (const rule of rules) expect(cine).toContain(rule);
+  });
+
   it("is rendered by the cinematic engine, built in-process like any generated deck", () => {
     const { deck } = made(spec([slide({ look: "hero", title: `<img src=x onerror=alert(1)>`, imagePrompt: "x" })]));
     const files = deckToProjectFiles(deck);

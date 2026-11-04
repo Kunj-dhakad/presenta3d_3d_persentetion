@@ -6,9 +6,12 @@ import type { DeckSpec } from "@/lib/schemas/deck";
 const RUNTIME_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "src", "server", "deck", "cine-runtime.js.txt");
 
 /**
- * The cinematic engine's styles. Slides are laid out on a fixed 1920×1080
- * stage (1080×1920 on portrait screens) that the runtime scales to fit, so
- * every size below is in stage pixels. Motion: enterCine / exitCine between
+ * The cinematic engine's styles. Like the 3D engine, the presentation fills
+ * the screen and has the same controls (chip, hint, dots bar, progress, notes,
+ * branding: copied verbatim from codegen.ts). Each slide's background (image,
+ * particles, grain) fills the screen; its text and visual are laid out on a
+ * 1920×1080 frame (1080×1920 on portrait screens) scaled to fit (--k), so every
+ * size of the slide's content is in frame pixels. Motion: enterCine / exitCine between
  * slides, Ken Burns on images, entrance effects on text (a-*), floating
  * particles, film grain and letterbox bars.
  */
@@ -18,10 +21,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 body[data-font="sans"] { --title: "Oswald", "Bebas Neue", Impact, sans-serif; }
 body[data-font="serif"] { --title: "Playfair Display", Georgia, serif; }
 body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, monospace; }
-#viewport { position: fixed; inset: 0 0 64px; overflow: hidden; cursor: default; }
-#stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 50% 50%; overflow: hidden; background: var(--bg); }
-body.portrait #stage { width: 1080px; height: 1920px; }
+#stage { position: fixed; inset: 0; overflow: hidden; background: var(--bg); cursor: default; }
 .slide { position: absolute; inset: 0; overflow: hidden; }
+.frame { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform: translate(-50%, -50%) scale(var(--k, 1)); }
+body.portrait .frame { width: 1080px; height: 1920px; }
+.pill, .hud, #notes, #brand { font-family: "Inter", system-ui, sans-serif; }
 .slide.enter { animation: enterCine 1.1s cubic-bezier(.2,.8,.2,1) both; }
 .slide.exit { animation: exitCine .7s ease-in both; pointer-events: none; }
 @keyframes enterCine { 0% { opacity: 0; filter: blur(30px) brightness(3); transform: scale(1.3); } to { opacity: 1; filter: none; transform: none; } }
@@ -116,7 +120,7 @@ body.portrait .look-statement.has-visual .content { right: 90px; top: 150px; bot
 .bars::before, .bars::after { content: ""; position: absolute; left: 0; right: 0; height: 0; z-index: 20; background: #000; pointer-events: none; }
 .bars::before { top: 0; } .bars::after { bottom: 0; }
 .bars.cut::before, .bars.cut::after { animation: bar 1.1s cubic-bezier(.7,0,.2,1); }
-@keyframes bar { 0% { height: 50%; } 55% { height: 90px; } to { height: 0; } }
+@keyframes bar { 0% { height: 50%; } 55% { height: 8vh; } to { height: 0; } }
 #flash { position: absolute; inset: 0; z-index: 21; background: #fff; opacity: 0; pointer-events: none; }
 #flash.on { animation: flash .6s ease-out; }
 @keyframes flash { 0% { opacity: .55; } to { opacity: 0; } }
@@ -134,24 +138,36 @@ body.portrait .timeline { grid-template-columns: 1fr; gap: 50px; } body.portrait
 body.portrait .visual { top: auto; bottom: 120px; right: 50%; margin: 0 -280px 0 0; transform: scale(.8); }
 body.portrait .bg.has-img::before { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 80%, transparent), transparent 40%, transparent 55%, color-mix(in srgb, var(--bg) 90%, transparent)); }
 
-/* bar under the stage: counter and controls */
-#bar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 24px; font-family: var(--body); }
-#counter { font-size: 13px; letter-spacing: .3em; text-transform: uppercase; color: color-mix(in srgb, var(--text) 70%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
-#counter b { color: var(--accent); font-weight: 500; }
-.ctl { flex-shrink: 0; height: 36px; padding: 0 18px; border-radius: 999px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.04); color: var(--text); font: 500 13px var(--body); letter-spacing: .22em; text-transform: uppercase; cursor: pointer; transition: background .2s, border-color .2s; }
-.ctl:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.3); }
-.ctl.on { border-color: var(--accent); color: var(--accent); }
-#progress { position: fixed; left: 0; right: 0; bottom: 64px; height: 2px; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform .9s cubic-bezier(.2,.8,.2,1); }
-#notes { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); padding: 14px 18px; border-radius: 14px; background: rgba(8,8,12,.88); border: 1px solid rgba(255,255,255,.12); font-size: 14px; line-height: 1.5; display: none; z-index: 30; }
+/* controls: the same as the 3D engine (codegen.ts) */
+.pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); font-size: 13px; }
+#chip { position: fixed; top: 18px; left: 18px; max-width: calc(100% - 36px); }
+#counter { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+#chip .sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.2); }
+#chip-title { opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 38vw; }
+#hint { position: fixed; top: 18px; right: 18px; color: rgba(255, 255, 255, 0.55); transition: opacity 0.8s; }
+#hint.hidden { opacity: 0; pointer-events: none; }
+.hud { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 6px 8px; gap: 6px; }
+#dots { display: flex; gap: 6px; padding: 0 6px; }
+.dot { width: 26px; height: 3px; border-radius: 3px; border: 0; padding: 0; background: rgba(255, 255, 255, 0.18); cursor: pointer; transition: background 0.4s; }
+.dot:hover { background: rgba(255, 255, 255, 0.4); }
+.dot.active { background: var(--accent); }
+.nav-btn { width: 32px; height: 32px; border-radius: 999px; border: 0; background: transparent; color: var(--text); cursor: pointer; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; transition: background 0.2s; }
+.nav-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.progress { position: fixed; top: 0; left: 0; right: 0; height: 2px; background: rgba(255, 255, 255, 0.05); }
+#progress { height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform 0.9s cubic-bezier(.2,.8,.2,1); }
+#notes { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); padding: 14px 18px; border-radius: 14px; background: rgba(8, 8, 12, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); font-size: 14px; line-height: 1.5; display: none; }
 body.show-notes #notes { display: block; }
-#brand { position: fixed; left: 18px; top: 16px; z-index: 30; max-width: min(260px, 40vw); }
-#brand .brand-link { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 13px; text-decoration: none; max-width: 100%; }
-#brand img { height: 26px; max-width: 110px; object-fit: contain; border-radius: 6px; }
-#brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (max-width: 640px) {
-  #bar { padding: 0 10px; gap: 6px; } .ctl { padding: 0 11px; letter-spacing: .12em; font-size: 11px; } #fs { display: none; }
-  #counter { letter-spacing: .18em; font-size: 11px; }
+#play.playing { color: var(--accent); }
+#brand { position: fixed; left: 18px; bottom: 20px; max-width: min(260px, 30vw); }
+#brand .brand-link { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: var(--text); font-size: 13px; text-decoration: none; max-width: 100%; }
+#brand img { height: 28px; max-width: 110px; object-fit: contain; border-radius: 6px; }
+#brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.9; }
+@media (max-width: 760px) {
+  #brand { left: auto; right: 12px; bottom: auto; top: 14px; max-width: 50vw; }
+  #brand img { height: 22px; }
+  #hint, #chip-title, #chip .sep { display: none; }
+  .dot { width: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .slide.enter, .slide.exit, .a, .bg img, .particle, .grain, .orb, .ring, .wave, .bars.cut::before, .bars.cut::after { animation-duration: .01s !important; animation-iteration-count: 1 !important; }
@@ -180,23 +196,23 @@ export function cineToProjectFiles(deck: DeckSpec): { path: string; content: str
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(deck.title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Oswald:wght@500;600&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Oswald:wght@500;600&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <style>
 ${STYLE}  </style>
 </head>
 <body>
-  <div id="viewport">
-    <div id="stage" class="bars" aria-live="polite"><div id="flash"></div></div>
-  </div>
-  <div id="progress" aria-hidden="true"></div>
+  <div id="stage" class="bars" aria-live="polite"><div id="flash"></div></div>
+  <div class="progress" aria-hidden="true"><div id="progress"></div></div>
+  <div id="chip" class="pill"><span id="counter"></span><span class="sep"></span><span id="chip-title"></span></div>
+  <div id="hint" class="pill">&#8592; &#8594; or scroll to travel</div>
   <div id="notes" role="note"></div>
   <footer id="brand" hidden></footer>
-  <nav id="bar" aria-label="Slides">
-    <div id="counter"></div>
-    <button id="prev" class="ctl" type="button" aria-label="Previous slide">Prev</button>
-    <button id="next" class="ctl" type="button" aria-label="Next slide">Next</button>
-    <button id="play" class="ctl" type="button" title="Auto-play (P)">Autoplay</button>
-    <button id="fs" class="ctl" type="button" title="Fullscreen (F)">Present</button>
+  <nav class="hud pill" aria-label="Slides">
+    <button id="prev" class="nav-btn" aria-label="Previous slide">&#8249;</button>
+    <div id="dots"></div>
+    <button id="next" class="nav-btn" aria-label="Next slide">&#8250;</button>
+    <button id="play" class="nav-btn" aria-label="Auto-play (P)" title="Auto-play (P)">&#9654;</button>
+    <button id="fs" class="nav-btn" aria-label="Toggle fullscreen (F)" title="Fullscreen (F)">&#x26F6;</button>
   </nav>
   <script type="module" src="./main.js"></script>
 </body>

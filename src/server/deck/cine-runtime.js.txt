@@ -37,12 +37,14 @@ root.style.setProperty("--text", deck.theme.text);
 root.style.setProperty("--accent", deck.theme.accent);
 document.body.dataset.font = deck.theme.font || "display";
 
-const viewport = document.getElementById("viewport");
 const stage = document.getElementById("stage");
 const flash = document.getElementById("flash");
+const dotsEl = document.getElementById("dots");
 const counterEl = document.getElementById("counter");
+const chipTitleEl = document.getElementById("chip-title");
 const progressEl = document.getElementById("progress");
 const notesEl = document.getElementById("notes");
+const hintEl = document.getElementById("hint");
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -52,14 +54,13 @@ const el = (tag, cls, text) => {
 };
 const pad = (n) => String(n).padStart(2, "0");
 
-// ─── Stage scaling: 1920×1080, or 1080×1920 on portrait screens ─────────
+// ─── Full screen like the 3D engine; a slide's content sits on a 1920×1080 frame (1080×1920 on portrait screens) scaled to fit ──
 function fit() {
-  const w = viewport.clientWidth, h = viewport.clientHeight;
+  const w = window.innerWidth, h = window.innerHeight;
   const portrait = h > w * 1.1;
   document.body.classList.toggle("portrait", portrait);
   const sw = portrait ? 1080 : 1920, sh = portrait ? 1920 : 1080;
-  const k = Math.min(w / sw, h / sh);
-  stage.style.transform = `translate(-50%, -50%) scale(${k})`;
+  stage.style.setProperty("--k", String(Math.min(w / sw, h / sh)));
 }
 window.addEventListener("resize", fit);
 fit();
@@ -152,11 +153,13 @@ function buildSlide(slide, i) {
     bg.append(img);
   }
   node.append(bg, particles(i * 5 + 3), el("div", "vignette"), el("div", "grain"));
+  const frame = el("div", "frame");
+  node.append(frame);
   if (!src) {
     const v = visual(c.visual);
     if (v) {
       node.classList.add("has-visual");
-      node.append(animate(v, "a-fade", 0.9));
+      frame.append(animate(v, "a-fade", 0.9));
     }
   }
 
@@ -218,7 +221,7 @@ function buildSlide(slide, i) {
     });
     content.append(box);
   }
-  node.append(content);
+  frame.append(content);
   return node;
 }
 
@@ -266,8 +269,9 @@ function go(next, instant = false) {
   preload(next + 1);
   preload(next + 2);
 
-  counterEl.innerHTML = "";
-  counterEl.append(el("b", "", `${pad(next + 1)} / ${pad(slides.length)}`), ` · ${slide.title}`);
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle("active", k <= next));
+  counterEl.textContent = `${pad(next + 1)} / ${pad(slides.length)}`;
+  chipTitleEl.textContent = slide.title;
   progressEl.style.transform = `scaleX(${(next + 1) / slides.length})`;
   notesEl.textContent = slide.notes || "No speaker notes for this slide.";
   history.replaceState(null, "", `#${next + 1}`);
@@ -299,7 +303,7 @@ window.addEventListener("keydown", (e) => {
   else if (e.key.toLowerCase() === "n") document.body.classList.toggle("show-notes");
   else if (e.key.toLowerCase() === "p") setPlaying(!playing);
 });
-viewport.addEventListener("click", (e) => {
+stage.addEventListener("click", (e) => {
   if (e.target.closest("button, a")) return;
   (e.clientX < window.innerWidth * 0.25 ? prev : next)();
 });
@@ -349,6 +353,19 @@ window.addEventListener("hashchange", () => {
   if (Number.isFinite(n)) { lastNav = 0; go(n - 1); }
 });
 
+// One dot per slide, as in the 3D engine.
+slides.forEach((_, i) => {
+  const d = el("button", "dot");
+  d.setAttribute("aria-label", `Go to slide ${i + 1}`);
+  d.addEventListener("click", (e) => {
+    e.stopPropagation();
+    go(i);
+  });
+  dotsEl.append(d);
+});
+// The "← → or scroll to travel" hint fades after a few seconds.
+setTimeout(() => hintEl?.classList.add("hidden"), 5000);
+
 // ─── Auto-play (no narration) ───────────────────────────────────────────
 const playBtn = document.getElementById("play");
 const autoplaySeconds = Math.min(60, Math.max(3, Number(settings.autoplay?.seconds) || 7));
@@ -368,9 +385,10 @@ function schedulePlay() {
 
 function setPlaying(on) {
   playing = on;
-  playBtn.classList.toggle("on", on);
-  playBtn.textContent = on ? "Pause" : "Autoplay";
+  playBtn.classList.toggle("playing", on);
+  playBtn.setAttribute("aria-label", on ? "Pause auto-play (P)" : "Auto-play (P)");
   playBtn.title = on ? "Pause (P)" : "Auto-play (P)";
+  playBtn.innerHTML = on ? "&#10074;&#10074;" : "&#9654;";
   schedulePlay();
 }
 playBtn.addEventListener("click", (e) => {
