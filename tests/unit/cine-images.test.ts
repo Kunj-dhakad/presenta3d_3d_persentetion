@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The real OpenAI path of the painter, against a fake client (no network).
 const calls: { create: unknown[]; retrieve: string[]; cancel: string[] } = { create: [], retrieve: [], cancel: [] };
 let replies: Record<string, unknown[]> = {};
+let refusedHosts: string[] = [];
 vi.mock("@/server/ai/openai-provider", async (orig) => {
   const actual = await orig<typeof import("@/server/ai/openai-provider")>();
   return {
@@ -11,6 +12,8 @@ vi.mock("@/server/ai/openai-provider", async (orig) => {
       responses: {
         create: async (body: unknown) => {
           calls.create.push(body);
+          const host = (body as { model: string }).model;
+          if (refusedHosts.includes(host)) throw Object.assign(new Error(`400 The model '${host}' does not exist.`), { status: 400 });
           if (String((body as { input: string }).input).includes("[refuse]")) {
             throw Object.assign(new Error("Your organization must be verified to use the model"), { status: 403 });
           }
@@ -44,6 +47,7 @@ describe("cinematic image painter (OpenAI background mode)", () => {
     calls.retrieve = [];
     calls.cancel = [];
     replies = {};
+    refusedHosts = [];
   });
 
   it("starts a background image job with the default image model when none is configured", async () => {
@@ -54,7 +58,7 @@ describe("cinematic image painter (OpenAI background mode)", () => {
     const body = calls.create[0] as { background: boolean; store: boolean; model: string; tools: { type: string; model: string; size: string }[]; tool_choice: unknown };
     expect(body.background).toBe(true);
     expect(body.store).toBe(true);
-    expect(body.model).toBe("gpt-test");
+    expect(body.model).toBe("gpt-4.1-mini"); // a model known to host the image tool, before OPENAI_MODEL
     expect(body.tools[0]).toMatchObject({ type: "image_generation", model: "gpt-image-1", size: "1536x1024" });
     expect(body.tool_choice).toEqual({ type: "image_generation" });
   });
@@ -80,6 +84,21 @@ describe("cinematic image painter (OpenAI background mode)", () => {
     replies.resp_empty = [{ status: "completed", output: [{ type: "message" }] }];
     expect(await painter.check("resp_empty", new AbortController().signal)).toEqual({ state: "failed", error: "no image was returned" });
     await expect(painter.start("[refuse] anything", new AbortController().signal)).rejects.toThrow(/organization must be verified/);
+  });
+
+  it("tries the next host model when OpenAI refuses one, and stops at an image refusal", async () => {
+    refusedHosts = ["gpt-4.1-mini", "gpt-4.1"];
+    const painter = new ImagePainter("cprojectabc12345");
+    await painter.start("A city at night", new AbortController().signal);
+    expect(calls.create.map((b) => (b as { model: string }).model)).toEqual(["gpt-4.1-mini", "gpt-4.1", "gpt-test"]);
+    // The working host is remembered: the next image goes straight to it.
+    calls.create = [];
+    await painter.start("Another", new AbortController().signal);
+    expect(calls.create.map((b) => (b as { model: string }).model)).toEqual(["gpt-test"]);
+    // An image refusal is not retried with other hosts.
+    calls.create = [];
+    await expect(painter.start("[refuse] x", new AbortController().signal)).rejects.toThrow(/verified/);
+    expect(calls.create).toHaveLength(1);
   });
 
   it("cancels jobs that are no longer wanted", async () => {

@@ -12,6 +12,25 @@ const STYLE =
 /** Image model when OPENAI_IMAGE_MODEL is not set (the image_generation tool's own default). */
 export const DEFAULT_IMAGE_MODEL = "gpt-image-1";
 
+/**
+ * Models that may host the image_generation tool in background mode, tried in
+ * order. Not every text model can (OPENAI_MODEL answered "does not exist" for
+ * this kind of request), so a refused model is skipped and the one that works
+ * is remembered for this server instance.
+ */
+function hostModels(): string[] {
+  const e = env();
+  return [...new Set([e.OPENAI_IMAGE_HOST_MODEL, "gpt-4.1-mini", "gpt-4.1", e.OPENAI_MODEL].filter((m): m is string => Boolean(m)))];
+}
+let workingHost: string | null = null;
+
+/** OpenAI refused the host model (unknown, or not usable for this request), not the image. */
+function refusedHostModel(err: unknown, host: string): boolean {
+  const status = (err as { status?: number }).status;
+  const message = String((err as Error)?.message ?? "");
+  return (status === 400 || status === 404 || status === 403) && message.includes(host);
+}
+
 export type ImageCheck = { state: "pending" } | { state: "done"; url: string } | { state: "failed"; error: string };
 
 /**
@@ -52,23 +71,30 @@ export class ImagePainter {
       );
       return `fixture:${await this.store(out.data, out.ext, out.mimeType)}`;
     }
-    const e = env();
-    try {
-      const res = await openaiClient().responses.create(
-        {
-          model: e.OPENAI_MODEL || "gpt-4.1",
-          input: `Create this image: ${input}`,
-          tools: [{ type: "image_generation", model: this.model, size: "1536x1024", quality: "medium", output_format: "webp", output_compression: 85 }],
-          tool_choice: { type: "image_generation" },
-          background: true,
-          store: true,
-        },
-        { signal },
-      );
-      return res.id;
-    } catch (err) {
-      throw mapOpenAIError(err);
+    const hosts = workingHost ? [workingHost, ...hostModels().filter((m) => m !== workingHost)] : hostModels();
+    let last: unknown = null;
+    for (const host of hosts) {
+      try {
+        const res = await openaiClient().responses.create(
+          {
+            model: host,
+            input: `Create this image: ${input}`,
+            tools: [{ type: "image_generation", model: this.model, size: "1536x1024", quality: "medium", output_format: "webp", output_compression: 85 }],
+            tool_choice: { type: "image_generation" },
+            background: true,
+            store: true,
+          },
+          { signal },
+        );
+        workingHost = host;
+        return res.id;
+      } catch (err) {
+        last = err;
+        // Only a refused host model is worth another try; any other refusal (e.g. the image model) is final.
+        if (!refusedHostModel(err, host)) break;
+      }
     }
+    throw mapOpenAIError(last);
   }
 
   /** Has this image finished? Stores it when it has. */

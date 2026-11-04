@@ -30,6 +30,8 @@ const schema = z.object({
   OPENAI_API_KEY: optionalString,
   OPENAI_MODEL: optionalString,
   OPENAI_IMAGE_MODEL: optionalString,
+  /** Model that hosts the image_generation tool for cinematic images (Responses API, background mode). */
+  OPENAI_IMAGE_HOST_MODEL: optionalString,
   OPENAI_VIDEO_MODEL: optionalString,
   OPENAI_TTS_MODEL: optionalString,
   OPENAI_PRICE_INPUT_PER_1M: optionalNumber,
