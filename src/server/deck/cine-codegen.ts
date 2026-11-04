@@ -49,20 +49,20 @@ body[data-font="mono"] .kicker { font-family: "JetBrains Mono", ui-monospace, mo
 .layout-right { align-items: center; justify-content: flex-end; }
 .layout-stats { align-items: flex-end; padding-bottom: clamp(72px, 12vh, 140px); }
 .layout-stats .content { max-width: 64rem; }
-.kicker { margin: 0 0 14px; font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
-.title { margin: 0; font-weight: 700; line-height: 1.02; letter-spacing: -0.035em; font-size: clamp(36px, 5.2vw, 76px); text-wrap: balance; text-shadow: 0 2px 30px rgba(0, 0, 0, 0.55); }
-.layout-hero .title { font-size: clamp(44px, 8vw, 120px); }
-.subtitle { margin: 18px 0 0; font-size: clamp(16px, 1.6vw, 22px); line-height: 1.5; opacity: 0.78; text-wrap: pretty; text-shadow: 0 1px 18px rgba(0, 0, 0, 0.6); }
+.kicker { margin: 0 0 14px; font-size: calc(13px * var(--ts, 1)); letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.title { margin: 0; font-weight: 700; line-height: 1.02; letter-spacing: -0.035em; font-size: calc(clamp(36px, 5.2vw, 76px) * var(--ts, 1)); text-wrap: balance; text-shadow: 0 2px 30px rgba(0, 0, 0, 0.55); }
+.layout-hero .title { font-size: calc(clamp(44px, 8vw, 120px) * var(--ts, 1)); }
+.subtitle { margin: 18px 0 0; font-size: calc(clamp(16px, 1.6vw, 22px) * var(--ts, 1)); line-height: 1.5; opacity: 0.78; text-wrap: pretty; text-shadow: 0 1px 18px rgba(0, 0, 0, 0.6); }
 .layout-hero .subtitle, .layout-center .subtitle { margin-left: auto; margin-right: auto; max-width: 42rem; }
 .bullets { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
-.bullets li { position: relative; padding-left: 26px; font-size: clamp(15px, 1.35vw, 19px); line-height: 1.45; opacity: 0.92; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6); }
+.bullets li { position: relative; padding-left: 26px; font-size: calc(clamp(15px, 1.35vw, 19px) * var(--ts, 1)); line-height: 1.45; opacity: 0.92; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6); }
 .bullets li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 12px; height: 2px; background: var(--accent); border-radius: 2px; }
 .layout-center .bullets, .layout-hero .bullets { justify-items: center; }
 /* All stats on one row (--n is their count); two per row on phones. */
 .stats { margin-top: 32px; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 16px; }
 .stat { padding: 20px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 62%, transparent); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); text-align: left; }
-.stat strong { display: block; font-size: clamp(26px, 3vw, 46px); line-height: 1.1; letter-spacing: -0.03em; color: var(--accent); }
-.stat span { display: block; margin-top: 4px; font-size: 14px; opacity: 0.75; }
+.stat strong { display: block; font-size: calc(clamp(26px, 3vw, 46px) * var(--ts, 1)); line-height: 1.1; letter-spacing: -0.03em; color: var(--accent); }
+.stat span { display: block; margin-top: 4px; font-size: calc(14px * var(--ts, 1)); opacity: 0.75; }
 .pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(12, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(14px); font-size: 13px; }
 #chip { position: fixed; top: 18px; left: 18px; max-width: calc(100% - 36px); }
 #counter { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }

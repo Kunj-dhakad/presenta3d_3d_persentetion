@@ -86,6 +86,20 @@ function userRequest(input: string): string {
   return (m?.[1] ?? input).trim();
 }
 
+/** deck_command: a few fixed phrases (bigger / smaller text, a blue accent, "slide N title: X", new slides need AI). */
+function mockCommand(input: string) {
+  const command = (/Command:\n([\s\S]*)$/.exec(input)?.[1] ?? "").trim();
+  const scale = Number(/"textScale":([\d.]+)/.exec(input)?.[1] ?? 1);
+  const none = { textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, slides: [] };
+  const title = /slide (\d+) title:\s*(.+)/i.exec(command);
+  if (title) return { ...none, action: "edit", reply: `Changed the title of slide ${title[1]}.`, slides: [{ slide: Number(title[1]), kicker: null, title: title[2], subtitle: null, bullets: null, notes: null }] };
+  if (/bigger|larger/i.test(command)) return { ...none, action: "edit", reply: "Made the text larger.", textScale: scale * 1.15 };
+  if (/smaller/i.test(command)) return { ...none, action: "edit", reply: "Made the text smaller.", textScale: scale * 0.87 };
+  if (/blue/i.test(command)) return { ...none, action: "edit", reply: "Changed the accent to blue.", accent: "#3b82f6" };
+  if (/add .*slide|new slide|image|picture/i.test(command)) return { ...none, action: "ai", reply: "This needs the AI editor." };
+  return { ...none, action: "none", reply: "What would you like to change?" };
+}
+
 function assigned(input: string): string[] {
   const m = /ASSIGNED_FILES: (.+)/.exec(input);
   return m ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -251,6 +265,8 @@ function respond(schemaName: string, input: string): unknown {
       }
       return { operations: ops, dependencies: [], validation: ["Rebuild"], complete: true };
     }
+    case "deck_command":
+      return mockCommand(input);
     case "deck_spec":
       return mockDeck(input, request);
     case "cine_spec":

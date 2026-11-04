@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp, GitCompare, Loader2, RotateCcw, TriangleAlert, CheckCircle2, XCircle, Sparkles, FlaskConical } from "lucide-react";
 import type { ChatMessageRow, LiveJob } from "@/stores/workspace";
 import { JobProgress } from "./job-progress";
+import { VoiceButton } from "./voice-input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ const CODE_SUGGESTIONS = [
 ];
 
 const PRESENTATION_SUGGESTIONS = [
+  "Make the text bigger",
   "Add a slide with key numbers",
   "Use a warmer colour palette",
   "Make the titles shorter and punchier",
@@ -61,8 +63,8 @@ export function ChatPanel({
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, job?.stages, job?.files.length, job?.status]);
 
-  const submit = () => {
-    const v = value.trim();
+  const submit = (text?: string) => {
+    const v = (text ?? value).trim();
     if (!v || busy) return;
     setValue("");
     void Promise.resolve(onSend(v)).then((ok) => {
@@ -182,14 +184,17 @@ export function ChatPanel({
                 submit();
               }
             }}
-            placeholder={messages.length ? "Ask for a change…" : presentation ? "Describe your presentation…" : "Describe what to build…"}
+            placeholder={messages.length ? (presentation ? "Type or speak a change, e.g. “make the text bigger”…" : "Ask for a change…") : presentation ? "Describe your presentation…" : "Describe what to build…"}
             rows={3}
             maxLength={8000}
             aria-label="Message"
             className="w-full resize-none bg-transparent px-3 pt-2.5 text-[13.5px] outline-none placeholder:text-muted-foreground"
           />
-          <div className="flex items-center justify-between px-2 pb-2">
-            <span className="text-[11px] text-muted-foreground">{ai?.model ? `${ai.provider} · ${ai.model}` : ""}</span>
+          <div className="flex items-center justify-between gap-2 px-2 pb-2">
+            <span className="min-w-0 truncate text-[11px] text-muted-foreground">{ai?.model ? `${ai.provider} · ${ai.model}` : ""}</span>
+            <span className="flex-1" />
+            {/* Speak instead of typing (PRD 3): sent as soon as the speaker stops. */}
+            {presentation ? <VoiceButton onText={setValue} onFinal={(t) => submit(t)} disabled={busy} /> : null}
             <button type="submit" disabled={!value.trim() || busy} aria-label="Send" className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition hover:bg-primary/85 disabled:opacity-40">
               {jobRunning ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
             </button>

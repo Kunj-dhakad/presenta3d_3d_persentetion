@@ -100,7 +100,7 @@ export function useDesignSettings(projectId: string, open: boolean, onSaved: () 
   }
 
   const saveSettings = (key: string, done: string) => settings && void save(key, { settings }, done);
-  const set = <K extends keyof DeckSettings>(part: K, patch: Partial<DeckSettings[K]>) => setSettings((s) => (s ? { ...s, [part]: { ...s[part], ...patch } } : s));
+  const set = <K extends "thankYou" | "footer" | "autoplay">(part: K, patch: Partial<DeckSettings[K]>) => setSettings((s) => (s ? { ...s, [part]: { ...s[part], ...patch } } : s));
 
   return { deck, settings, colors, setColors, busy, error, save, saveSettings, set };
 }

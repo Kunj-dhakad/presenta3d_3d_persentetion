@@ -21,6 +21,8 @@ import { inIframe, notifyParent, paths } from "@/components/embed/parent-bridge"
 
 type ProjectResponse = { project: ProjectMeta; lastBuild: (BuildSummary & { createdAt: string }) | null };
 type Conversation = { id: string; title: string };
+/** /api/projects/[id]/command: applied at once, or needs the full AI edit. */
+type CommandResponse = { applied: boolean; needsAi: boolean; reply: string; preVersionId?: string | null; build: BuildSummary };
 type ConfigResponse = { config: { aiProvider: string; openai: { configured: boolean; model: string | null } } };
 
 const toAiStatus = (c: ConfigResponse): AiStatus =>
@@ -145,6 +147,54 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       }
     },
     [projectId, conversationId, follow],
+  );
+
+  /**
+   * A message about an existing presentation is first tried as a command (PRD 3):
+   * simple changes (text size, colours, font, slide words) apply at once, with
+   * Undo; anything else (new slides, images, scenes) becomes the full AI edit.
+   */
+  const [commanding, setCommanding] = useState(false);
+  const undoCommand = useCallback(
+    async (versionId: string) => {
+      try {
+        await api(`/api/projects/${projectId}/versions/${versionId}/restore`, { method: "POST", json: {} });
+        await useWorkspace.getState().runBuild();
+        await loadProject();
+        toast.success("Change undone");
+      } catch (e) {
+        toast.error(errorMessage(e));
+      }
+    },
+    [projectId, loadProject],
+  );
+  const hasDeck = Boolean(project?.lastWorkingBuildId) && messages.length > 0;
+  const sendOrCommand = useCallback(
+    async (prompt: string): Promise<boolean> => {
+      if (!hasDeck || jobRunning) return send(prompt);
+      setCommanding(true);
+      try {
+        const r = await api<CommandResponse>(`/api/projects/${projectId}/command`, { method: "POST", json: { text: prompt } });
+        if (r.applied) {
+          useWorkspace.getState().setBuildFromServer(r.build, null);
+          void loadProject();
+          const at = new Date().toISOString();
+          setMessages((m) => [...m, { id: `cmd-u-${at}`, role: "user", content: prompt, createdAt: at, meta: null }, { id: `cmd-a-${at}`, role: "assistant", content: r.reply, createdAt: at, meta: null }]);
+          const before = r.preVersionId;
+          toast.success(r.reply, before ? { action: { label: "Undo", onClick: () => void undoCommand(before) } } : undefined);
+          return true;
+        }
+        if (r.needsAi) return send(prompt);
+        toast(r.reply);
+        return false;
+      } catch {
+        // The quick path is not available (AI busy, generation running…): the full AI edit still is.
+        return send(prompt);
+      } finally {
+        setCommanding(false);
+      }
+    },
+    [hasDeck, jobRunning, projectId, send, loadProject, undoCommand],
   );
 
   // Initial load.
@@ -277,12 +327,12 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       messages={messages}
       job={job}
       ai={ai}
-      busy={jobRunning || sending}
-      onSend={send}
+      busy={jobRunning || sending || commanding}
+      onSend={sendOrCommand}
       onCancel={() => job && void api(`/api/jobs/${job.jobId}`, { method: "DELETE" }).catch((e) => toast.error(errorMessage(e)))}
       onReview={() => {}}
       onRevert={(m) => void revert(m)}
-      emptyHint="Describe your presentation: topic, audience, number of slides and the mood. Then ask for changes like “make slide 2 about pricing”."
+      emptyHint="Describe your presentation: topic, audience, number of slides and the mood. Then ask for changes, typed or spoken (mic), like “make the text bigger” or “make slide 2 about pricing”."
       variant="presentation"
       loading={!loaded}
     />

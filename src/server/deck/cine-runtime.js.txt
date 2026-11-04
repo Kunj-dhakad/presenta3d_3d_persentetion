@@ -6,6 +6,8 @@ import gsap from "gsap";
 const deck = await fetch("./deck.json").then((r) => r.json());
 // Older decks have no settings; the server validates links, this only guards the engine.
 const settings = deck.settings || {};
+// Text size chosen by the owner (commands like "bigger text"): scales the slide text in the CSS.
+document.documentElement.style.setProperty("--ts", String(Math.min(1.6, Math.max(0.7, Number(settings.textScale) || 1))));
 const webLink = (u, schemes = /^https?:\/\//i) => (typeof u === "string" && schemes.test(u) ? u : "");
 const slides = [...deck.slides];
 // The owner's Thank You slide closes the deck, with its call-to-action buttons.
@@ -463,6 +465,8 @@ window.addEventListener("message", (e) => {
   else if (action === "prev") prev();
   else if (action === "first") go(0);
   else if (action === "last") go(slides.length - 1);
+  // The presenter view returns to its slide after the deck was rebuilt (a command changed it).
+  else if (action === "goto") go(Math.max(0, Math.min(slides.length - 1, Math.floor(Number(e.data.index) || 0))), true);
   else if (action === "thumbnail") {
     thumbWanted = true;
     scheduleThumbnail();

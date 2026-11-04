@@ -1,27 +1,12 @@
 import { z } from "zod";
 import { api, HttpError, readJson } from "@/server/http/api";
-import { getFiles, getOwnedProject, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
+import { getOwnedProject } from "@/server/services/projects";
 import { activeProjectJob } from "@/server/jobs/runner";
-import { buildProject } from "@/server/build/builder";
-import { deckToProjectFiles } from "@/server/deck/codegen";
-import { ENVIRONMENTS, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
+import { loadDeck, saveDeck } from "@/server/deck/store";
+import { ENVIRONMENTS, type DeckSpec } from "@/lib/schemas/deck";
 import { applyDeckDesign, deckColors } from "@/lib/deck-design";
 
 type P = { id: string };
-
-async function loadDeck(projectId: string): Promise<DeckSpec> {
-  const raw = (await getFiles(projectId)).find((f) => f.path === "deck.json")?.content;
-  if (!raw) throw new HttpError(409, "This presentation has no slides yet. Create it in the chat first.", "NO_DECK");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new HttpError(409, "The presentation file is damaged. Regenerate it in the chat.", "BAD_DECK");
-  }
-  const v = validateDeck(parsed);
-  if (!v.ok) throw new HttpError(409, "The presentation file is damaged. Regenerate it in the chat.", "BAD_DECK");
-  return v.deck;
-}
 
 /** What the Design panel shows: the look and the owner's settings (no slide content). */
 const view = (deck: DeckSpec) => ({ title: deck.title, style: deck.style ?? "3d", theme: deck.theme, colors: deckColors(deck), settings: deck.settings, slideCount: deck.slides.length });
@@ -51,6 +36,7 @@ const Patch = z.object({
       thankYou: z.object({ enabled: z.boolean(), title: z.string().max(200), message: z.string().max(1000), buttons: z.array(z.object({ label: z.string().max(100), url: z.string().max(1000) })).max(10) }),
       footer: z.object({ enabled: z.boolean(), logoUrl: z.string().max(1000), name: z.string().max(200), link: z.string().max(1000) }),
       autoplay: z.object({ enabled: z.boolean(), seconds: z.number() }),
+      textScale: z.number().optional(),
     })
     .optional(),
 });
@@ -68,19 +54,10 @@ export const PATCH = api<P>(
     if (await activeProjectJob(project.id)) throw new HttpError(409, "Wait until the presentation has finished generating.", "JOB_RUNNING");
     let deck = await loadDeck(project.id);
     if (body.design) deck = applyDeckDesign(deck, body.design);
-    if (body.settings) deck = { ...deck, settings: body.settings };
-    const v = validateDeck(deck);
-    if (!v.ok) throw new HttpError(400, v.errors[0] ?? "Invalid presentation", "VALIDATION");
-    deck = v.deck;
-
-    const files = deckToProjectFiles(deck);
-    await writeFileSet(project.id, files);
-    const build = await buildProject({ projectId: project.id, framework: "three", files });
-    if (build.status === "succeeded") {
-      const version = await snapshot(project.id, "auto", { summary: body.design ? "Design changed" : "Settings changed", files });
-      await markWorkingVersion(project.id, version.id);
-    }
-    return { deck: view(deck), build };
+    // Merged: a client that does not know a setting (textScale, set by commands) keeps it.
+    if (body.settings) deck = { ...deck, settings: { ...deck.settings, ...body.settings, textScale: body.settings.textScale ?? deck.settings.textScale } };
+    const saved = await saveDeck(project.id, deck, body.design ? "Design changed" : "Settings changed");
+    return { deck: view(saved.deck), build: saved.build };
   },
   { rateLimit: { bucket: "build", perMinute: 30 } },
 );

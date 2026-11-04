@@ -134,6 +134,7 @@ const DeckSettingsInput = z
     thankYou: z.object({ enabled: z.boolean(), title: z.string(), message: z.string(), buttons: z.array(CtaSchema) }).partial(),
     footer: z.object({ enabled: z.boolean(), logoUrl: z.string(), name: z.string(), link: z.string() }).partial(),
     autoplay: z.object({ enabled: z.boolean(), seconds: z.number() }).partial(),
+    textScale: z.number(),
   })
   .partial();
 export type DeckCta = z.infer<typeof CtaSchema>;
@@ -141,7 +142,10 @@ export type DeckSettings = {
   thankYou: { enabled: boolean; title: string; message: string; buttons: DeckCta[] };
   footer: { enabled: boolean; logoUrl: string; name: string; link: string };
   autoplay: { enabled: boolean; seconds: number };
+  /** Size of the slides' text, 1 = as designed (TEXT_SCALE.min to .max); set by commands like "bigger text". */
+  textScale: number;
 };
+export const TEXT_SCALE = { min: 0.7, max: 1.6 } as const;
 
 /**
  * Cinematic presentations (deck.style "cinematic", see lib/schemas/cine.ts):
@@ -199,6 +203,7 @@ export function defaultDeckSettings(): DeckSettings {
     thankYou: { enabled: true, title: "Thank you", message: "", buttons: [] },
     footer: { enabled: false, logoUrl: "", name: "", link: "" },
     autoplay: { enabled: true, seconds: 7 },
+    textScale: 1,
   };
 }
 
@@ -228,6 +233,7 @@ function normalizeSettings(input: z.infer<typeof DeckSettingsInput> | undefined)
     // The logo must be https: the presentation's CSP loads images only over https.
     footer: { enabled: f.enabled, logoUrl: safeUrl(f.logoUrl, /^https:\/\//i), name: f.name.trim().slice(0, 80), link: safeUrl(f.link) },
     autoplay: { enabled: a.enabled, seconds: Math.round(clamp(a.seconds, 3, 60, 7)) },
+    textScale: Math.round(clamp(input?.textScale ?? 1, TEXT_SCALE.min, TEXT_SCALE.max, 1) * 100) / 100,
   };
 }
 
