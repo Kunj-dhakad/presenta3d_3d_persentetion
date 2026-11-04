@@ -408,6 +408,7 @@ export function AvatarSection({ p }: { p: Loaded }) {
         </div>
         {data.avatars.length === 0 ? <p className="text-xs text-muted-foreground">No avatars in your library yet; the default presenter is used.</p> : null}
         <NewAvatar p={p} />
+        {!form.narration && !form.chat ? <p className="text-xs text-amber-600 dark:text-amber-400">The presenter appears when Voice-over or Q&amp;A is on. Turn one of them on below.</p> : null}
         {avatarStatus !== "none" ? (
           <p className={cn("flex items-center gap-1.5 text-xs", avatarStatus === "failed" ? "text-destructive" : "text-muted-foreground")}>
             {avatarStatus === "making" ? <Loader2 className="size-3.5 animate-spin" /> : avatarStatus === "ready" ? <Check className="size-3.5 text-brand" /> : null}
