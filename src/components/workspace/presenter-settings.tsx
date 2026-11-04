@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Pause, Play, Sparkles, Upload } from "lucide-react";
+import { Check, Loader2, Pause, Play, Search, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,8 @@ type PresenterSettings = {
   avatar_video_status: AvatarVideoStatus;
 };
 type Voice = { id: string; name: string; locale: string; gender: string; image: string; preview: string };
-type Avatar = { id: number; name: string; image: string; video: string };
+/** library: an avatar every workspace has (not one of this workspace's own photos). */
+type Avatar = { id: number; name: string; image: string; video: string; library?: boolean };
 type Responder = { id: number; title: string };
 type ResponderList = { id: string; title: string };
 type Stats = {
@@ -261,6 +262,74 @@ async function toJpeg(file: Blob, max = 1024): Promise<Blob | null> {
   }
 }
 
+/** One avatar to pick: its picture, a caption (the library's names), and a tick when chosen. */
+function AvatarTile({ a, chosen, caption, onPick }: { a: Avatar; chosen: boolean; caption?: string; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={chosen}
+      title={a.name + (a.video ? " (video)" : "")}
+      onClick={onPick}
+      className={cn(
+        "group relative aspect-square overflow-hidden rounded-xl border-2 border-transparent bg-muted shadow-sm transition hover:-translate-y-0.5 hover:border-brand/50 hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+        chosen && "border-brand ring-2 ring-brand/25",
+      )}
+    >
+      {a.image ? (
+        // eslint-disable-next-line @next/next/no-img-element -- avatar library images on the PHP app's CDN
+        <img src={a.image} alt={a.name} className="size-full object-cover" loading="lazy" />
+      ) : (
+        <span className="flex size-full items-center justify-center text-xs text-muted-foreground">Default</span>
+      )}
+      {caption ? <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/75 to-transparent px-1 pt-3 pb-0.5 text-center text-[10px] font-medium text-white">{caption}</span> : null}
+      {a.video ? <span className="absolute top-1 left-1 rounded bg-black/70 px-1 text-[10px] text-white">video</span> : null}
+      {chosen ? <Check className="absolute top-1 right-1 size-4 rounded-full bg-brand p-0.5 text-brand-foreground" /> : null}
+    </button>
+  );
+}
+
+/** The presenter's picture: the default, this workspace's own photos (with upload / AI), then the avatar library. */
+function AvatarPicker({ p }: { p: Loaded }) {
+  const { form, data } = p;
+  const [query, setQuery] = useState("");
+  const own = data.avatars.filter((a) => !a.library);
+  const library = data.avatars.filter((a) => a.library);
+  const q = query.trim().toLowerCase();
+  const shown = q ? library.filter((a) => a.name.toLowerCase().includes(q)) : library;
+  const pick = (a: Avatar) => p.set({ avatar_id: a.id || null });
+  const isChosen = (a: Avatar) => (form.avatar_id ?? 0) === a.id;
+  const defaultAvatar: Avatar = { id: 0, name: "Default", image: data.default_avatar ?? "", video: "" };
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-muted-foreground">Your photos</p>
+        <div className="grid grid-cols-4 gap-2 p-0.5 sm:grid-cols-5" role="radiogroup" aria-label="Your photos">
+          {[defaultAvatar, ...own].map((a) => (
+            <AvatarTile key={a.id} a={a} chosen={isChosen(a)} caption={a.id === 0 && a.image ? "Default" : undefined} onPick={() => pick(a)} />
+          ))}
+        </div>
+        <NewAvatar p={p} />
+      </div>
+      {library.length ? (
+        <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-muted-foreground">Avatar library <span className="font-normal">({library.length})</span></p>
+            <div className="relative w-40">
+              <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" aria-label="Search the avatar library" className="h-7 pl-7 text-xs" />
+            </div>
+          </div>
+          <div className="grid max-h-64 grid-cols-4 gap-2 overflow-y-auto p-0.5 sm:grid-cols-5" role="radiogroup" aria-label="Avatar library">
+            {shown.map((a) => <AvatarTile key={a.id} a={a} chosen={isChosen(a)} caption={a.name} onPick={() => pick(a)} />)}
+          </div>
+          {!shown.length ? <p className="py-2 text-center text-xs text-muted-foreground">No avatar matches “{query.trim()}”.</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** "Upload photo" and "Create with AI": new avatars for the library, chosen at once. */
 function NewAvatar({ p }: { p: Loaded }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -375,39 +444,12 @@ function SaveButton({ p }: { p: PresenterState }) {
 }
 
 export function AvatarSection({ p }: { p: Loaded }) {
-  const { form, data, avatarStatus } = p;
+  const { form, avatarStatus } = p;
   return (
     <>
       <ToggleRow id="presenter-avatar" title="Show AI presenter" hint="A presenter in the corner. A photo avatar becomes a talking video of slide 1." checked={form.avatar} onChange={(v) => p.set({ avatar: v })} first>
         <SubHeading first>Profile image</SubHeading>
-        <div className="grid max-h-72 grid-cols-4 gap-2 overflow-y-auto p-0.5 sm:grid-cols-5" role="radiogroup" aria-label="Avatar">
-          {[{ id: 0, name: "Default", image: data.default_avatar ?? "", video: "" } as Avatar, ...data.avatars].map((a) => {
-            const chosen = (form.avatar_id ?? 0) === a.id;
-            return (
-              <button
-                key={a.id}
-                type="button"
-                role="radio"
-                aria-checked={chosen}
-                title={a.name + (a.video ? " (video)" : "")}
-                onClick={() => p.set({ avatar_id: a.id || null })}
-                className={cn("relative aspect-square overflow-hidden rounded-xl border-2 border-transparent bg-muted transition hover:border-brand/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none", chosen && "border-brand")}
-              >
-                {a.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- avatar library images on the PHP app's CDN
-                  <img src={a.image} alt={a.name} className="size-full object-cover" loading="lazy" />
-                ) : (
-                  <span className="flex size-full items-center justify-center text-xs text-muted-foreground">Default</span>
-                )}
-                {a.id === 0 && a.image ? <span className="absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-center text-[10px] text-white">Default</span> : null}
-                {a.video ? <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 text-[10px] text-white">video</span> : null}
-                {chosen ? <Check className="absolute top-1 right-1 size-4 rounded-full bg-brand p-0.5 text-brand-foreground" /> : null}
-              </button>
-            );
-          })}
-        </div>
-        {data.avatars.length === 0 ? <p className="text-xs text-muted-foreground">No avatars in your library yet; the default presenter is used.</p> : null}
-        <NewAvatar p={p} />
+        <AvatarPicker p={p} />
         {!form.narration && !form.chat ? <p className="text-xs text-amber-600 dark:text-amber-400">The presenter appears with the voice-over. Turn Voice-over on below.</p> : null}
         {avatarStatus !== "none" ? (
           <p className={cn("flex items-center gap-1.5 text-xs", avatarStatus === "failed" ? "text-destructive" : "text-muted-foreground")}>
