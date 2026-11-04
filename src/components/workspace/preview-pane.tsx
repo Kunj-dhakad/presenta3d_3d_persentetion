@@ -237,10 +237,6 @@ const STAGE_LABELS: [PipelineStage, string][] = [
   ["build", "Putting it all together"],
   ["finalize", "Finishing up"],
 ];
-/** The steps always shown as the journey; the others appear only once the job reaches them. */
-const CORE_STAGES = new Set<PipelineStage>(["understand", "plan", "generate", "images", "build", "finalize"]);
-const STRIP_SLOTS = 5;
-
 /** A wireframe cube turning in 3D, as the slides' scenes do. */
 function Cube({ size }: { size: number }) {
   const half = size / 2;
@@ -259,128 +255,55 @@ function Cube({ size }: { size: number }) {
 /**
  * Shown instead of the preview while a presentation is being made or changed:
  * nothing half-made (slides without their images or scenes) is ever shown; the
- * finished presentation appears at once when the job completes. A slide-shaped
- * stage in the deck's dark look, the slide strip filling up with progress, and
- * the steps of the job under it; sized to fit the pane.
+ * finished presentation appears at once when the job completes. One slide-shaped
+ * stage in the deck's dark look, centred in the pane, with the progress in its
+ * middle.
  */
 function GeneratingSkeleton({ box }: { box: { w: number; h: number } }) {
   const job = useWorkspace((s) => s.job);
   const current = [...STAGE_LABELS].reverse().find(([id]) => job?.stages[id]?.state === "start");
   const label = current?.[1] ?? "Getting started";
   const pct = Math.round(Math.min(0.97, Math.max(0.03, job?.progress ?? 0)) * 100);
-  const steps = STAGE_LABELS.filter(([id]) => CORE_STAGES.has(id) || job?.stages[id]);
-  const filled = Math.floor((pct / 100) * STRIP_SLOTS);
-  // The slide fits the pane, leaving room for the strip and the progress under it.
-  const compact = box.w > 0 && box.w < 520;
-  // On narrower panes the step chips wrap to a second line.
-  const reserved = compact ? 150 : box.w < 820 ? 250 : 210;
-  const w = box.w && box.h ? Math.max(200, Math.min(box.w - (compact ? 24 : 56), 1040, (box.h - reserved) * (16 / 9))) : 0;
-  const cube = Math.round(w * 0.12);
+  // The slide fits the pane, whichever way it is limited.
+  const w = box.w && box.h ? Math.max(200, Math.min(box.w - 40, 1040, (box.h - 40) * (16 / 9))) : 0;
+  const compact = w < 480;
+  const cube = Math.round(w * 0.09);
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 overflow-hidden p-3 sm:p-6" role="status" aria-live="polite">
-      {/* The slide */}
+    <div className="flex h-full items-center justify-center overflow-hidden p-4" role="status" aria-live="polite">
       <div className="relative shrink-0 animate-rise" style={{ width: w || "100%" }}>
         <div className="absolute -inset-1.5 rounded-[24px] bg-brand-gradient opacity-40 blur-xl animate-breathe motion-reduce:animate-none" aria-hidden="true" />
-        <div className="relative aspect-video overflow-hidden rounded-2xl bg-[#06101c] shadow-[0_30px_70px_-24px_rgb(0_136_204/0.45)] ring-1 ring-white/10">
+        <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-2xl bg-[#06101c] shadow-[0_30px_70px_-24px_rgb(0_136_204/0.45)] ring-1 ring-white/10">
           <div className="absolute inset-0" style={{ background: "radial-gradient(60% 80% at 82% 28%, rgb(1 196 249 / 0.32), transparent 70%), radial-gradient(50% 60% at 8% 100%, rgb(0 136 204 / 0.38), transparent 70%)" }} aria-hidden="true" />
           <div className="absolute inset-x-[-20%] bottom-[-30%] h-[70%] opacity-50" style={{ backgroundImage: "linear-gradient(rgb(0 166 238 / 0.35) 1px, transparent 1px), linear-gradient(90deg, rgb(0 166 238 / 0.35) 1px, transparent 1px)", backgroundSize: "28px 28px", transform: "perspective(300px) rotateX(60deg)" }} aria-hidden="true" />
-          {[["12%", "24%", "0s"], ["78%", "18%", ".6s"], ["42%", "70%", "1.1s"], ["88%", "66%", ".3s"], ["26%", "58%", "1.5s"], ["62%", "40%", ".9s"]].map(([x, y, d]) => (
+          {[["12%", "24%", "0s"], ["78%", "18%", ".6s"], ["42%", "80%", "1.1s"], ["88%", "66%", ".3s"], ["18%", "68%", "1.5s"], ["62%", "12%", ".9s"]].map(([x, y, d]) => (
             <span key={x + y} className="absolute size-[3px] rounded-full bg-white animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, animationDelay: d }} aria-hidden="true" />
           ))}
           <div className="absolute top-[-10%] right-[6%] size-[36%] rounded-full bg-brand-3/25 blur-2xl animate-float motion-reduce:animate-none" aria-hidden="true" />
           <div className="absolute bottom-[-18%] left-[14%] size-[32%] rounded-full bg-brand/30 blur-2xl animate-float-slow motion-reduce:animate-none" aria-hidden="true" />
-
-          {/* Text block, appearing line by line */}
-          <div className="absolute top-[24%] left-[8%] w-[52%]" aria-hidden="true">
-            <div className="w-[28%] rounded-full bg-brand-gradient opacity-90 animate-rise" style={{ height: w * 0.018, animationDelay: "80ms" }} />
-            <div className="p3-shimmer p3-shimmer-dark mt-[5%] rounded-lg bg-white/15 animate-rise" style={{ height: w * 0.062, animationDelay: "200ms" }} />
-            <div className="p3-shimmer p3-shimmer-dark mt-[3%] w-[72%] rounded-lg bg-white/15 animate-rise" style={{ height: w * 0.062, animationDelay: "320ms" }} />
-            <div className="p3-shimmer p3-shimmer-dark mt-[7%] w-[88%] rounded-full bg-white/10 animate-rise" style={{ height: w * 0.02, animationDelay: "440ms" }} />
-            <div className="p3-shimmer p3-shimmer-dark mt-[3%] w-[64%] rounded-full bg-white/10 animate-rise" style={{ height: w * 0.02, animationDelay: "520ms" }} />
-          </div>
-
-          {/* The scene */}
-          <div className="absolute top-1/2 right-[16%] -translate-y-1/2 animate-float motion-reduce:animate-none" style={{ animationDelay: ".8s" }}>
-            <Cube size={cube} />
-          </div>
-
-          {/* Light sweeping across */}
           <div className="pointer-events-none absolute inset-y-0 left-0 w-[30%] bg-gradient-to-r from-transparent via-white/10 to-transparent animate-sweep motion-reduce:animate-none" aria-hidden="true" />
-
-          {/* Slide chrome */}
           <div className="absolute top-[5%] left-[4%] flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/80 backdrop-blur" aria-hidden="true">
             <Sparkles className="size-3 text-brand-3" /> AI is writing
           </div>
-          <div className="absolute bottom-[6%] left-1/2 flex h-[7%] w-[40%] -translate-x-1/2 items-center gap-2 rounded-full bg-white/10 px-3 backdrop-blur" aria-hidden="true">
-            <span className="size-1.5 rounded-full bg-white/60" />
-            <span className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/15"><span className="block h-full rounded-full bg-brand-gradient transition-[width] duration-700" style={{ width: `${pct}%` }} /></span>
-            <span className="size-1.5 rounded-full bg-white/60" />
-          </div>
-        </div>
-      </div>
 
-      {/* The slide strip, filling up as the work goes on */}
-      {!compact && (
-        <div className="grid shrink-0 gap-2.5 animate-rise" style={{ width: w || "100%", gridTemplateColumns: `repeat(${STRIP_SLOTS}, minmax(0, 1fr))`, animationDelay: "150ms" }} aria-hidden="true">
-          {Array.from({ length: STRIP_SLOTS }, (_, i) => {
-            const done = i < filled;
-            return (
-              <div key={i} className={cn("relative aspect-video overflow-hidden rounded-xl border transition-all duration-700", done ? "border-brand/40 bg-[#0a1a2c] shadow-[0_8px_18px_-10px_rgb(0_136_204/0.6)]" : "p3-shimmer border-border bg-card")} style={{ animationDelay: `${i * 140}ms` }}>
-                {done ? (
-                  <>
-                    <div className="absolute inset-0" style={{ background: "radial-gradient(70% 90% at 80% 20%, rgb(1 196 249 / 0.35), transparent 70%)" }} />
-                    <div className="absolute top-[30%] left-[10%] h-[12%] w-[45%] rounded-sm bg-white/70" />
-                    <div className="absolute top-[50%] left-[10%] h-[8%] w-[60%] rounded-sm bg-white/30" />
-                  </>
-                ) : (
-                  <>
-                    <div className="absolute top-[30%] left-[10%] h-[12%] w-[45%] rounded-sm bg-muted-foreground/15" />
-                    <div className="absolute top-[50%] left-[10%] h-[8%] w-[60%] rounded-sm bg-muted-foreground/10" />
-                  </>
-                )}
-                <span className={cn("absolute top-1 left-1 rounded-md px-1 text-[9px] font-bold", done ? "bg-brand text-white" : "bg-muted text-muted-foreground")}>{i + 1}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Progress and the steps */}
-      <div className="shrink-0 animate-rise" style={{ width: w || "100%", animationDelay: "250ms" }}>
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-brand-gradient text-white shadow-[0_8px_18px_-8px_rgb(0_136_204/0.8)] animate-breathe motion-reduce:animate-none">
-            <Sparkles className="size-4" />
-          </span>
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-sm font-bold">Creating your presentation</p>
-            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+          {/* The progress, in the middle of the slide */}
+          <div className="relative flex w-[62%] flex-col items-center text-center text-white">
+            <div className="animate-float motion-reduce:animate-none" style={{ marginBottom: cube * 0.6 }}>
+              <Cube size={cube} />
+            </div>
+            <p className={cn("font-bold", compact ? "text-sm" : "text-lg")}>Creating your presentation</p>
+            <p className={cn("mt-0.5 flex items-center gap-1 text-white/65", compact ? "text-[11px]" : "text-sm")}>
               <span className="truncate">{label}</span>
               <span className="inline-flex gap-[3px] pl-0.5" aria-hidden="true">
-                {[0, 1, 2].map((i) => <span key={i} className="size-1 rounded-full bg-brand animate-dots motion-reduce:animate-none" style={{ animationDelay: `${i * 150}ms` }} />)}
+                {[0, 1, 2].map((i) => <span key={i} className="size-1 rounded-full bg-brand-3 animate-dots motion-reduce:animate-none" style={{ animationDelay: `${i * 150}ms` }} />)}
               </span>
             </p>
+            <div className={cn("p3-shimmer p3-shimmer-dark w-full overflow-hidden rounded-full bg-white/15", compact ? "mt-3 h-1.5" : "mt-5 h-2")}>
+              <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
+            </div>
+            <p className={cn("mt-2 font-extrabold tabular-nums", compact ? "text-base" : "text-2xl")}>{pct}%</p>
           </div>
-          <span className="shrink-0 bg-brand-gradient bg-clip-text text-lg font-extrabold text-transparent tabular-nums">{pct}%</span>
         </div>
-        <div className="p3-shimmer mt-2.5 h-2 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
-        </div>
-        {!compact && (
-          <ol className="mt-3 flex flex-wrap gap-1.5">
-            {steps.map(([id, text]) => {
-              const st = job?.stages[id]?.state;
-              const running = st === "start";
-              const done = st === "done" || st === "skipped";
-              return (
-                <li key={id} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition-colors", running ? "border-brand/30 bg-brand-soft text-brand" : done ? "border-success/20 bg-success/10 text-success" : "border-border bg-card text-muted-foreground/70")}>
-                  {running ? <Loader2 className="size-3 animate-spin" /> : done ? <CircleCheck className="size-3" /> : <span className="size-3 rounded-full border border-current opacity-50" />}
-                  {text}
-                </li>
-              );
-            })}
-          </ol>
-        )}
       </div>
     </div>
   );
