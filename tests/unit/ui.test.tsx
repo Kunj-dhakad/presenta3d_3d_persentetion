@@ -128,7 +128,8 @@ describe("preview while a presentation is being made", () => {
       </TooltipProvider>
     );
     const { rerender, container } = render(view(true));
-    expect(screen.getByText(/Creating the images/)).toBeTruthy();
+    // The stage is named under the slide and again in the list of steps.
+    expect(screen.getAllByText(/Creating the images/).length).toBeGreaterThan(0);
     expect(screen.getByText("60%")).toBeTruthy();
     expect(container.querySelector("iframe")).toBeNull();
     rerender(view(false));

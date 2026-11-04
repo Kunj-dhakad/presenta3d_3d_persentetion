@@ -55,6 +55,47 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Motion for the "making your presentation" stage (preview-pane.tsx). */
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-sweep: sweep 2.8s ease-in-out infinite;
+  --animate-float: float 5s ease-in-out infinite;
+  --animate-float-slow: float 7s ease-in-out infinite;
+  --animate-spin-3d: spin-3d 9s linear infinite;
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
+  --animate-rise: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-dots: dots 1s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+  @keyframes sweep {
+    0% { transform: translateX(-120%) skewX(-18deg); opacity: 0; }
+    15% { opacity: 1; }
+    60% { opacity: 1; }
+    100% { transform: translateX(260%) skewX(-18deg); opacity: 0; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -12px, 0); }
+  }
+  @keyframes spin-3d {
+    from { transform: rotateX(-24deg) rotateY(0deg); }
+    to { transform: rotateX(-24deg) rotateY(360deg); }
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes dots {
+    0%, 60%, 100% { transform: none; opacity: 0.45; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
 }
 
 /*
@@ -151,6 +192,26 @@
   /* Gradient fill in the logo blues, for primary calls to action. */
   .bg-brand-gradient {
     background-image: var(--brand-gradient);
+  }
+  /* A light band moving across a placeholder (bars, thumbnails). */
+  .p3-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .p3-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 20%, rgb(255 255 255 / 0.35) 50%, transparent 80%);
+    animation: var(--animate-shimmer);
+  }
+  .p3-shimmer-dark::after {
+    background: linear-gradient(90deg, transparent 20%, rgb(255 255 255 / 0.14) 50%, transparent 80%);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .p3-shimmer::after {
+      animation: none;
+    }
   }
   .kbd {
     @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground;

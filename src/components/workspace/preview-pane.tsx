@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck } from "lucide-react";
+import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck, Sparkles } from "lucide-react";
 import { useWorkspace } from "@/stores/workspace";
 import { api } from "@/lib/api-client";
 import { formatDiagnostic, type PreviewMessage } from "@/lib/build-types";
@@ -109,8 +109,8 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
           })}
         </div>
         <div className="mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md bg-background/60 px-2 py-1 text-[11.5px] text-muted-foreground">
-          {build.status === "building" ? <Loader2 className="size-3 shrink-0 animate-spin text-brand" /> : build.status === "failed" ? <AlertTriangle className="size-3 shrink-0 text-destructive" /> : build.previewUrl ? <CircleCheck className="size-3 shrink-0 text-success" /> : <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" />}
-          <span className="truncate font-mono">{build.status === "building" ? "Building…" : build.previewUrl ? "sandboxed preview · opaque origin" : "No preview yet"}</span>
+          {busy || build.status === "building" ? <Loader2 className="size-3 shrink-0 animate-spin text-brand" /> : build.status === "failed" ? <AlertTriangle className="size-3 shrink-0 text-destructive" /> : build.previewUrl ? <CircleCheck className="size-3 shrink-0 text-success" /> : <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" />}
+          <span className="truncate font-mono">{busy ? "Working on it…" : build.status === "building" ? "Building…" : build.previewUrl ? "sandboxed preview · opaque origin" : "No preview yet"}</span>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -146,7 +146,7 @@ export function PreviewPane({ onFixWithAI, busy }: { onFixWithAI: (errors: strin
 
       <div ref={boxRef} className={cn("relative min-h-0 flex-1 overflow-hidden", viewport !== "desktop" && "grid-dots flex items-center justify-center")}>
         {busy ? (
-          <GeneratingSkeleton />
+          <GeneratingSkeleton box={box} />
         ) : src ? (
           <div
             style={vp.w && vp.h ? { width: vp.w, height: vp.h, transform: `scale(${scale})`, transformOrigin: "center" } : { width: "100%", height: "100%" }}
@@ -237,47 +237,150 @@ const STAGE_LABELS: [PipelineStage, string][] = [
   ["build", "Putting it all together"],
   ["finalize", "Finishing up"],
 ];
+/** The steps always shown as the journey; the others appear only once the job reaches them. */
+const CORE_STAGES = new Set<PipelineStage>(["understand", "plan", "generate", "images", "build", "finalize"]);
+const STRIP_SLOTS = 5;
+
+/** A wireframe cube turning in 3D, as the slides' scenes do. */
+function Cube({ size }: { size: number }) {
+  const half = size / 2;
+  const faces = [`translateZ(${half}px)`, `rotateY(180deg) translateZ(${half}px)`, `rotateY(90deg) translateZ(${half}px)`, `rotateY(-90deg) translateZ(${half}px)`, `rotateX(90deg) translateZ(${half}px)`, `rotateX(-90deg) translateZ(${half}px)`];
+  return (
+    <div style={{ width: size, height: size, perspective: size * 6 }} aria-hidden="true">
+      <div className="relative size-full animate-spin-3d motion-reduce:animate-none" style={{ transformStyle: "preserve-3d" }}>
+        {faces.map((t, i) => (
+          <span key={i} className="absolute inset-0 border border-brand-3/80 bg-brand-2/15 shadow-[inset_0_0_18px_rgb(1_196_249/0.35)]" style={{ transform: t }} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Shown instead of the preview while a presentation is being made or changed:
  * nothing half-made (slides without their images or scenes) is ever shown; the
- * finished presentation appears at once when the job completes.
+ * finished presentation appears at once when the job completes. A slide-shaped
+ * stage in the deck's dark look, the slide strip filling up with progress, and
+ * the steps of the job under it; sized to fit the pane.
  */
-function GeneratingSkeleton() {
+function GeneratingSkeleton({ box }: { box: { w: number; h: number } }) {
   const job = useWorkspace((s) => s.job);
-  const stage = [...STAGE_LABELS].reverse().find(([id]) => job?.stages[id]?.state === "start");
-  const label = stage?.[1] ?? "Getting started";
+  const current = [...STAGE_LABELS].reverse().find(([id]) => job?.stages[id]?.state === "start");
+  const label = current?.[1] ?? "Getting started";
   const pct = Math.round(Math.min(0.97, Math.max(0.03, job?.progress ?? 0)) * 100);
-  const bar = "rounded-full bg-muted-foreground/15";
+  const steps = STAGE_LABELS.filter(([id]) => CORE_STAGES.has(id) || job?.stages[id]);
+  const filled = Math.floor((pct / 100) * STRIP_SLOTS);
+  // The slide fits the pane, leaving room for the strip and the progress under it.
+  const compact = box.w > 0 && box.w < 520;
+  // On narrower panes the step chips wrap to a second line.
+  const reserved = compact ? 150 : box.w < 820 ? 250 : 210;
+  const w = box.w && box.h ? Math.max(200, Math.min(box.w - (compact ? 24 : 56), 1040, (box.h - reserved) * (16 / 9))) : 0;
+  const cube = Math.round(w * 0.12);
+
   return (
-    <div className="flex h-full items-center justify-center p-6" role="status" aria-live="polite">
-      <div className="w-full max-w-3xl">
-        <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border bg-muted/40 shadow-sm">
-          <div className="absolute inset-0 animate-pulse">
-            <div className={cn("absolute top-[28%] left-[8%] h-[3%] w-[16%]", bar)} />
-            <div className="absolute top-[36%] left-[8%] h-[9%] w-[52%] rounded-lg bg-muted-foreground/20" />
-            <div className="absolute top-[48%] left-[8%] h-[9%] w-[38%] rounded-lg bg-muted-foreground/20" />
-            <div className={cn("absolute top-[63%] left-[8%] h-[3%] w-[44%]", bar)} />
-            <div className={cn("absolute top-[69%] left-[8%] h-[3%] w-[34%]", bar)} />
-            <div className="absolute top-[20%] right-[8%] aspect-square h-[60%] rounded-full bg-muted-foreground/10" />
-            <div className={cn("absolute bottom-[6%] left-1/2 h-[3%] w-[28%] -translate-x-1/2", bar)} />
+    <div className="flex h-full flex-col items-center justify-center gap-4 overflow-hidden p-3 sm:p-6" role="status" aria-live="polite">
+      {/* The slide */}
+      <div className="relative shrink-0 animate-rise" style={{ width: w || "100%" }}>
+        <div className="absolute -inset-1.5 rounded-[24px] bg-brand-gradient opacity-40 blur-xl animate-breathe motion-reduce:animate-none" aria-hidden="true" />
+        <div className="relative aspect-video overflow-hidden rounded-2xl bg-[#06101c] shadow-[0_30px_70px_-24px_rgb(0_136_204/0.45)] ring-1 ring-white/10">
+          <div className="absolute inset-0" style={{ background: "radial-gradient(60% 80% at 82% 28%, rgb(1 196 249 / 0.32), transparent 70%), radial-gradient(50% 60% at 8% 100%, rgb(0 136 204 / 0.38), transparent 70%)" }} aria-hidden="true" />
+          <div className="absolute inset-x-[-20%] bottom-[-30%] h-[70%] opacity-50" style={{ backgroundImage: "linear-gradient(rgb(0 166 238 / 0.35) 1px, transparent 1px), linear-gradient(90deg, rgb(0 166 238 / 0.35) 1px, transparent 1px)", backgroundSize: "28px 28px", transform: "perspective(300px) rotateX(60deg)" }} aria-hidden="true" />
+          {[["12%", "24%", "0s"], ["78%", "18%", ".6s"], ["42%", "70%", "1.1s"], ["88%", "66%", ".3s"], ["26%", "58%", "1.5s"], ["62%", "40%", ".9s"]].map(([x, y, d]) => (
+            <span key={x + y} className="absolute size-[3px] rounded-full bg-white animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, animationDelay: d }} aria-hidden="true" />
+          ))}
+          <div className="absolute top-[-10%] right-[6%] size-[36%] rounded-full bg-brand-3/25 blur-2xl animate-float motion-reduce:animate-none" aria-hidden="true" />
+          <div className="absolute bottom-[-18%] left-[14%] size-[32%] rounded-full bg-brand/30 blur-2xl animate-float-slow motion-reduce:animate-none" aria-hidden="true" />
+
+          {/* Text block, appearing line by line */}
+          <div className="absolute top-[24%] left-[8%] w-[52%]" aria-hidden="true">
+            <div className="w-[28%] rounded-full bg-brand-gradient opacity-90 animate-rise" style={{ height: w * 0.018, animationDelay: "80ms" }} />
+            <div className="p3-shimmer p3-shimmer-dark mt-[5%] rounded-lg bg-white/15 animate-rise" style={{ height: w * 0.062, animationDelay: "200ms" }} />
+            <div className="p3-shimmer p3-shimmer-dark mt-[3%] w-[72%] rounded-lg bg-white/15 animate-rise" style={{ height: w * 0.062, animationDelay: "320ms" }} />
+            <div className="p3-shimmer p3-shimmer-dark mt-[7%] w-[88%] rounded-full bg-white/10 animate-rise" style={{ height: w * 0.02, animationDelay: "440ms" }} />
+            <div className="p3-shimmer p3-shimmer-dark mt-[3%] w-[64%] rounded-full bg-white/10 animate-rise" style={{ height: w * 0.02, animationDelay: "520ms" }} />
+          </div>
+
+          {/* The scene */}
+          <div className="absolute top-1/2 right-[16%] -translate-y-1/2 animate-float motion-reduce:animate-none" style={{ animationDelay: ".8s" }}>
+            <Cube size={cube} />
+          </div>
+
+          {/* Light sweeping across */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-[30%] bg-gradient-to-r from-transparent via-white/10 to-transparent animate-sweep motion-reduce:animate-none" aria-hidden="true" />
+
+          {/* Slide chrome */}
+          <div className="absolute top-[5%] left-[4%] flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/80 backdrop-blur" aria-hidden="true">
+            <Sparkles className="size-3 text-brand-3" /> AI is writing
+          </div>
+          <div className="absolute bottom-[6%] left-1/2 flex h-[7%] w-[40%] -translate-x-1/2 items-center gap-2 rounded-full bg-white/10 px-3 backdrop-blur" aria-hidden="true">
+            <span className="size-1.5 rounded-full bg-white/60" />
+            <span className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/15"><span className="block h-full rounded-full bg-brand-gradient transition-[width] duration-700" style={{ width: `${pct}%` }} /></span>
+            <span className="size-1.5 rounded-full bg-white/60" />
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-5 gap-2" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="aspect-video animate-pulse rounded-lg border border-border bg-muted/40" style={{ animationDelay: `${i * 120}ms` }} />
-          ))}
+      </div>
+
+      {/* The slide strip, filling up as the work goes on */}
+      {!compact && (
+        <div className="grid shrink-0 gap-2.5 animate-rise" style={{ width: w || "100%", gridTemplateColumns: `repeat(${STRIP_SLOTS}, minmax(0, 1fr))`, animationDelay: "150ms" }} aria-hidden="true">
+          {Array.from({ length: STRIP_SLOTS }, (_, i) => {
+            const done = i < filled;
+            return (
+              <div key={i} className={cn("relative aspect-video overflow-hidden rounded-xl border transition-all duration-700", done ? "border-brand/40 bg-[#0a1a2c] shadow-[0_8px_18px_-10px_rgb(0_136_204/0.6)]" : "p3-shimmer border-border bg-card")} style={{ animationDelay: `${i * 140}ms` }}>
+                {done ? (
+                  <>
+                    <div className="absolute inset-0" style={{ background: "radial-gradient(70% 90% at 80% 20%, rgb(1 196 249 / 0.35), transparent 70%)" }} />
+                    <div className="absolute top-[30%] left-[10%] h-[12%] w-[45%] rounded-sm bg-white/70" />
+                    <div className="absolute top-[50%] left-[10%] h-[8%] w-[60%] rounded-sm bg-white/30" />
+                  </>
+                ) : (
+                  <>
+                    <div className="absolute top-[30%] left-[10%] h-[12%] w-[45%] rounded-sm bg-muted-foreground/15" />
+                    <div className="absolute top-[50%] left-[10%] h-[8%] w-[60%] rounded-sm bg-muted-foreground/10" />
+                  </>
+                )}
+                <span className={cn("absolute top-1 left-1 rounded-md px-1 text-[9px] font-bold", done ? "bg-brand text-white" : "bg-muted text-muted-foreground")}>{i + 1}</span>
+              </div>
+            );
+          })}
         </div>
-        <div className="mt-5 flex items-center gap-2 text-sm">
-          <Loader2 className="size-4 animate-spin text-brand" />
-          <span className="font-medium">Creating your presentation</span>
-          <span className="text-muted-foreground">· {label}…</span>
-          <span className="ml-auto text-xs text-muted-foreground tabular-nums">{pct}%</span>
+      )}
+
+      {/* Progress and the steps */}
+      <div className="shrink-0 animate-rise" style={{ width: w || "100%", animationDelay: "250ms" }}>
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-brand-gradient text-white shadow-[0_8px_18px_-8px_rgb(0_136_204/0.8)] animate-breathe motion-reduce:animate-none">
+            <Sparkles className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-sm font-bold">Creating your presentation</p>
+            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+              <span className="truncate">{label}</span>
+              <span className="inline-flex gap-[3px] pl-0.5" aria-hidden="true">
+                {[0, 1, 2].map((i) => <span key={i} className="size-1 rounded-full bg-brand animate-dots motion-reduce:animate-none" style={{ animationDelay: `${i * 150}ms` }} />)}
+              </span>
+            </p>
+          </div>
+          <span className="shrink-0 bg-brand-gradient bg-clip-text text-lg font-extrabold text-transparent tabular-nums">{pct}%</span>
         </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-brand transition-[width] duration-700" style={{ width: `${pct}%` }} />
+        <div className="p3-shimmer mt-2.5 h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">It appears here, complete, as soon as everything is ready.</p>
+        {!compact && (
+          <ol className="mt-3 flex flex-wrap gap-1.5">
+            {steps.map(([id, text]) => {
+              const st = job?.stages[id]?.state;
+              const running = st === "start";
+              const done = st === "done" || st === "skipped";
+              return (
+                <li key={id} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition-colors", running ? "border-brand/30 bg-brand-soft text-brand" : done ? "border-success/20 bg-success/10 text-success" : "border-border bg-card text-muted-foreground/70")}>
+                  {running ? <Loader2 className="size-3 animate-spin" /> : done ? <CircleCheck className="size-3" /> : <span className="size-3 rounded-full border border-current opacity-50" />}
+                  {text}
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </div>
     </div>
   );
