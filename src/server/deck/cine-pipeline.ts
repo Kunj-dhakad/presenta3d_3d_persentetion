@@ -13,7 +13,7 @@ import { formatDiagnostic, type BuildSummary } from "@/lib/build-types";
 import { storage } from "@/server/storage/storage";
 import { deckToProjectFiles } from "./codegen";
 import { conversation, currentDeck, retryOnce } from "./pipeline";
-import { ImagePainter } from "./cine-images";
+import { ImagePainter, type ImageQuality } from "./cine-images";
 import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 
 export const CINE_SYSTEM = `You are the director of Present 3D's cinematic presentations: slide decks that feel like a film trailer.
@@ -57,8 +57,10 @@ function cineBrief(): string {
 
 /** Steps (rounds) the images get; the last round paints at low quality, which is much faster. */
 const MAX_IMAGE_ROUNDS = 3;
-/** Images start only with this much time left in a step (one takes about 15-45 s). */
-const MIN_IMAGE_WINDOW_MS = 30_000;
+/** Images start only with this much time left in a step (a low-quality image takes about 11 s). */
+const MIN_IMAGE_WINDOW_MS = 25_000;
+/** With this much time left, the first round may paint at medium quality (about 25-30 s, measured). */
+const MEDIUM_WINDOW_MS = 36_000;
 const MIN_FINAL_WINDOW_MS = 15_000;
 const MAX_DECK_ATTEMPTS = 3;
 
@@ -251,7 +253,8 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
     // An image cannot outlive its request: start them in a step with enough time left.
     if (progressed && left() < MIN_IMAGE_WINDOW_MS) return pause(cp);
     const round = (cp.imageRounds ?? 0) + 1;
-    const quality = round >= MAX_IMAGE_ROUNDS ? "low" : "medium";
+    // Medium quality only in the first round and with time to spare; low otherwise, so a round always fits its step.
+    const quality: ImageQuality = round === 1 && (!stepped || left() >= MEDIUM_WINDOW_MS) ? "medium" : "low";
     const errors = [...(cp.imageErrors ?? [])];
     ctx.emit({ type: "stage", stage: "images", state: "start", detail: `${cp.missing.length} at once` });
     log(`Painting ${cp.missing.length} image${cp.missing.length > 1 ? "s" : ""} at the same time with ${painter.model} (${quality} quality${round > 1 ? `, round ${round}` : ""})`);

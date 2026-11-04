@@ -38,9 +38,10 @@ describe("cinematic image painter (OpenAI Images API)", () => {
     const painter = new ImagePainter("cprojectabc12345");
     expect(painter.model).toBe(DEFAULT_IMAGE_MODEL);
     const url = await painter.paint("A glacier collapsing at dusk", "medium", new AbortController().signal);
-    expect(calls[0].body).toMatchObject({ model: "gpt-image-2", size: "1536x1024", quality: "medium", output_format: "webp", n: 1 });
+    expect(calls[0].body).toMatchObject({ model: "gpt-image-2", size: "1280x720", quality: "medium", output_format: "webp", n: 1 });
     expect(String(calls[0].body.prompt)).toContain("A glacier collapsing at dusk");
     expect(calls[0].opts.maxRetries).toBe(0); // the job retries in its next step instead
+    expect(calls[0].opts.timeout).toBe(120_000); // not OPENAI_TIMEOUT_MS
     expect(url).toMatch(/^\/deckmedia\/cprojectabc12345\/[A-Za-z0-9_-]+\.webp$/);
     expect(Buffer.from((await storage().get(url.slice(1)))!).toString()).toBe("fake-image-bytes");
   });
@@ -48,7 +49,7 @@ describe("cinematic image painter (OpenAI Images API)", () => {
   it("uses OPENAI_IMAGE_MODEL when it is set", async () => {
     imageModel = "gpt-image-1";
     await new ImagePainter("cprojectabc12345").paint("x", "low", new AbortController().signal);
-    expect(calls[0].body).toMatchObject({ model: "gpt-image-1", quality: "low" });
+    expect(calls[0].body).toMatchObject({ model: "gpt-image-1", quality: "low", size: "1536x1024" }); // older models: fixed sizes only
   });
 
   it("reports OpenAI's message when an image is refused, and an empty reply as an error", async () => {

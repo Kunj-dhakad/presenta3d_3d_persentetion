@@ -34,6 +34,15 @@ export class ImagePainter {
     return this.mock ? "test fixture" : env().OPENAI_IMAGE_MODEL || DEFAULT_IMAGE_MODEL;
   }
 
+  /**
+   * Slides are 16:9. gpt-image-2 paints any size: 1280×720 is the real shape
+   * (nothing cropped) and quick (measured: medium ≈ 25-30 s even 4 at once,
+   * low ≈ 11 s). Older models only paint fixed sizes; 3:2 is the nearest.
+   */
+  get size(): "1280x720" | "1536x1024" {
+    return /^gpt-image-2/.test(this.model) ? "1280x720" : "1536x1024";
+  }
+
   /** Paint one image and store it; returns its address. Throws an AIError with OpenAI's message. */
   async paint(prompt: string, quality: ImageQuality, signal: AbortSignal): Promise<string> {
     const input = `${prompt.slice(0, 2600)}\n\n${STYLE}`;
@@ -49,9 +58,10 @@ export class ImagePainter {
     let b64: string | undefined;
     try {
       const res = await openaiClient().images.generate(
-        { model: this.model, prompt: input, size: "1536x1024", quality, output_format: "webp", output_compression: 85, n: 1 },
-        // One attempt per image: the job retries unfinished images in its next step.
-        { signal, maxRetries: 0 },
+        { model: this.model, prompt: input, size: this.size, quality, output_format: "webp", output_compression: 85, n: 1 },
+        // One attempt per image: the job retries unfinished images in its next step. Its own
+        // timeout, so a short OPENAI_TIMEOUT_MS on the server cannot cut an image off.
+        { signal, maxRetries: 0, timeout: 120_000 },
       );
       b64 = res.data?.[0]?.b64_json;
     } catch (err) {
