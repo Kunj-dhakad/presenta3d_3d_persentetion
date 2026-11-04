@@ -1,9 +1,9 @@
 "use client";
 
-import { AudioLines, Contact, Info, Palette, Play, Star, ThumbsUp, UserRound } from "lucide-react";
+import { AudioLines, Contact, Info, Palette, Star, ThumbsUp, UserRound } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AutoplaySection, DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
+import { DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
 import { AvatarSection, FeedbackSection, LeadSection, PresenterGate, usePresenterSettings, VoiceSection } from "./presenter-settings";
 import { IconTile, StatePill } from "./settings-parts";
 
@@ -63,9 +63,12 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
             <Section value="voice" icon={<AudioLines />} tone="amber" title="Voice-over & captions" on={form ? form.narration || form.subtitles : undefined}>
               <PresenterGate p={p}>{(x) => <VoiceSection p={x} />}</PresenterGate>
             </Section>
+            {/* Auto-play is on by default (defaultDeckSettings) and the viewer's Auto control switches it;
+                the section stays in design-settings.tsx (AutoplaySection) should it be wanted here again:
             <Section value="autoplay" icon={<Play />} tone="cyan" title="Auto-play" on={deck?.autoplay.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <AutoplaySection d={x} />}</DesignPart>
             </Section>
+            */}
             <Section value="thanks" icon={<ThumbsUp />} tone="coral" title="Thank-you slide" on={deck?.thankYou.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <ThankYouSection d={x} />}</DesignPart>
             </Section>

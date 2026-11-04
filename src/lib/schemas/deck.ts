@@ -193,12 +193,12 @@ export type DeckSlide = DeckSpec["slides"][number];
 
 export const DECK_LIMITS = { minSlides: 1, maxSlides: 20, maxBullets: 5, maxStats: 4, maxValues: 12, maxCount: 160, maxButtons: 3 } as const;
 
-/** Settings of a new deck: it ends on a Thank You slide. */
+/** Settings of a new deck: it ends on a Thank You slide and plays by itself (the viewer's Auto control turns that off). */
 export function defaultDeckSettings(): DeckSettings {
   return {
     thankYou: { enabled: true, title: "Thank you", message: "", buttons: [] },
     footer: { enabled: false, logoUrl: "", name: "", link: "" },
-    autoplay: { enabled: false, seconds: 7 },
+    autoplay: { enabled: true, seconds: 7 },
   };
 }
 

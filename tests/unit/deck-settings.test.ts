@@ -9,7 +9,7 @@ describe("deck settings", () => {
   it("gives decks saved before settings existed no extra Thank You slide", () => {
     const v = validateDeck(withSettings(undefined));
     expect(v.ok && v.deck.settings.thankYou.enabled).toBe(false);
-    expect(v.ok && v.deck.settings.autoplay).toEqual({ enabled: false, seconds: 7 });
+    expect(v.ok && v.deck.settings.autoplay).toEqual({ enabled: true, seconds: 7 });
   });
 
   it("fills settings saved in part with the defaults of a new deck", () => {
