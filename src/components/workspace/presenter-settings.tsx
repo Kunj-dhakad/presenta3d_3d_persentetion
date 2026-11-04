@@ -5,6 +5,7 @@ import { Check, Loader2, Pause, Play, Search, Sparkles, Upload } from "lucide-re
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { api, errorMessage } from "@/lib/api-client";
 import { Slider } from "@/components/ui/slider";
@@ -39,6 +40,8 @@ type PresenterSettings = {
   welcome_text: string;
   lead_form: boolean;
   lead_after_slide: number;
+  /** Which of the lead form's fields show, and which are required (none by default). */
+  lead_fields: LeadFields;
   autoresponder_id: number | null;
   list_id: string;
   feedback: boolean;
@@ -46,6 +49,8 @@ type PresenterSettings = {
   summary: boolean;
   avatar_video_status: AvatarVideoStatus;
 };
+type LeadField = { show: boolean; required: boolean };
+type LeadFields = { name: LeadField; email: LeadField; phone: LeadField };
 type Voice = { id: string; name: string; locale: string; gender: string; image: string; preview: string };
 /** library: an avatar every workspace has (not one of this workspace's own photos). */
 type Avatar = { id: number; name: string; image: string; video: string; library?: boolean };
@@ -211,6 +216,7 @@ export function usePresenterSettings(projectId: string, open: boolean) {
         welcome_text: form.welcome_text,
         lead_form: form.lead_form,
         lead_after_slide: form.lead_after_slide,
+        lead_fields: JSON.stringify(form.lead_fields),
         autoresponder_id: form.lead_form ? (form.autoresponder_id ?? "") : "",
         list_id: form.lead_form ? form.list_id : "",
         feedback: form.feedback,
@@ -517,12 +523,63 @@ export function VoiceSection({ p }: { p: Loaded }) {
   );
 }
 
+const LEAD_FIELDS: { key: keyof LeadFields; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone number" },
+];
+
+/** The lead form's fields: show each or not, and make a shown one required. At least one shows. */
+function LeadFieldsTable({ p }: { p: Loaded }) {
+  const fields = p.form.lead_fields;
+  const shown = LEAD_FIELDS.filter((f) => fields[f.key].show).length;
+  const change = (key: keyof LeadFields, next: Partial<LeadField>) => {
+    const field = { ...fields[key], ...next };
+    if (!field.show) field.required = false;
+    p.set({ lead_fields: { ...fields, [key]: field } });
+  };
+  return (
+    <div className="overflow-hidden rounded-xl border">
+      <div className="grid grid-cols-[1fr_64px_72px] items-center bg-muted/50 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">
+        <span>Field</span>
+        <span className="text-center">Show</span>
+        <span className="text-center">Required</span>
+      </div>
+      {LEAD_FIELDS.map((f) => {
+        const field = fields[f.key];
+        const last = field.show && shown === 1;
+        return (
+          <div key={f.key} className="grid grid-cols-[1fr_64px_72px] items-center border-t px-3 py-2 text-sm">
+            <span className={cn(!field.show && "text-muted-foreground")}>{f.label}</span>
+            <span className="flex justify-center">
+              <Switch checked={field.show} disabled={last} onCheckedChange={(v) => change(f.key, { show: v })} aria-label={`Show ${f.label}`} title={last ? "The form needs at least one field" : undefined} />
+            </span>
+            <span className="flex justify-center">
+              <input
+                type="checkbox"
+                className="size-4 accent-[var(--brand)] disabled:opacity-40"
+                checked={field.required}
+                disabled={!field.show}
+                onChange={(e) => change(f.key, { required: e.target.checked })}
+                aria-label={`${f.label} is required`}
+              />
+            </span>
+          </div>
+        );
+      })}
+      <p className="border-t px-3 py-2 text-xs text-muted-foreground">No field is required unless you tick it; visitors fill in at least one.</p>
+    </div>
+  );
+}
+
 export function LeadSection({ p }: { p: Loaded }) {
   const { form, data, lists, listsLoading } = p;
   return (
     <>
-      <ToggleRow id="presenter-lead" title="Built-in lead form" hint="Asks each visitor once for their name and email. Leads appear on your Leads page." checked={form.lead_form} onChange={(v) => p.set({ lead_form: v })} first>
-        <SubHeading first>When to show</SubHeading>
+      <ToggleRow id="presenter-lead" title="Built-in lead form" hint="Asks each visitor once for their details. Leads appear on your Leads page and in the CRM." checked={form.lead_form} onChange={(v) => p.set({ lead_form: v })} first>
+        <SubHeading first>Form fields</SubHeading>
+        <LeadFieldsTable p={p} />
+        <SubHeading>When to show</SubHeading>
         <div className="flex items-center gap-2 text-sm">
           <span className="shrink-0 text-xs">After slide</span>
           <Select value={String(form.lead_after_slide)} onValueChange={(v) => p.set({ lead_after_slide: Number(v) })}>
