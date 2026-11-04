@@ -1,10 +1,10 @@
 "use client";
 
-import { AudioLines, Contact, Info, Palette, Star, ThumbsUp, UserRound } from "lucide-react";
+import { AudioLines, Contact, FileText, Info, Palette, Star, ThumbsUp, UserRound } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
-import { AvatarSection, FeedbackSection, LeadSection, PresenterGate, usePresenterSettings, VoiceSection } from "./presenter-settings";
+import { AvatarSection, FeedbackSection, LeadSection, PresenterGate, SummarySection, usePresenterSettings, VoiceSection } from "./presenter-settings";
 import { IconTile, StatePill } from "./settings-parts";
 
 type Tone = React.ComponentProps<typeof IconTile>["tone"];
@@ -77,6 +77,9 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
             </Section>
             <Section value="feedback" icon={<Star />} tone="amber" title="Audience feedback" on={form?.feedback}>
               <PresenterGate p={p}>{(x) => <FeedbackSection p={x} />}</PresenterGate>
+            </Section>
+            <Section value="summary" icon={<FileText />} tone="green" title="AI summary report" on={form?.summary}>
+              <PresenterGate p={p}>{(x) => <SummarySection p={x} />}</PresenterGate>
             </Section>
           </Accordion>
         </div>

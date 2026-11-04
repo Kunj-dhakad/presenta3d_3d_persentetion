@@ -42,6 +42,8 @@ type PresenterSettings = {
   autoresponder_id: number | null;
   list_id: string;
   feedback: boolean;
+  /** AI summary report: viewers can download the key summary (PDF) at the end. */
+  summary: boolean;
   avatar_video_status: AvatarVideoStatus;
 };
 type Voice = { id: string; name: string; locale: string; gender: string; image: string; preview: string };
@@ -212,6 +214,7 @@ export function usePresenterSettings(projectId: string, open: boolean) {
         autoresponder_id: form.lead_form ? (form.autoresponder_id ?? "") : "",
         list_id: form.lead_form ? form.list_id : "",
         feedback: form.feedback,
+        summary: form.summary,
       });
       setForm(r.settings);
       setAvatarStatus(r.settings.avatar_video_status);
@@ -551,6 +554,23 @@ export function LeadSection({ p }: { p: Loaded }) {
         </div>
         {data.autoresponders.length === 0 ? <p className="text-xs text-muted-foreground">Connect an autoresponder in Integrations to send leads to a mailing list.</p> : null}
       </ToggleRow>
+      <SaveButton p={p} />
+    </>
+  );
+}
+
+export function SummarySection({ p }: { p: Loaded }) {
+  return (
+    <>
+      <ToggleRow
+        id="presenter-summary"
+        title="Offer the AI summary report"
+        hint="At the end, viewers can download the key points of the presentation, written by AI, as a PDF."
+        checked={p.form.summary}
+        onChange={(v) => p.set({ summary: v })}
+        first
+      />
+      <p className="mt-3 text-xs text-muted-foreground">Your own report (the summary plus views, leads, ratings and what visitors asked) is in the presentation list&apos;s menu: AI report (PDF).</p>
       <SaveButton p={p} />
     </>
   );
