@@ -81,7 +81,7 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
               <DesignPart d={d} ready={designReady}>{(x) => <BrandingSection d={x} />}</DesignPart>
             </Section>
             <Section value="lead" icon={<Contact />} tone="blue" title="Lead form" on={form?.lead_form}>
-              <PresenterGate p={p}>{(x) => <LeadSection p={x} />}</PresenterGate>
+              <PresenterGate p={p}>{(x) => <LeadSection p={x} slideCount={designReady ? d.deck?.slideCount : undefined} />}</PresenterGate>
             </Section>
             <Section value="feedback" icon={<Star />} tone="amber" title="Audience feedback" on={form?.feedback}>
               <PresenterGate p={p}>{(x) => <FeedbackSection p={x} />}</PresenterGate>

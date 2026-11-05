@@ -607,8 +607,12 @@ function LeadFieldsTable({ p }: { p: Loaded }) {
   );
 }
 
-export function LeadSection({ p }: { p: Loaded }) {
+/** `slideCount`: the deck's slides, once loaded; the form can show after any of them (else 1-15). */
+export function LeadSection({ p, slideCount }: { p: Loaded; slideCount?: number }) {
   const { form, data, lists, listsLoading } = p;
+  const afterOptions = Array.from({ length: slideCount || 15 }, (_, i) => i + 1);
+  // A saved slide the deck no longer has (it got shorter) stays listed, so the field is not blank.
+  if (!afterOptions.includes(form.lead_after_slide)) afterOptions.push(form.lead_after_slide);
   return (
     <>
       <ToggleRow id="presenter-lead" title="Built-in lead form" hint="Asks each visitor once for their details. Leads appear on your Leads page and in the CRM." checked={form.lead_form} onChange={(v) => p.set({ lead_form: v })} first>
@@ -620,7 +624,7 @@ export function LeadSection({ p }: { p: Loaded }) {
           <Select value={String(form.lead_after_slide)} onValueChange={(v) => p.set({ lead_after_slide: Number(v) })}>
             <SelectTrigger className="w-24" aria-label="Show the lead form after slide"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+              {afterOptions.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
