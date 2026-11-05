@@ -370,7 +370,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
           })}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title="Template, colours, avatar, voice-over, captions, auto-play, Thank-you slide, lead form, feedback">
+          <Button size="sm" variant="secondary" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title="Template, colours, voice-over, captions, auto-play, Thank-you slide, lead form, feedback">
             <SlidersHorizontal /> <span className="max-sm:sr-only">Settings</span>
           </Button>
           {inIframe() ? (

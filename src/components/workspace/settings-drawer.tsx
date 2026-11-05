@@ -1,10 +1,11 @@
 "use client";
 
-import { AudioLines, Contact, FileText, Info, Palette, Star, ThumbsUp, UserRound } from "lucide-react";
+import { AudioLines, Contact, FileText, Info, Palette, Star, ThumbsUp } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
-import { AvatarSection, FeedbackSection, LeadSection, PresenterGate, SummarySection, usePresenterSettings, VoiceSection } from "./presenter-settings";
+// AvatarSection (and UserRound) are not imported while the presenter avatar is switched off (see below).
+import { FeedbackSection, LeadSection, PresenterGate, SummarySection, usePresenterSettings, VoiceSection } from "./presenter-settings";
 import { IconTile, StatePill } from "./settings-parts";
 
 type Tone = React.ComponentProps<typeof IconTile>["tone"];
@@ -36,7 +37,7 @@ function DesignPart({ d, ready, children }: { d: DesignState; ready: boolean; ch
 /**
  * Presentation settings in one right-side drawer: the deck's design
  * (template, colours, Thank-you slide, auto-play; saved to the deck
- * and rebuilt) and the presenter (avatar, voice-over and its welcome text,
+ * and rebuilt) and the presenter (voice-over and its welcome text,
  * captions, lead form, feedback; saved in the PHP app).
  */
 export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onSaved }: { projectId: string; open: boolean; onOpenChange: (o: boolean) => void; designReady: boolean; onSaved: () => void }) {
@@ -57,9 +58,13 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
             <Section value="template" icon={<Palette />} tone="blue" title="Template & colours">
               <DesignPart d={d} ready={designReady}>{(x) => <TemplateSection d={x} />}</DesignPart>
             </Section>
+            {/* The presenter avatar is switched off: the talking avatar now belongs to the presentation's
+                AI Agent (PHP: Agent → Avatar & voice), which greets viewers and speaks in the chat.
+                The section stays in presenter-settings.tsx (AvatarSection) to bring it back:
             <Section value="avatar" icon={<UserRound />} tone="rose" title="AI avatar" on={form?.avatar}>
               <PresenterGate p={p}>{(x) => <AvatarSection p={x} />}</PresenterGate>
             </Section>
+            */}
             <Section value="voice" icon={<AudioLines />} tone="amber" title="Voice-over & captions" on={form ? form.narration || form.subtitles : undefined}>
               <PresenterGate p={p}>{(x) => <VoiceSection p={x} />}</PresenterGate>
             </Section>
