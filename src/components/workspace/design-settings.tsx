@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Loader2, Plus, Stamp, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Loader2, Plus, Stamp, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import type { DeckSettings, DeckSpec } from "@/lib/schemas/deck";
 import type { BuildSummary } from "@/lib/build-types";
 import { cn } from "@/lib/utils";
 import { getParentBranding } from "@/components/embed/parent-bridge";
+import { phpPost } from "@/lib/php-api";
 import { SubHeading, ToggleRow } from "./settings-parts";
 
 /**
@@ -103,7 +104,7 @@ export function useDesignSettings(projectId: string, open: boolean, onSaved: () 
   const saveSettings = (key: string, done: string) => settings && void save(key, { settings }, done);
   const set = <K extends "thankYou" | "footer" | "autoplay">(part: K, patch: Partial<DeckSettings[K]>) => setSettings((s) => (s ? { ...s, [part]: { ...s[part], ...patch } } : s));
 
-  return { deck, settings, colors, setColors, busy, error, save, saveSettings, set };
+  return { projectId, deck, settings, colors, setColors, busy, error, save, saveSettings, set };
 }
 
 export type DesignState = ReturnType<typeof useDesignSettings>;
@@ -235,19 +236,48 @@ export function ThankYouSection({ d }: { d: Loaded }) {
 }
 
 /**
- * Footer branding on every slide (PRD 27): logo, brand name and link. The
- * workspace's whitelabel branding (sent by the PHP app) fills it in one click,
- * and is used at once when it is turned on with nothing filled in yet.
+ * Footer branding on every slide (PRD 27): logo, brand name and link. The logo
+ * is uploaded (PHP: 3d-view/settings, action logo_upload, stored on S3) or given
+ * as an https address. The workspace's whitelabel branding (sent by the PHP app)
+ * fills it in one click, and is used at once when it is turned on with nothing
+ * filled in yet. Save applies it to the slides.
  */
 export function BrandingSection({ d }: { d: Loaded }) {
   const { settings } = d;
   const branding = getParentBranding();
   const hasBranding = !!branding && !!(branding.logo || branding.name);
-  const fillFromBranding = () => branding && d.set("footer", { logoUrl: branding.logo, name: branding.name, link: branding.link });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [logoBroken, setLogoBroken] = useState(false);
+  const logo = settings.footer.logoUrl;
+  const fillFromBranding = () =>
+    branding && d.set("footer", { logoUrl: branding.logo || settings.footer.logoUrl, name: branding.name || settings.footer.name, link: branding.link || settings.footer.link });
   const toggle = (on: boolean) => {
     d.set("footer", { enabled: on });
     if (on && !settings.footer.name && !settings.footer.logoUrl) fillFromBranding();
   };
+  async function upload(file: File) {
+    if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
+      toast.error("Upload a PNG, JPG or WebP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("The logo is too large. Use one smaller than 2 MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const r = await phpPost<{ url: string }>("3d-view/settings", { id: d.projectId, action: "logo_upload", logo: file }, { timeoutMs: 60_000 });
+      setLogoBroken(false);
+      d.set("footer", { enabled: true, logoUrl: r.url });
+      toast.success("Logo uploaded. Press Save to show it on the slides.");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
   return (
     <>
       <ToggleRow id="design-brand" title="Show my branding on every slide" hint="Your logo, name and link in the slide footer." checked={settings.footer.enabled} onChange={toggle} first />
@@ -258,9 +288,30 @@ export function BrandingSection({ d }: { d: Loaded }) {
           </Button>
         ) : null}
         <div className="grid gap-1.5">
-          <Label htmlFor="brand-logo">Logo URL</Label>
-          <Input id="brand-logo" value={settings.footer.logoUrl} placeholder="https://…/logo.png" onChange={(e) => d.set("footer", { logoUrl: e.target.value })} />
-          <p className="text-xs text-muted-foreground">Must start with https://.</p>
+          <Label htmlFor="brand-logo">Logo</Label>
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/40">
+              {logo && !logoBroken ? (
+                // eslint-disable-next-line @next/next/no-img-element -- any https logo, shown as it will appear on the slides
+                <img src={logo} alt="Your logo" className="max-h-full max-w-full object-contain" onError={() => setLogoBroken(true)} />
+              ) : (
+                <span className="text-xs text-muted-foreground">{logo ? "Can't load" : "No logo"}</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
+              <Button size="sm" variant="secondary" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                {uploading ? <Loader2 className="animate-spin" /> : <Upload />} {logo ? "Change logo" : "Upload logo"}
+              </Button>
+              {logo ? (
+                <Button size="sm" variant="ghost" disabled={uploading} onClick={() => d.set("footer", { logoUrl: "" })}>
+                  <X /> Remove
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <Input id="brand-logo" value={logo} placeholder="or paste https://…/logo.png" onChange={(e) => { setLogoBroken(false); d.set("footer", { logoUrl: e.target.value }); }} />
+          <p className="text-xs text-muted-foreground">PNG, JPG or WebP up to 2 MB, or an address starting with https://.</p>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="brand-name">Brand name</Label>
@@ -271,7 +322,8 @@ export function BrandingSection({ d }: { d: Loaded }) {
           <Input id="brand-link" value={settings.footer.link} placeholder="https://your-website.com" onChange={(e) => d.set("footer", { link: e.target.value })} />
         </div>
       </div>
-      <SaveButton d={d} id="brand" onClick={() => d.saveSettings("brand", "Branding saved")} />
+      <SaveButton d={d} id="brand" onClick={() => d.saveSettings("brand", "Branding saved. Publish again to show it on the public link.")} />
+      <p className="text-xs text-muted-foreground">Save shows it in the preview; the public link changes when you publish again.</p>
     </>
   );
 }
