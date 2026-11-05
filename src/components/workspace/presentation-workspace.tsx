@@ -357,12 +357,12 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
             <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
           </button>
         )}
-        {/* Preview size, in the middle of the bar (the wireframe's device switch). */}
-        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-0.5 rounded-xl border border-border bg-muted/80 p-1 lg:flex" role="radiogroup" aria-label="Preview size">
+        {/* Preview size, in the middle of the bar (the wireframe's device switch); off until the presentation is ready. */}
+        <div className={cn("absolute left-1/2 hidden -translate-x-1/2 items-center gap-0.5 rounded-xl border border-border bg-muted/80 p-1 lg:flex", jobRunning && "opacity-50")} role="radiogroup" aria-label="Preview size" aria-disabled={jobRunning}>
           {(Object.keys(VIEWPORTS) as ViewportId[]).map((id) => {
             const V = VIEWPORTS[id];
             return (
-              <button key={id} type="button" role="radio" aria-checked={viewport === id} aria-label={V.label} title={V.label} onClick={() => setViewport(id)} className={cn("flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-semibold text-muted-foreground transition focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none", viewport === id ? "bg-card text-brand shadow-xs" : "hover:text-foreground")}>
+              <button key={id} type="button" role="radio" aria-checked={viewport === id} aria-label={V.label} title={jobRunning ? "Available when the presentation is ready" : V.label} disabled={jobRunning} onClick={() => setViewport(id)} className={cn("flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-semibold text-muted-foreground transition focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed", viewport === id ? "bg-card text-brand shadow-xs" : "enabled:hover:text-foreground")}>
                 <V.icon className="size-3.5" />
                 <span className="hidden xl:inline">{V.label.split(" ")[0]}</span>
               </button>
@@ -375,17 +375,17 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
           </Button>
           {inIframe() ? (
             // Inside the PHP app, Present opens its full-page viewer, with the presenter on top.
-            <Button size="sm" variant="secondary" disabled={!hasPreview} onClick={() => notifyParent("P3D_PRESENT", { projectId })}>
+            <Button size="sm" variant="secondary" disabled={!hasPreview || jobRunning} onClick={() => notifyParent("P3D_PRESENT", { projectId })}>
               <Play /> <span className="max-sm:sr-only">Present</span>
             </Button>
           ) : (
-            <Button size="sm" variant="secondary" asChild disabled={!hasPreview}>
-              <Link href={hasPreview ? paths.present(projectId) : "#"} aria-disabled={!hasPreview} className={cn(!hasPreview && "pointer-events-none opacity-50")}>
+            <Button size="sm" variant="secondary" asChild disabled={!hasPreview || jobRunning}>
+              <Link href={hasPreview && !jobRunning ? paths.present(projectId) : "#"} aria-disabled={!hasPreview || jobRunning} className={cn((!hasPreview || jobRunning) && "pointer-events-none opacity-50")}>
                 <Play /> <span className="max-sm:sr-only">Present</span>
               </Link>
             </Button>
           )}
-          <Button size="sm" onClick={() => (inIframe() ? void publishNow() : setShareOpen(true))} disabled={!hasPreview || publishing}>
+          <Button size="sm" onClick={() => (inIframe() ? void publishNow() : setShareOpen(true))} disabled={!hasPreview || publishing || jobRunning}>
             {publishing ? <Loader2 className="animate-spin" /> : <Rocket />} {publishing ? "Publishing…" : "Publish"}
           </Button>
         </div>

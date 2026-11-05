@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck, Sparkles } from "lucide-react";
+import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck, Sparkles, Check, ScanSearch, PenLine, Image as ImageIcon, Layers } from "lucide-react";
 import { useWorkspace } from "@/stores/workspace";
 import { api } from "@/lib/api-client";
 import { formatDiagnostic, type PreviewMessage } from "@/lib/build-types";
@@ -212,28 +212,28 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
   );
 }
 
-/** What the job is doing, in the order it happens (the latest started stage is shown). */
-const STAGE_LABELS: [PipelineStage, string][] = [
-  ["understand", "Reading your request"],
-  ["plan", "Planning the story"],
-  ["generate", "Writing the slides"],
-  ["repair", "Polishing the slides"],
-  ["review", "Reviewing the slides"],
-  ["images", "Creating the images"],
-  ["validate", "Checking everything"],
-  ["build", "Putting it all together"],
-  ["finalize", "Finishing up"],
+/**
+ * The four steps shown while a presentation is made, and the job stages each
+ * covers ("build" is left out: the preview is built more than once, mid-way too).
+ */
+const STEPS: { label: string; icon: typeof Check; stages: PipelineStage[] }[] = [
+  { label: "Analyzing Topic", icon: ScanSearch, stages: ["understand", "plan"] },
+  { label: "Writing Content", icon: PenLine, stages: ["generate", "repair"] },
+  { label: "Designing Slides", icon: ImageIcon, stages: ["review", "images", "validate"] },
+  { label: "Finalizing", icon: Layers, stages: ["finalize"] },
 ];
-/** A wireframe cube turning in 3D, as the slides' scenes do. */
-function Cube({ size }: { size: number }) {
-  const half = size / 2;
-  const faces = [`translateZ(${half}px)`, `rotateY(180deg) translateZ(${half}px)`, `rotateY(90deg) translateZ(${half}px)`, `rotateY(-90deg) translateZ(${half}px)`, `rotateX(90deg) translateZ(${half}px)`, `rotateX(-90deg) translateZ(${half}px)`];
+
+/** A glossy stack of two slides, the second showing a picture. */
+function SlideStack({ size }: { size: number }) {
   return (
-    <div style={{ width: size, height: size, perspective: size * 6 }} aria-hidden="true">
-      <div className="relative size-full animate-spin-3d motion-reduce:animate-none" style={{ transformStyle: "preserve-3d" }}>
-        {faces.map((t, i) => (
-          <span key={i} className="absolute inset-0 border border-brand-3/80 bg-brand-2/15 shadow-[inset_0_0_18px_rgb(1_196_249/0.35)]" style={{ transform: t }} />
-        ))}
+    <div className="relative" style={{ width: size * 1.15, height: size }} aria-hidden="true">
+      <div className="absolute top-0 right-0 h-[78%] w-[82%] -rotate-6 rounded-[14%] bg-gradient-to-br from-[#5fd8ff]/70 to-[#0a5fc2]/70 ring-1 ring-white/25" />
+      <div className="absolute bottom-0 left-0 flex h-[78%] w-[82%] flex-col justify-between rounded-[14%] bg-gradient-to-br from-[#5fe0ff] via-[#1aa3f5] to-[#0752c4] p-[10%] shadow-[0_10px_40px_-6px_rgb(1_196_249/0.75)] ring-1 ring-white/40">
+        <ImageIcon className="text-white drop-shadow" style={{ width: size * 0.32, height: size * 0.32 }} strokeWidth={2.2} />
+        <div className="grid gap-[6%]">
+          <span className="block h-[5px] w-[80%] rounded-full bg-white/85" />
+          <span className="block h-[5px] w-[55%] rounded-full bg-white/60" />
+        </div>
       </div>
     </div>
   );
@@ -243,52 +243,83 @@ function Cube({ size }: { size: number }) {
  * Shown instead of the preview while a presentation is being made or changed:
  * nothing half-made (slides without their images or scenes) is ever shown; the
  * finished presentation appears at once when the job completes. One slide-shaped
- * stage in the deck's dark look, centred in the pane, with the progress in its
- * middle.
+ * stage in the deck's dark look, centred in the pane: the progress and its four steps.
  */
 function GeneratingSkeleton({ box }: { box: { w: number; h: number } }) {
   const job = useWorkspace((s) => s.job);
-  const current = [...STAGE_LABELS].reverse().find(([id]) => job?.stages[id]?.state === "start");
-  const label = current?.[1] ?? "Getting started";
   const pct = Math.round(Math.min(0.97, Math.max(0.03, job?.progress ?? 0)) * 100);
+  // The step running now: the last one any of whose stages has started (or finished).
+  const active = Math.max(0, ...STEPS.map((s, i) => (s.stages.some((id) => job?.stages[id]) ? i : 0)));
   // The slide fits the pane, whichever way it is limited.
   const w = box.w && box.h ? Math.max(200, Math.min(box.w - 40, 1040, (box.h - 40) * (16 / 9))) : 0;
-  const compact = w < 480;
-  const cube = Math.round(w * 0.09);
+  const compact = w < 520;
+  const dot = compact ? 26 : 38;
 
   return (
     <div className="flex h-full items-center justify-center overflow-hidden p-4" role="status" aria-live="polite">
       <div className="relative shrink-0 animate-rise" style={{ width: w || "100%" }}>
         <div className="absolute -inset-1.5 rounded-[24px] bg-brand-gradient opacity-40 blur-xl animate-breathe motion-reduce:animate-none" aria-hidden="true" />
-        <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-2xl bg-[#06101c] shadow-[0_30px_70px_-24px_rgb(0_136_204/0.45)] ring-1 ring-white/10">
-          <div className="absolute inset-0" style={{ background: "radial-gradient(60% 80% at 82% 28%, rgb(1 196 249 / 0.32), transparent 70%), radial-gradient(50% 60% at 8% 100%, rgb(0 136 204 / 0.38), transparent 70%)" }} aria-hidden="true" />
-          <div className="absolute inset-x-[-20%] bottom-[-30%] h-[70%] opacity-50" style={{ backgroundImage: "linear-gradient(rgb(0 166 238 / 0.35) 1px, transparent 1px), linear-gradient(90deg, rgb(0 166 238 / 0.35) 1px, transparent 1px)", backgroundSize: "28px 28px", transform: "perspective(300px) rotateX(60deg)" }} aria-hidden="true" />
-          {[["12%", "24%", "0s"], ["78%", "18%", ".6s"], ["42%", "80%", "1.1s"], ["88%", "66%", ".3s"], ["18%", "68%", "1.5s"], ["62%", "12%", ".9s"]].map(([x, y, d]) => (
-            <span key={x + y} className="absolute size-[3px] rounded-full bg-white animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, animationDelay: d }} aria-hidden="true" />
+        <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-2xl bg-[#04121f] shadow-[0_30px_70px_-24px_rgb(0_136_204/0.45)] ring-1 ring-white/10">
+          <div className="absolute inset-0" style={{ background: "radial-gradient(55% 60% at 50% 30%, rgb(1 196 249 / 0.16), transparent 70%), radial-gradient(45% 55% at 92% 8%, rgb(0 136 204 / 0.22), transparent 70%), radial-gradient(45% 55% at 6% 96%, rgb(0 136 204 / 0.25), transparent 70%)" }} aria-hidden="true" />
+          {[["12%", "24%", "0s"], ["78%", "18%", ".6s"], ["30%", "12%", "1.1s"], ["88%", "56%", ".3s"], ["10%", "60%", "1.5s"], ["66%", "10%", ".9s"]].map(([x, y, d]) => (
+            <span key={x + y} className="absolute size-[3px] rounded-full bg-white/90 animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, animationDelay: d }} aria-hidden="true" />
           ))}
-          <div className="absolute top-[-10%] right-[6%] size-[36%] rounded-full bg-brand-3/25 blur-2xl animate-float motion-reduce:animate-none" aria-hidden="true" />
-          <div className="absolute bottom-[-18%] left-[14%] size-[32%] rounded-full bg-brand/30 blur-2xl animate-float-slow motion-reduce:animate-none" aria-hidden="true" />
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-[30%] bg-gradient-to-r from-transparent via-white/10 to-transparent animate-sweep motion-reduce:animate-none" aria-hidden="true" />
-          <div className="absolute top-[5%] left-[4%] flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/80 backdrop-blur" aria-hidden="true">
-            <Sparkles className="size-3 text-brand-3" /> AI is writing
+          {/* Waves along the bottom */}
+          <svg className="absolute inset-x-0 bottom-0 h-[22%] w-full" viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 140 C 180 60 340 200 520 130 S 860 50 1000 120 V200 H0 Z" fill="rgb(1 196 249 / 0.10)" />
+            <path d="M0 170 C 220 110 380 210 600 160 S 880 110 1000 150 V200 H0 Z" fill="rgb(0 136 204 / 0.18)" />
+            <path d="M0 140 C 180 60 340 200 520 130 S 860 50 1000 120" fill="none" stroke="rgb(1 196 249 / 0.55)" strokeWidth="2" />
+          </svg>
+          <div className="absolute top-[5%] left-[4%] flex items-center gap-1.5 rounded-full bg-brand-3/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/85 ring-1 ring-brand-3/30 backdrop-blur" aria-hidden="true">
+            <Sparkles className="size-3 text-brand-3" /> AI is working
           </div>
 
-          {/* The progress, in the middle of the slide */}
-          <div className="relative flex w-[62%] flex-col items-center text-center text-white">
-            <div className="animate-float motion-reduce:animate-none" style={{ marginBottom: cube * 0.6 }}>
-              <Cube size={cube} />
-            </div>
-            <p className={cn("font-bold", compact ? "text-sm" : "text-lg")}>Creating your presentation</p>
-            <p className={cn("mt-0.5 flex items-center gap-1 text-white/65", compact ? "text-[11px]" : "text-sm")}>
-              <span className="truncate">{label}</span>
-              <span className="inline-flex gap-[3px] pl-0.5" aria-hidden="true">
-                {[0, 1, 2].map((i) => <span key={i} className="size-1 rounded-full bg-brand-3 animate-dots motion-reduce:animate-none" style={{ animationDelay: `${i * 150}ms` }} />)}
-              </span>
+          <div className="relative flex w-[78%] flex-col items-center text-center text-white">
+            {!compact && (
+              <div className="animate-float motion-reduce:animate-none" style={{ marginBottom: w * 0.03 }}>
+                <SlideStack size={Math.round(w * 0.1)} />
+              </div>
+            )}
+            <p className={cn("font-bold tracking-tight", compact ? "text-base" : w > 820 ? "text-3xl" : "text-2xl")}>
+              Generating Your <span className="text-brand-3">Presentation</span>
             </p>
-            <div className={cn("p3-shimmer p3-shimmer-dark w-full overflow-hidden rounded-full bg-white/15", compact ? "mt-3 h-1.5" : "mt-5 h-2")}>
-              <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
+            {!compact && <p className="mt-1.5 text-sm text-brand-3/80">Creating slides, adding content, and designing for you…</p>}
+
+            {/* Progress bar, with a glowing head, and the percentage beside it */}
+            <div className={cn("flex w-[86%] items-center gap-3", compact ? "mt-3" : "mt-6")}>
+              <div className="relative h-2 flex-1 rounded-full bg-white/10 ring-1 ring-white/5">
+                <div className="relative h-full rounded-full bg-gradient-to-r from-brand to-brand-3 shadow-[0_0_14px_rgb(1_196_249/0.6)] transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }}>
+                  <span className="absolute top-1/2 right-0 size-3 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_4px_rgb(1_196_249/0.8)]" />
+                </div>
+              </div>
+              <span className={cn("shrink-0 font-bold tabular-nums", compact ? "text-sm" : "text-lg")}>{pct}%</span>
             </div>
-            <p className={cn("mt-2 font-extrabold tabular-nums", compact ? "text-base" : "text-2xl")}>{pct}%</p>
+
+            {/* The four steps, joined by a line that fills as they finish */}
+            <ol className={cn("relative grid w-full grid-cols-4", compact ? "mt-4" : "mt-7")}>
+              <span className="absolute h-px bg-white/15" style={{ top: dot / 2, left: "12.5%", right: "12.5%" }} aria-hidden="true" />
+              <span className="absolute h-px bg-brand-3 transition-[width] duration-700" style={{ top: dot / 2, left: "12.5%", width: `${(active / (STEPS.length - 1)) * 75}%` }} aria-hidden="true" />
+              {STEPS.map((s, i) => {
+                const state = i < active ? "done" : i === active ? "active" : "todo";
+                const Icon = state === "done" ? Check : s.icon;
+                return (
+                  <li key={s.label} className="relative flex flex-col items-center gap-2" aria-current={state === "active" ? "step" : undefined}>
+                    <span
+                      className={cn(
+                        "flex items-center justify-center rounded-full transition-colors",
+                        state === "done" && "bg-brand-3 text-[#04121f] shadow-[0_0_16px_rgb(1_196_249/0.55)]",
+                        state === "active" && "bg-[#06243a] text-brand-3 ring-2 ring-brand-3 shadow-[0_0_20px_rgb(1_196_249/0.6)]",
+                        state === "todo" && "bg-[#071a2b] text-white/45 ring-1 ring-white/20",
+                      )}
+                      style={{ width: dot, height: dot }}
+                    >
+                      <Icon className={compact ? "size-3.5" : "size-[18px]"} strokeWidth={state === "done" ? 3 : 2} />
+                    </span>
+                    <span className={cn("font-semibold", compact ? "text-[9px]" : "text-xs", state === "todo" ? "text-white/45" : "text-white")}>{s.label}</span>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </div>
       </div>
