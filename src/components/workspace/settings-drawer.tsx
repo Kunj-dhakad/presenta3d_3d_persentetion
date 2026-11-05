@@ -1,9 +1,9 @@
 "use client";
 
-import { AudioLines, Contact, FileText, Info, Palette, Star, ThumbsUp } from "lucide-react";
+import { AudioLines, Contact, FileText, Info, Palette, Stamp, Star, ThumbsUp } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
+import { BrandingSection, DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
 // AvatarSection (and UserRound) are not imported while the presenter avatar is switched off (see below).
 import { FeedbackSection, LeadSection, PresenterGate, SummarySection, usePresenterSettings, VoiceSection } from "./presenter-settings";
 import { IconTile, StatePill } from "./settings-parts";
@@ -36,7 +36,7 @@ function DesignPart({ d, ready, children }: { d: DesignState; ready: boolean; ch
 
 /**
  * Presentation settings in one right-side drawer: the deck's design
- * (template, colours, Thank-you slide, auto-play; saved to the deck
+ * (template, colours, Thank-you slide, footer branding, auto-play; saved to the deck
  * and rebuilt) and the presenter (voice-over and its welcome text,
  * captions, lead form, feedback; saved in the PHP app).
  */
@@ -76,6 +76,9 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
             */}
             <Section value="thanks" icon={<ThumbsUp />} tone="coral" title="Thank-you slide" on={deck?.thankYou.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <ThankYouSection d={x} />}</DesignPart>
+            </Section>
+            <Section value="brand" icon={<Stamp />} tone="slate" title="Footer branding" on={deck?.footer.enabled}>
+              <DesignPart d={d} ready={designReady}>{(x) => <BrandingSection d={x} />}</DesignPart>
             </Section>
             <Section value="lead" icon={<Contact />} tone="blue" title="Lead form" on={form?.lead_form}>
               <PresenterGate p={p}>{(x) => <LeadSection p={x} />}</PresenterGate>

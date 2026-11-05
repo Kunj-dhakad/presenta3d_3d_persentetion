@@ -40,4 +40,27 @@ describe("editing a presentation with commands", () => {
 
     expect((await call(project.id, { text: "" })).status).toBe(400);
   });
+
+  it("replaces a slide's visual: a 3D scene, or a new picture on a cinematic slide", async () => {
+    const user = await userForToken(null)!;
+    const project = await createProject(user.id, { name: "Visuals", category: "presentation", framework: "three", files: deckToProjectFiles(sampleDeck("Visuals")) });
+    const before = (await deckOf(project.id)).slides[1].scene.preset;
+    const scene = await call(project.id, { text: "slide 2 picture: a spinning globe" });
+    expect(scene.body).toMatchObject({ applied: true, needsAi: false });
+    expect((await deckOf(project.id)).slides[1].scene.preset).not.toBe(before);
+
+    const cineDeck = sampleDeck("Cine visuals");
+    const cine = {
+      ...cineDeck,
+      style: "cinematic" as const,
+      slides: cineDeck.slides.map((s) => ({ ...s, cine: { text: "fadeUp" as const, camera: "push" as const, transition: "glide" as const, pace: "normal" as const, imagePrompt: "old prompt", image: "" } })),
+    };
+    const cp = await createProject(user.id, { name: "Cine visuals", category: "presentation", framework: "cinematic", files: deckToProjectFiles(cine) });
+    const pic = await call(cp.id, { text: "slide 1 picture: a city skyline at night" });
+    expect(pic.body).toMatchObject({ applied: true, needsAi: false });
+    const slide = (await deckOf(cp.id)).slides[0];
+    expect(slide.cine.image).toMatch(new RegExp(`^/deckmedia/${cp.id}/`));
+    // The stored prompt stays, so a later AI edit that keeps the slide's words keeps this picture.
+    expect(slide.cine.imagePrompt).toBe("old prompt");
+  });
 });

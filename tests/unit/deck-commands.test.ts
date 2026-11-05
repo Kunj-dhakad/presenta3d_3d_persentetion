@@ -3,6 +3,8 @@ import { sampleDeck, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
 import { applyDeckCommand, deckForCommand, DeckCommandSchema, type DeckCommand } from "@/lib/deck-commands";
 import { deckToProjectFiles } from "@/server/deck/codegen";
 import { readFileSync } from "node:fs";
+import { PRESET_NAMES } from "@/lib/deck-presets";
+import { cinePicturePrompt } from "@/lib/schemas/cine";
 
 const nothing: DeckCommand = { action: "edit", reply: "", textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, slides: [] };
 const cmd = (c: Partial<DeckCommand>): DeckCommand => DeckCommandSchema.parse({ ...nothing, ...c });
@@ -33,13 +35,13 @@ describe("deck commands", () => {
 
   it("rewrites the words of one slide and leaves the others", () => {
     const before = deck();
-    const { deck: d, changed } = applyDeckCommand(before, cmd({ slides: [{ slide: 2, kicker: null, title: " Pricing ", subtitle: null, bullets: ["A", " ", "B", "C", "D", "E"], notes: null }] }));
+    const { deck: d, changed } = applyDeckCommand(before, cmd({ slides: [{ slide: 2, kicker: null, title: " Pricing ", subtitle: null, bullets: ["A", " ", "B", "C", "D", "E"], notes: null, scene: null, picture: null }] }));
     expect(d.slides[1].title).toBe("Pricing");
     expect(d.slides[1].bullets).toEqual(["A", "B", "C", "D"]);
     expect(d.slides[0]).toEqual(before.slides[0]);
     expect(changed).toEqual(["slide 2 title", "slide 2 bullets"]);
     // A slide that does not exist changes nothing.
-    expect(applyDeckCommand(before, cmd({ slides: [{ slide: 99, kicker: null, title: "X", subtitle: null, bullets: null, notes: null }] })).changed).toEqual([]);
+    expect(applyDeckCommand(before, cmd({ slides: [{ slide: 99, kicker: null, title: "X", subtitle: null, bullets: null, notes: null, scene: null, picture: null }] })).changed).toEqual([]);
   });
 
   it("does not change the 3D world of a cinematic presentation", () => {
@@ -47,10 +49,31 @@ describe("deck commands", () => {
     expect(applyDeckCommand(cine, cmd({ environment: deck().theme.environment === "grid" ? "space" : "grid" })).changed).toEqual([]);
   });
 
+  it("replaces a slide's visual: a 3D scene from the catalog, or a picture to paint on a cinematic slide", () => {
+    const keep = { kicker: null, title: null, subtitle: null, bullets: null, notes: null, scene: null, picture: null };
+    const before = deck();
+    const other = PRESET_NAMES.find((n) => n !== before.slides[1].scene.preset)!;
+    const three = applyDeckCommand(before, cmd({ slides: [{ ...keep, slide: 2, scene: other, picture: "ignored on 3D" }] }));
+    expect(three.changed).toEqual(["slide 2 scene"]);
+    expect(three.deck.slides[1].scene.preset).toBe(other);
+    expect(three.deck.slides[1].scene.code).toBeUndefined();
+    expect(three.pictures).toEqual([]);
+    expect(validateDeck(three.deck).ok).toBe(true);
+
+    const cine: DeckSpec = { ...before, style: "cinematic", slides: before.slides.map((s) => ({ ...s, cine: { text: "fadeUp", camera: "push", transition: "glide", pace: "normal", imagePrompt: "old", image: "" } })) };
+    const pics = applyDeckCommand(cine, cmd({ slides: [1, 2, 3].map((n) => ({ ...keep, slide: n, picture: " a city at night ", scene: other })) }));
+    // At most two pictures per command; the scene field is ignored on cinematic slides.
+    expect(pics.pictures).toEqual([{ slide: 0, subject: "a city at night" }, { slide: 1, subject: "a city at night" }]);
+    expect(pics.changed).toEqual(["slide 1 picture", "slide 2 picture"]);
+    const prompt = cinePicturePrompt(cine, 0, "a city at night");
+    expect(prompt).toContain("It shows: a city at night.");
+    expect(prompt).toContain(cine.theme.accent);
+  });
+
   it("does not touch the deck it was given", () => {
     const before = deck();
     const copy = JSON.stringify(before);
-    applyDeckCommand(before, cmd({ textScale: 1.4, autoplay: !before.settings.autoplay.enabled, slides: [{ slide: 1, kicker: "NEW", title: null, subtitle: null, bullets: null, notes: null }] }));
+    applyDeckCommand(before, cmd({ textScale: 1.4, autoplay: !before.settings.autoplay.enabled, slides: [{ slide: 1, kicker: "NEW", title: null, subtitle: null, bullets: null, notes: null, scene: null, picture: null }] }));
     expect(JSON.stringify(before)).toBe(copy);
   });
 

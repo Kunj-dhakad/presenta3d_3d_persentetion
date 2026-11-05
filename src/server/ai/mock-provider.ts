@@ -91,12 +91,23 @@ function mockCommand(input: string) {
   const command = (/Command:\n([\s\S]*)$/.exec(input)?.[1] ?? "").trim();
   const scale = Number(/"textScale":([\d.]+)/.exec(input)?.[1] ?? 1);
   const none = { textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, slides: [] };
+  const keep = { kicker: null, title: null, subtitle: null, bullets: null, notes: null, scene: null, picture: null };
   const title = /slide (\d+) title:\s*(.+)/i.exec(command);
-  if (title) return { ...none, action: "edit", reply: `Changed the title of slide ${title[1]}.`, slides: [{ slide: Number(title[1]), kicker: null, title: title[2], subtitle: null, bullets: null, notes: null }] };
+  if (title) return { ...none, action: "edit", reply: `Changed the title of slide ${title[1]}.`, slides: [{ ...keep, slide: Number(title[1]), title: title[2] }] };
+  // "slide N picture: …" — a 3D deck gets a scene from the catalog, a cinematic deck a new picture.
+  const picture = /slide (\d+) (?:picture|image):\s*(.+)/i.exec(command);
+  if (picture) {
+    const cinematic = /"style":"cinematic"/.test(input);
+    // The catalog scene whose tags share a word with the request (else the last one).
+    const catalog = (/Scene catalog:\n([\s\S]*?)\n\n/.exec(input)?.[1] ?? "").split("\n").map((l) => l.split(":"));
+    const words = picture[2].toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3);
+    const scene = (catalog.find(([, tags]) => words.some((w) => (tags ?? "").includes(w))) ?? catalog[catalog.length - 1])?.[0]?.trim() || null;
+    return { ...none, action: "edit", reply: `Changed the picture of slide ${picture[1]}.`, slides: [{ ...keep, slide: Number(picture[1]), ...(cinematic ? { picture: picture[2] } : { scene }) }] };
+  }
   if (/bigger|larger/i.test(command)) return { ...none, action: "edit", reply: "Made the text larger.", textScale: scale * 1.15 };
   if (/smaller/i.test(command)) return { ...none, action: "edit", reply: "Made the text smaller.", textScale: scale * 0.87 };
   if (/blue/i.test(command)) return { ...none, action: "edit", reply: "Changed the accent to blue.", accent: "#3b82f6" };
-  if (/add .*slide|new slide|image|picture/i.test(command)) return { ...none, action: "ai", reply: "This needs the AI editor." };
+  if (/add .*slide|new slide/i.test(command)) return { ...none, action: "ai", reply: "This needs the AI editor." };
   return { ...none, action: "none", reply: "What would you like to change?" };
 }
 

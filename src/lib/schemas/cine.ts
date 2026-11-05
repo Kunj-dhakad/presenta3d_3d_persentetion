@@ -80,13 +80,17 @@ type CineSpecSlide = CineSpec["slides"][number];
  * words so every image shows that slide's subject, composed so the text's side
  * stays calm and dark.
  */
+/** Where the picture's subject goes so the slide's text stays readable. */
+function layoutHint(layout: string): string {
+  return layout === "left"
+    ? "Place the main subject on the RIGHT half, leaving the LEFT third dark, uncluttered and low contrast for presentation text."
+    : layout === "right"
+      ? "Place the main subject on the LEFT half, leaving the RIGHT third dark, uncluttered and low contrast for presentation text."
+      : "Compose a clear cinematic focal subject with a darker, low-detail central area where presentation text can remain readable.";
+}
+
 function cineImagePrompt(slide: CineSpecSlide, index: number, total: number, theme: CineSpec["theme"]): string {
-  const layout =
-    slide.layout === "left"
-      ? "Place the main subject on the RIGHT half, leaving the LEFT third dark, uncluttered and low contrast for presentation text."
-      : slide.layout === "right"
-        ? "Place the main subject on the LEFT half, leaving the RIGHT third dark, uncluttered and low contrast for presentation text."
-        : "Compose a clear cinematic focal subject with a darker, low-detail central area where presentation text can remain readable.";
+  const layout = layoutHint(slide.layout);
   return [
     `Create a polished cinematic widescreen presentation background for slide ${index + 1} of ${total}.`,
     `Presentation topic: ${slide.title}.`,
@@ -177,6 +181,25 @@ export function cineForPrompt(deck: DeckSpec): CineSpec {
       notes: s.notes,
     })),
   };
+}
+
+/**
+ * The prompt for a slide picture the presenter asked for by command (PRD 3):
+ * their subject, in the deck's colours and atmosphere, composed around the
+ * slide's text like the generated ones.
+ */
+export function cinePicturePrompt(deck: DeckSpec, index: number, subject: string): string {
+  const slide = deck.slides[index];
+  return [
+    `Create a polished cinematic widescreen presentation background for slide ${index + 1} of ${deck.slides.length}.`,
+    `It shows: ${subject.trim().slice(0, 600)}.`,
+    slide?.title ? `Presentation topic: ${slide.title}.` : "",
+    `Art direction: colors that harmonize with ${deck.theme.accent} over a deep ${deck.theme.background} atmosphere. Image atmosphere: ${ENVIRONMENT_HINTS[deck.theme.environment]}.`,
+    layoutHint(slide?.layout ?? "center"),
+    "Photorealistic or refined editorial illustration as appropriate. Rich detail in the subject, elegant lighting, subtle depth, presentation-ready. No words, letters, labels, logos, watermarks, UI, charts with text, borders, or collages.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** The full prompt for one slide's image (stored on the slide when the deck was made). */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, Plus, Stamp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { DECK_PALETTES, DECK_TEMPLATES, type DeckColors, type DeckDesign } from 
 import type { DeckSettings, DeckSpec } from "@/lib/schemas/deck";
 import type { BuildSummary } from "@/lib/build-types";
 import { cn } from "@/lib/utils";
+import { getParentBranding } from "@/components/embed/parent-bridge";
 import { SubHeading, ToggleRow } from "./settings-parts";
 
 /**
@@ -229,6 +230,48 @@ export function ThankYouSection({ d }: { d: Loaded }) {
         </div>
       </div>
       <SaveButton d={d} id="thanks" onClick={() => d.saveSettings("thanks", "Thank-you slide saved")} />
+    </>
+  );
+}
+
+/**
+ * Footer branding on every slide (PRD 27): logo, brand name and link. The
+ * workspace's whitelabel branding (sent by the PHP app) fills it in one click,
+ * and is used at once when it is turned on with nothing filled in yet.
+ */
+export function BrandingSection({ d }: { d: Loaded }) {
+  const { settings } = d;
+  const branding = getParentBranding();
+  const hasBranding = !!branding && !!(branding.logo || branding.name);
+  const fillFromBranding = () => branding && d.set("footer", { logoUrl: branding.logo, name: branding.name, link: branding.link });
+  const toggle = (on: boolean) => {
+    d.set("footer", { enabled: on });
+    if (on && !settings.footer.name && !settings.footer.logoUrl) fillFromBranding();
+  };
+  return (
+    <>
+      <ToggleRow id="design-brand" title="Show my branding on every slide" hint="Your logo, name and link in the slide footer." checked={settings.footer.enabled} onChange={toggle} first />
+      <div className={cn("grid gap-3", !settings.footer.enabled && "pointer-events-none opacity-50")}>
+        {hasBranding ? (
+          <Button size="sm" variant="secondary" className="justify-self-start" onClick={fillFromBranding}>
+            <Stamp /> Use my whitelabel branding
+          </Button>
+        ) : null}
+        <div className="grid gap-1.5">
+          <Label htmlFor="brand-logo">Logo URL</Label>
+          <Input id="brand-logo" value={settings.footer.logoUrl} placeholder="https://…/logo.png" onChange={(e) => d.set("footer", { logoUrl: e.target.value })} />
+          <p className="text-xs text-muted-foreground">Must start with https://.</p>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="brand-name">Brand name</Label>
+          <Input id="brand-name" value={settings.footer.name} maxLength={80} onChange={(e) => d.set("footer", { name: e.target.value })} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="brand-link">Link</Label>
+          <Input id="brand-link" value={settings.footer.link} placeholder="https://your-website.com" onChange={(e) => d.set("footer", { link: e.target.value })} />
+        </div>
+      </div>
+      <SaveButton d={d} id="brand" onClick={() => d.saveSettings("brand", "Branding saved")} />
     </>
   );
 }

@@ -490,7 +490,11 @@ export function VoiceSection({ p }: { p: Loaded }) {
   const [bgColor, bgAlpha] = splitColor(form.subtitle_bg_color);
   return (
     <>
-      <ToggleRow id="presenter-narration" title="Voice-over" hint="A voice reads each slide and moves on when it is done." checked={form.narration} onChange={(v) => p.set({ narration: v })} first>
+      {/* Viewers always get a VO button to turn the voice-over on or off (PRD 4); this only chooses
+          the voice and whether it is on when the presentation opens (off by default). */}
+      <div className="space-y-2 pb-3">
+        <Label className="text-sm font-semibold">Voice</Label>
+        <p className="text-xs text-muted-foreground">Viewers turn the voice-over on or off with the VO button. It reads each slide and moves on when it is done.</p>
         <div className="flex items-center gap-2">
           <Select value={form.voice_id} onValueChange={(v) => p.set({ voice_id: v })}>
             <SelectTrigger className="min-w-0 flex-1" aria-label="Voice"><SelectValue placeholder="Choose a voice" /></SelectTrigger>
@@ -516,7 +520,8 @@ export function VoiceSection({ p }: { p: Loaded }) {
             {p.previewing ? <Pause /> : <Play />} Listen
           </Button>
         </div>
-      </ToggleRow>
+      </div>
+      <ToggleRow id="presenter-narration" title="Start with the voice-over on" hint="Off: the presentation opens silent and viewers can turn the voice on." checked={form.narration} onChange={(v) => p.set({ narration: v })} />
 
       {form.source === "pdf" ? (
         <p className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
