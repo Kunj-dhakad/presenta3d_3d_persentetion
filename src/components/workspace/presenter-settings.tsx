@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { api, errorMessage } from "@/lib/api-client";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { phpPost } from "@/lib/php-api";
 import { cn } from "@/lib/utils";
 import { SubHeading, ToggleRow } from "./settings-parts";
@@ -48,10 +48,13 @@ type PresenterSettings = {
   /** AI summary report: viewers can download the key summary (PDF) at the end. */
   summary: boolean;
   avatar_video_status: AvatarVideoStatus;
+  /** What it was made from ("ai", "url", "pdf", or "" when not recorded): a PDF has no captions (PRD 5). */
+  source: string;
 };
 type LeadField = { show: boolean; required: boolean };
 type LeadFields = { name: LeadField; email: LeadField; phone: LeadField };
-type Voice = { id: string; name: string; locale: string; gender: string; image: string; preview: string };
+/** featured: one of the recommended voices shown first (PRD 4); gender is known only for those. */
+type Voice = { id: string; name: string; locale: string; gender: string; featured?: boolean; image: string; preview: string };
 /** library: an avatar every workspace has (not one of this workspace's own photos). */
 type Avatar = { id: number; name: string; image: string; video: string; library?: boolean };
 type Responder = { id: number; title: string };
@@ -472,6 +475,16 @@ export function AvatarSection({ p }: { p: Loaded }) {
   );
 }
 
+function VoiceItem({ v }: { v: Voice }) {
+  const details = [v.gender, v.locale].filter(Boolean).join(" · ");
+  return (
+    <SelectItem value={v.id}>
+      {v.name}
+      {details ? <span className="text-muted-foreground"> · {details}</span> : null}
+    </SelectItem>
+  );
+}
+
 export function VoiceSection({ p }: { p: Loaded }) {
   const { form, data } = p;
   const [bgColor, bgAlpha] = splitColor(form.subtitle_bg_color);
@@ -482,9 +495,21 @@ export function VoiceSection({ p }: { p: Loaded }) {
           <Select value={form.voice_id} onValueChange={(v) => p.set({ voice_id: v })}>
             <SelectTrigger className="min-w-0 flex-1" aria-label="Voice"><SelectValue placeholder="Choose a voice" /></SelectTrigger>
             <SelectContent className="max-h-72">
-              {data.voices.map((v) => (
-                <SelectItem key={v.id} value={v.id}>{v.name} <span className="text-muted-foreground">· {v.gender}{v.locale ? ` · ${v.locale}` : ""}</span></SelectItem>
-              ))}
+              {/* The best voices first (PRD 4): male, female, then every other voice. */}
+              {(["male", "female"] as const).map((g) => {
+                const top = data.voices.filter((v) => v.featured && v.gender === g);
+                return top.length ? (
+                  <SelectGroup key={g}>
+                    <SelectLabel>Recommended · {g === "male" ? "Male" : "Female"}</SelectLabel>
+                    {top.map((v) => <VoiceItem key={v.id} v={v} />)}
+                  </SelectGroup>
+                ) : null;
+              })}
+              {data.voices.some((v) => v.featured) ? <SelectSeparator /> : null}
+              <SelectGroup>
+                {data.voices.some((v) => v.featured) ? <SelectLabel>All voices</SelectLabel> : null}
+                {data.voices.filter((v) => !v.featured).map((v) => <VoiceItem key={v.id} v={v} />)}
+              </SelectGroup>
             </SelectContent>
           </Select>
           <Button type="button" size="sm" variant="secondary" onClick={p.playSample} disabled={!p.voice?.preview} title="Listen to this voice">
@@ -493,6 +518,11 @@ export function VoiceSection({ p }: { p: Loaded }) {
         </div>
       </ToggleRow>
 
+      {form.source === "pdf" ? (
+        <p className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Made from a PDF: the voice reads each slide&apos;s own text, and captions are not shown.
+        </p>
+      ) : null}
       <ToggleRow id="presenter-subtitles" title="Voice captions" hint="The narration as text, each word lit as it is said." checked={form.subtitles} onChange={(v) => p.set({ subtitles: v })}>
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-xs">
