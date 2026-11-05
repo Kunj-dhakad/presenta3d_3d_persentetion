@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ENVIRONMENTS, TEXT_SCALE, type DeckSpec } from "@/lib/schemas/deck";
+import { ENVIRONMENTS, TEXT_SCALE, ThankYouEditSchema, withThankYouEdit, type DeckSpec } from "@/lib/schemas/deck";
 import { applyDeckDesign, type DeckDesign } from "@/lib/deck-design";
 import { PRESET_NAMES, presetByName } from "@/lib/deck-presets";
 
@@ -35,17 +35,19 @@ export const DeckCommandSchema = z.object({
   font: z.enum(["sans", "serif", "display", "mono"]).nullable().describe("New title font, or null."),
   environment: z.enum(ENVIRONMENTS).nullable().describe("New 3D world (3D presentations only), or null."),
   autoplay: z.boolean().nullable().describe("Turn auto-play on or off, or null."),
+  thankYou: ThankYouEditSchema,
   slides: z.array(SlideEditSchema).describe("Word changes on specific slides; empty when none."),
 });
 export type DeckCommand = z.infer<typeof DeckCommandSchema>;
 
 export const DECK_COMMAND_SYSTEM = `You turn a presenter's command into direct edits of their presentation.
-Use action "edit" only for: the size of the slide text (textScale), the background, text or accent colour, the title font, the 3D world (3D presentations only), auto-play, rewriting the words of specific slides (label, title, subtitle, bullet points, narration), and replacing a slide's visual: in a 3D presentation its 3D scene ("scene", from the scene catalog given with the presentation), in a cinematic presentation its picture ("picture": describe what it should show; a new picture is painted).
+Use action "edit" only for: the size of the slide text (textScale), the background, text or accent colour, the title font, the 3D world (3D presentations only), auto-play, the Thank-you slide (thankYou: show or hide it, its title, message and buttons), rewriting the words of specific slides (label, title, subtitle, bullet points, narration), and replacing a slide's visual: in a 3D presentation its 3D scene ("scene", from the scene catalog given with the presentation), in a cinematic presentation its picture ("picture": describe what it should show; a new picture is painted).
 Use action "ai" for everything else: adding, removing or reordering slides, changing layouts, or rewriting the whole presentation.
 "Image", "picture", "photo", "visual" or "graphic" of a slide means its scene in a 3D presentation and its picture in a cinematic one. At most 2 pictures per command.
 Use action "none" for anything that is not a change request, or too unclear to act on; then ask in "reply" what to change.
 textScale is absolute: "bigger" is about the current value x 1.15, "much bigger" x 1.3, "smaller" x 0.87; stay between ${TEXT_SCALE.min} and ${TEXT_SCALE.max}.
 Colours are #rrggbb. Keep text readable on the background.
+The Thank-you slide is not in "slides": the engine shows it after the last slide when thankYou.enabled is true, so "the thank-you slide" (or "the last slide", when the current slide number is after the last of "slides") means it. Change it only through thankYou, never by adding or rewriting a slide.
 "This slide" or "the current slide" means the current slide number given with the command; without one, ask which slide.
 Keep the presentation's language for slide words unless the command asks for another. Set every field you do not change to null (slides: empty).`;
 
@@ -56,6 +58,7 @@ export function deckForCommand(deck: DeckSpec, currentSlide: number | null): str
     theme: { background: deck.theme.background, text: deck.theme.text, accent: deck.theme.accent, font: deck.theme.font, environment: deck.style === "cinematic" ? null : deck.theme.environment },
     textScale: deck.settings.textScale,
     autoplay: deck.settings.autoplay.enabled,
+    thankYou: deck.settings.thankYou,
     currentSlide,
     slides: deck.slides.map((s, i) => ({
       slide: i + 1,
@@ -107,6 +110,11 @@ export function applyDeckCommand(deck: DeckSpec, c: DeckCommand): { deck: DeckSp
   if (c.autoplay !== null && c.autoplay !== next.settings.autoplay.enabled) {
     next.settings.autoplay.enabled = c.autoplay;
     changed.push("autoplay");
+  }
+  const settings = withThankYouEdit(next.settings, c.thankYou);
+  if (JSON.stringify(settings.thankYou) !== JSON.stringify(next.settings.thankYou)) {
+    next.settings = settings;
+    changed.push("thankYou");
   }
 
   for (const edit of c.slides) {

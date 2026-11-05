@@ -6,7 +6,7 @@ import { CONTINUE, type JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import type { DeckSpec } from "@/lib/schemas/deck";
 import { CineSpecSchema, cineForPrompt, cineToDeck, imagePromptFor } from "@/lib/schemas/cine";
-import { ENVIRONMENTS, ENVIRONMENT_HINTS } from "@/lib/schemas/deck";
+import { ENVIRONMENTS, ENVIRONMENT_HINTS, ThankYouEditSchema, withThankYouEdit } from "@/lib/schemas/deck";
 import { diffStats, toFileMap } from "@/lib/vfs/apply";
 import { getFiles, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
 import { buildProject } from "@/server/build/builder";
@@ -20,7 +20,7 @@ import type { PipelineInput, PipelineResult } from "@/server/pipeline/generate";
 export const CINE_SYSTEM = `You are the presentation designer of Present 3D. You create cinematic image-led presentations.
 You do not write code. You write a CineSpec: the content and art direction of each slide. Each slide will receive a unique AI-generated topic-specific image, derived from the slide's own words; the presentation engine animates the image and text with smooth transitions.
 
-Write a strong story: an opening hero slide, a clear arc, and a closing slide. Use 5-10 slides unless the user asks otherwise. Do not write a "Thank you" slide: the engine adds its own.
+Write a strong story: an opening hero slide, a clear arc, and a closing slide. Use 5-10 slides unless the user asks otherwise. Do not write a "Thank you" slide: the engine adds its own. When the user asks to change, show or hide that Thank You slide, return it in thankYou (never as one of your slides); otherwise thankYou is null.
 Content rules: titles at most ~8 words; at most 4 bullets per slide, each at most ~12 words; real, specific copy (no lorem ipsum, no placeholders). Write in the language the user writes in.
 Layouts: "hero" for the opening (and optionally the closing), "left"/"right" for explanatory slides (alternate them), "center" for a single big statement, "stats" for 2-4 headline numbers. Choose layouts that leave a calm, dark area behind the text while showing the slide's subject clearly.
 Each slide gets its own cinematic motion (slide.motion), chosen from its content: the text animation (glitch for tech and disruption, zoom for big statements, split for contrasts, rotate3d for products and reveals, wipe for data and clean corporate points, letters for short powerful titles and names, fadeUp for calm storytelling), the slow image move while it is shown, the transition into it, and the pace. Make every slide feel different: never repeat a text style or transition on consecutive slides, and use at least four different text styles in a deck of five or more slides. Open with a strong reveal and close with a calm one.
@@ -32,7 +32,11 @@ Narration: every slide's notes is what a presenter says over it (read aloud with
 Names: use the names the user gives. If you must invent a product or company name, make it specific to the topic; avoid generic names like "Pulse", "Nova", "Nexus", "Aura" or "Vertex".`;
 
 export const CINE_EDIT_RULES = `You are editing an existing cinematic deck. Return the COMPLETE updated deck.
-Apply exactly what the user asks; keep every other slide, word and setting unchanged (a slide whose words and colours do not change keeps its painted image; changed words get a new one). If the user refers to a slide by number, slides are numbered from 1.`;
+Apply exactly what the user asks; keep every other slide, word and setting unchanged (a slide whose words and colours do not change keeps its painted image; changed words get a new one). If the user refers to a slide by number, slides are numbered from 1.
+The current Thank You slide is given with the deck. When it is shown, viewers see it after your last slide, so "the thank-you slide" or "the end slide" means it: edit it through thankYou and leave the slides as they are.`;
+
+/** What the model returns: the deck, plus the Thank You slide when the user asks to change it. */
+const CineOutputSchema = CineSpecSchema.extend({ thankYou: ThankYouEditSchema });
 
 /**
  * A random art-direction starting point for a new deck. The model adapts it
@@ -182,12 +186,13 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
       (
         await provider.structured({
           operation: existing ? "cine.edit" : "cine.generate",
-          schema: CineSpecSchema,
+          schema: CineOutputSchema,
           schemaName: "cine_spec",
           system: existing ? `${CINE_SYSTEM}\n\n${CINE_EDIT_RULES}` : CINE_SYSTEM,
           input: [
             history ? `Conversation so far:\n${history}` : "",
             existing ? `Current deck (JSON):\n${JSON.stringify(cineForPrompt(existing))}` : "",
+            existing ? `Current Thank You slide (JSON):\n${JSON.stringify(existing.settings.thankYou)}` : "",
             `User request:\n${input.prompt}`,
             existing ? "" : cineBrief(),
             extra,
@@ -221,7 +226,8 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
       if (!made.deck.ok) throw new Error(`The presentation could not be generated: ${made.deck.errors.slice(0, 3).join("; ")}`);
       ctx.emit({ type: "stage", stage: "repair", state: "done" });
     }
-    const deck = made.deck.deck;
+    // The model changes the owner's settings only for the Thank You slide, when asked.
+    const deck = { ...made.deck.deck, settings: withThankYouEdit(made.deck.deck.settings, raw.thankYou) };
     const missing = made.missing;
     log(`Received “${deck.title}”: ${deck.slides.length} slides · ${made.missing.length} image${made.missing.length === 1 ? "" : "s"} to paint`);
     ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });

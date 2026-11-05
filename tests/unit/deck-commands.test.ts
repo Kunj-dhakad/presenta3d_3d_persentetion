@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { PRESET_NAMES } from "@/lib/deck-presets";
 import { cinePicturePrompt } from "@/lib/schemas/cine";
 
-const nothing: DeckCommand = { action: "edit", reply: "", textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, slides: [] };
+const nothing: DeckCommand = { action: "edit", reply: "", textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, thankYou: null, slides: [] };
 const cmd = (c: Partial<DeckCommand>): DeckCommand => DeckCommandSchema.parse({ ...nothing, ...c });
 const deck = (): DeckSpec => {
   const v = validateDeck(sampleDeck("Commands"));
@@ -23,6 +23,19 @@ describe("deck commands", () => {
     // Saved and loaded again, the size stays.
     const v = validateDeck(applyDeckCommand(deck(), cmd({ textScale: 1.3 })).deck);
     expect(v.ok && v.deck.settings.textScale).toBe(1.3);
+  });
+
+  it("edits the Thank-you slide in place instead of adding a slide", () => {
+    const before = deck();
+    const thankYou = { enabled: true, title: " Thanks for watching ", message: "Questions?", buttons: [{ label: "Mail us", url: "mailto:hi@example.com" }, { label: "Bad", url: "javascript:alert(1)" }] };
+    const { deck: d, changed } = applyDeckCommand(before, cmd({ thankYou }));
+    expect(d.slides).toHaveLength(before.slides.length);
+    expect(d.settings.thankYou).toEqual({ enabled: true, title: "Thanks for watching", message: "Questions?", buttons: [{ label: "Mail us", url: "mailto:hi@example.com" }] });
+    expect(changed).toEqual(["thankYou"]);
+    // null keeps it; the same values change nothing.
+    expect(applyDeckCommand(d, cmd({ thankYou: null })).changed).toEqual([]);
+    expect(applyDeckCommand(d, cmd({ thankYou: d.settings.thankYou })).changed).toEqual([]);
+    expect(deckForCommand(d, null)).toContain('"thankYou":{"enabled":true,"title":"Thanks for watching"');
   });
 
   it("changes colours and font, and ignores colours that are not #rrggbb", () => {

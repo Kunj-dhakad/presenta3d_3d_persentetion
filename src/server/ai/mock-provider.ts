@@ -90,7 +90,7 @@ function userRequest(input: string): string {
 function mockCommand(input: string) {
   const command = (/Command:\n([\s\S]*)$/.exec(input)?.[1] ?? "").trim();
   const scale = Number(/"textScale":([\d.]+)/.exec(input)?.[1] ?? 1);
-  const none = { textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, slides: [] };
+  const none = { textScale: null, background: null, text: null, accent: null, font: null, environment: null, autoplay: null, thankYou: null, slides: [] };
   const keep = { kicker: null, title: null, subtitle: null, bullets: null, notes: null, scene: null, picture: null };
   const title = /slide (\d+) title:\s*(.+)/i.exec(command);
   if (title) return { ...none, action: "edit", reply: `Changed the title of slide ${title[1]}.`, slides: [{ ...keep, slide: Number(title[1]), title: title[2] }] };
@@ -279,9 +279,9 @@ function respond(schemaName: string, input: string): unknown {
     case "deck_command":
       return mockCommand(input);
     case "deck_spec":
-      return mockDeck(input, request);
+      return { ...mockDeck(input, request), thankYou: null };
     case "cine_spec":
-      return mockCine(input, request);
+      return { ...mockCine(input, request), thankYou: null };
     case "scene_spec":
       return mockSceneFor(request);
     case "scene_code":

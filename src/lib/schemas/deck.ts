@@ -124,9 +124,9 @@ const motionFields = {
 export const DeckSlideSchema = z.object({ ...slideFields, ...motionFields, scene: AiSceneSchema });
 export const DeckSpecSchema = z.object({ title: z.string(), theme: ThemeSchema, slides: z.array(DeckSlideSchema) });
 /**
- * Settings the owner edits by hand (the Design panel), never the model: the
- * Thank You slide the engine appends, footer branding and auto-play. Edits by
- * chat keep them (see the deck pipeline). Every part is optional in deck.json.
+ * Settings the owner edits by hand (the Design panel): the Thank You slide the
+ * engine appends, footer branding and auto-play. Edits by chat keep them, except
+ * the Thank You slide when the user asks (ThankYouEditSchema). Every part is optional in deck.json.
  */
 const CtaSchema = z.object({ label: z.string(), url: z.string() });
 const DeckSettingsInput = z
@@ -138,6 +138,27 @@ const DeckSettingsInput = z
   })
   .partial();
 export type DeckCta = z.infer<typeof CtaSchema>;
+
+/**
+ * The one setting the model may change: the Thank You slide, when the user asks
+ * for it in chat ("change the thank-you message"). Complete or null (OpenAI strict outputs).
+ */
+export const ThankYouEditSchema = z
+  .object({
+    enabled: z.boolean().describe("Show the Thank-you slide."),
+    title: z.string().describe("Its title, at most ~8 words."),
+    message: z.string().describe("Its message under the title, or empty."),
+    buttons: z.array(CtaSchema).describe("0-3 call-to-action buttons: label and an https://, mailto: or tel: link."),
+  })
+  .nullable()
+  .describe("The Thank-you slide the engine shows after the last slide, complete as it should be after this change; null to keep it as it is.");
+
+/** Settings with the model's Thank You slide change applied, checked like the Design panel's; null keeps them. */
+export function withThankYouEdit(settings: DeckSettings, edit: unknown): DeckSettings {
+  const parsed = ThankYouEditSchema.safeParse(edit);
+  if (!parsed.success || !parsed.data) return settings;
+  return normalizeSettings({ ...settings, thankYou: parsed.data });
+}
 export type DeckSettings = {
   thankYou: { enabled: boolean; title: string; message: string; buttons: DeckCta[] };
   footer: { enabled: boolean; logoUrl: string; name: string; link: string };

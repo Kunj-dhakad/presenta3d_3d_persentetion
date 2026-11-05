@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/mysql-prisma/client";
 import { CONTINUE, type JobContext } from "@/server/jobs/runner";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import { randomInt } from "node:crypto";
-import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, defaultDeckSettings, diversifyDeck, validateDeck, type DeckSpec } from "@/lib/schemas/deck";
+import { DeckSpecSchema, ENVIRONMENTS, ENVIRONMENT_HINTS, ThankYouEditSchema, defaultDeckSettings, diversifyDeck, validateDeck, withThankYouEdit, type DeckSpec } from "@/lib/schemas/deck";
 import { SCENE_PRESETS, presetCatalog } from "@/lib/deck-presets";
 import { diffStats, toFileMap } from "@/lib/vfs/apply";
 import { getFiles, markWorkingVersion, snapshot, writeFileSet } from "@/server/services/projects";
@@ -19,7 +19,7 @@ export const DECK_SYSTEM = `You are the presentation designer of Present 3D. You
 You do not write code. You write a DeckSpec: the content and art direction of each slide. A fixed three.js engine renders it with animated 3D scenes, glow and smooth transitions.
 
 Write a strong story: an opening hero slide, a clear arc, and a closing slide (a key takeaway or call to action). Use 5-10 slides unless the user asks otherwise.
-Do not write a "Thank you" slide: the engine adds its own Thank You slide after yours.
+Do not write a "Thank you" slide: the engine adds its own Thank You slide after yours. When the user asks to change, show or hide that Thank You slide, return it in thankYou (never as one of your slides); otherwise thankYou is null.
 Narration: every slide's notes is what a presenter says over it (read aloud with subtitles): 2-4 warm, spoken sentences, never empty.
 Content rules: titles at most ~8 words; at most 4 bullets per slide, each at most ~12 words; real, specific copy (no lorem ipsum, no placeholders). Write in the language the user writes in.
 Layouts: "hero" for the opening (and optionally the closing), "left"/"right" for explanatory slides (alternate them), "center" for a single big statement, "stats" for 2-4 headline numbers.
@@ -67,8 +67,12 @@ export function designBrief(): string {
   ].join("\n");
 }
 
-export const DECK_EDIT_RULES = `You are editing an existing deck. Return the COMPLETE updated deck.
+/** What the model returns: the deck, plus the Thank You slide when the user asks to change it. */
+const DeckOutputSchema = DeckSpecSchema.extend({ thankYou: ThankYouEditSchema });
+
+export const DECK_EDIT_RULES =`You are editing an existing deck. Return the COMPLETE updated deck.
 Apply exactly what the user asks; keep every other slide, word and setting unchanged. If the user refers to a slide by number, slides are numbered from 1.
+The current Thank You slide is given with the deck. When it is shown, viewers see it after your last slide, so "the thank-you slide" or "the end slide" means it: edit it through thankYou and leave the slides as they are.
 Exception: if the user asks for a presentation about a different topic (a new deck, not a change to this one), replace the whole deck: write a new story and a new design for the new topic, with a different palette, environment, font and scenes from the current deck (see the design brief). Do not keep the old colours or world.`;
 
 export function currentDeck(files: Map<string, string>): DeckSpec | null {
@@ -250,13 +254,14 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
       (
         await provider.structured({
           operation: existing ? "deck.edit" : "deck.generate",
-          schema: DeckSpecSchema,
+          schema: DeckOutputSchema,
           schemaName: "deck_spec",
           system: existing ? `${DECK_SYSTEM}\n\n${DECK_EDIT_RULES}` : DECK_SYSTEM,
           input: [
             history ? `Conversation so far:\n${history}` : "",
             // Scene code is left out: it is large and the model does not need it to edit slides.
             existing ? `Current deck (JSON):\n${JSON.stringify(deckForPrompt(existing))}` : "",
+            existing ? `Current Thank You slide (JSON):\n${JSON.stringify(existing.settings.thankYou)}` : "",
             `User request:\n${input.prompt}`,
             // For edits the brief is used only if the request turns out to be a new topic (see DECK_EDIT_RULES).
             existing ? `${brief}\n(Use this brief only if you are replacing the deck with a new topic.)` : brief,
@@ -295,8 +300,8 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
     }
     // No two slides may look alike, whatever the model chose.
     const reused = reuseScenes(diversifyDeck(v.deck), existing);
-    // Settings are the owner's (Design panel); the model never writes them.
-    const deck: DeckSpec = { ...reused.deck, settings: existing?.settings ?? defaultDeckSettings() };
+    // Settings are the owner's (Design panel); the model changes only the Thank You slide, when asked.
+    const deck: DeckSpec = { ...reused.deck, settings: withThankYouEdit(existing?.settings ?? defaultDeckSettings(), (raw as { thankYou?: unknown }).thankYou) };
     log(`Received “${deck.title}”: ${deck.slides.length} slides · ${deck.theme.environment} world · ${new Set(deck.slides.map((s) => s.transition)).size} transitions · ${deck.theme.font} font`);
     ctx.emit({ type: "stage", stage: "generate", state: "done", detail: `${deck.slides.length} slides` });
     ctx.progress(0.4);
