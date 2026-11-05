@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck, Sparkles, Check, ScanSearch, PenLine, Image as ImageIcon, Layers } from "lucide-react";
+import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck, Sparkles, Check, ScanSearch, SquarePen, Image as ImageIcon, Layers } from "lucide-react";
 import { useWorkspace } from "@/stores/workspace";
 import { api } from "@/lib/api-client";
 import { formatDiagnostic, type PreviewMessage } from "@/lib/build-types";
@@ -131,7 +131,7 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
       )}
 
       {/* The preview sits in a framed card with the page around it, never edge to edge. */}
-      <div ref={boxRef} className={cn("relative min-h-0 flex-1 overflow-hidden", viewport === "desktop" ? "p-4 sm:p-5" : "grid-dots flex items-center justify-center")}>
+      <div ref={boxRef} className={cn("relative min-h-0 flex-1 overflow-hidden", viewport === "desktop" || busy ? "p-4 sm:p-5" : "grid-dots flex items-center justify-center")}>
         {busy ? (
           <GeneratingSkeleton box={box} />
         ) : src ? (
@@ -218,109 +218,158 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
  */
 const STEPS: { label: string; icon: typeof Check; stages: PipelineStage[] }[] = [
   { label: "Analyzing Topic", icon: ScanSearch, stages: ["understand", "plan"] },
-  { label: "Writing Content", icon: PenLine, stages: ["generate", "repair"] },
+  { label: "Writing Content", icon: SquarePen, stages: ["generate", "repair"] },
   { label: "Designing Slides", icon: ImageIcon, stages: ["review", "images", "validate"] },
   { label: "Finalizing", icon: Layers, stages: ["finalize"] },
 ];
 
-/** A glossy stack of two slides, the second showing a picture. */
+/** The glossy stack of two slides from the design (the front one with a header and a picture). */
 function SlideStack({ size }: { size: number }) {
   return (
-    <div className="relative" style={{ width: size * 1.15, height: size }} aria-hidden="true">
-      <div className="absolute top-0 right-0 h-[78%] w-[82%] -rotate-6 rounded-[14%] bg-gradient-to-br from-[#5fd8ff]/70 to-[#0a5fc2]/70 ring-1 ring-white/25" />
-      <div className="absolute bottom-0 left-0 flex h-[78%] w-[82%] flex-col justify-between rounded-[14%] bg-gradient-to-br from-[#5fe0ff] via-[#1aa3f5] to-[#0752c4] p-[10%] shadow-[0_10px_40px_-6px_rgb(1_196_249/0.75)] ring-1 ring-white/40">
-        <ImageIcon className="text-white drop-shadow" style={{ width: size * 0.32, height: size * 0.32 }} strokeWidth={2.2} />
-        <div className="grid gap-[6%]">
-          <span className="block h-[5px] w-[80%] rounded-full bg-white/85" />
-          <span className="block h-[5px] w-[55%] rounded-full bg-white/60" />
-        </div>
-      </div>
-    </div>
+    <svg width={size} height={size * 1.08} viewBox="0 0 120 130" className="drop-shadow-[0_8px_22px_rgb(1_196_249/0.7)]" aria-hidden="true">
+      <defs>
+        <linearGradient id="p3-gen-back" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#7fe3ff" />
+          <stop offset="1" stopColor="#1576d6" />
+        </linearGradient>
+        <linearGradient id="p3-gen-front" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#6fe6ff" />
+          <stop offset=".45" stopColor="#1ea8f7" />
+          <stop offset="1" stopColor="#0a4fc0" />
+        </linearGradient>
+        <linearGradient id="p3-gen-gloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity=".55" />
+          <stop offset=".5" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <rect x="36" y="6" width="74" height="90" rx="13" fill="url(#p3-gen-back)" opacity=".8" stroke="#fff" strokeOpacity=".45" strokeWidth="1.5" />
+      <rect x="12" y="28" width="80" height="94" rx="13" fill="url(#p3-gen-front)" stroke="#fff" strokeOpacity=".7" strokeWidth="1.5" />
+      <rect x="12" y="28" width="80" height="50" rx="13" fill="url(#p3-gen-gloss)" />
+      <rect x="24" y="40" width="26" height="16" rx="3" fill="#fff" fillOpacity=".92" />
+      <rect x="56" y="42" width="24" height="4.5" rx="2.2" fill="#fff" fillOpacity=".9" />
+      <rect x="56" y="51" width="17" height="4.5" rx="2.2" fill="#fff" fillOpacity=".7" />
+      <rect x="24" y="66" width="56" height="42" rx="6" fill="none" stroke="#fff" strokeWidth="4.5" />
+      <circle cx="38" cy="79" r="4.5" fill="#fff" />
+      <path d="M28 104 L45 87 L55 97 L63 89 L76 104 Z" fill="#fff" />
+    </svg>
+  );
+}
+
+/** A four-pointed star, as sprinkled over the design's background. */
+function Twinkle({ x, y, size, delay }: { x: string; y: string; size: number; delay: string }) {
+  return (
+    <svg className="absolute text-white animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, width: size, height: size, animationDelay: delay }} viewBox="0 0 10 10" aria-hidden="true">
+      <path d="M5 0 C5.4 3.6 6.4 4.6 10 5 C6.4 5.4 5.4 6.4 5 10 C4.6 6.4 3.6 5.4 0 5 C3.6 4.6 4.6 3.6 5 0 Z" fill="currentColor" />
+    </svg>
   );
 }
 
 /**
  * Shown instead of the preview while a presentation is being made or changed:
  * nothing half-made (slides without their images or scenes) is ever shown; the
- * finished presentation appears at once when the job completes. One slide-shaped
- * stage in the deck's dark look, centred in the pane: the progress and its four steps.
+ * finished presentation appears at once when the job completes. As in the
+ * design (Figma "Editor – Generating"): a dark card filling the pane with the
+ * progress and its four steps; every size follows the card's width.
  */
 function GeneratingSkeleton({ box }: { box: { w: number; h: number } }) {
   const job = useWorkspace((s) => s.job);
   const pct = Math.round(Math.min(0.97, Math.max(0.03, job?.progress ?? 0)) * 100);
   // The step running now: the last one any of whose stages has started (or finished).
   const active = Math.max(0, ...STEPS.map((s, i) => (s.stages.some((id) => job?.stages[id]) ? i : 0)));
-  // The slide fits the pane, whichever way it is limited.
-  const w = box.w && box.h ? Math.max(200, Math.min(box.w - 40, 1040, (box.h - 40) * (16 / 9))) : 0;
-  const compact = w < 520;
-  const dot = compact ? 26 : 38;
+  // The design's unit: the card's width, unless the pane is too short for the content at that size.
+  const u = box.w && box.h ? Math.max(300, Math.min(box.w, box.h / 0.68, 1100)) : 0;
+  const px = (k: number) => Math.round(u * k * 10) / 10;
+  const compact = u < 440;
+  const dot = px(0.046);
 
   return (
-    <div className="flex h-full items-center justify-center overflow-hidden p-4" role="status" aria-live="polite">
-      <div className="relative shrink-0 animate-rise" style={{ width: w || "100%" }}>
-        <div className="absolute -inset-1.5 rounded-[24px] bg-brand-gradient opacity-40 blur-xl animate-breathe motion-reduce:animate-none" aria-hidden="true" />
-        <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-2xl bg-[#04121f] shadow-[0_30px_70px_-24px_rgb(0_136_204/0.45)] ring-1 ring-white/10">
-          <div className="absolute inset-0" style={{ background: "radial-gradient(55% 60% at 50% 30%, rgb(1 196 249 / 0.16), transparent 70%), radial-gradient(45% 55% at 92% 8%, rgb(0 136 204 / 0.22), transparent 70%), radial-gradient(45% 55% at 6% 96%, rgb(0 136 204 / 0.25), transparent 70%)" }} aria-hidden="true" />
-          {[["12%", "24%", "0s"], ["78%", "18%", ".6s"], ["30%", "12%", "1.1s"], ["88%", "56%", ".3s"], ["10%", "60%", "1.5s"], ["66%", "10%", ".9s"]].map(([x, y, d]) => (
-            <span key={x + y} className="absolute size-[3px] rounded-full bg-white/90 animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, animationDelay: d }} aria-hidden="true" />
+    <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
+      <div className="relative flex size-full animate-rise flex-col items-center justify-center overflow-hidden rounded-2xl bg-[#04182a] shadow-[0_0_0_1px_rgb(1_196_249/0.25),0_0_28px_rgb(1_196_249/0.35)]">
+        {/* Background: a soft light behind the middle, faint light columns at the top, stars */}
+        <div className="absolute inset-0" style={{ background: "radial-gradient(50% 45% at 50% 38%, rgb(18 120 190 / 0.32), transparent 72%), linear-gradient(180deg, #06223a 0%, #04182a 55%, #031321 100%)" }} aria-hidden="true" />
+        <div className="absolute inset-x-[30%] top-0 flex h-[42%] items-start justify-between opacity-35" aria-hidden="true">
+          {[0.55, 0.8, 0.45, 0.95, 0.6, 0.75, 0.5].map((h, i) => (
+            <span key={i} className="w-[9%] bg-linear-to-b from-[#1a5f8f]/50 to-transparent" style={{ height: `${h * 100}%` }} />
           ))}
-          {/* Waves along the bottom */}
-          <svg className="absolute inset-x-0 bottom-0 h-[22%] w-full" viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M0 140 C 180 60 340 200 520 130 S 860 50 1000 120 V200 H0 Z" fill="rgb(1 196 249 / 0.10)" />
-            <path d="M0 170 C 220 110 380 210 600 160 S 880 110 1000 150 V200 H0 Z" fill="rgb(0 136 204 / 0.18)" />
-            <path d="M0 140 C 180 60 340 200 520 130 S 860 50 1000 120" fill="none" stroke="rgb(1 196 249 / 0.55)" strokeWidth="2" />
-          </svg>
-          <div className="absolute top-[5%] left-[4%] flex items-center gap-1.5 rounded-full bg-brand-3/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/85 ring-1 ring-brand-3/30 backdrop-blur" aria-hidden="true">
-            <Sparkles className="size-3 text-brand-3" /> AI is working
-          </div>
+        </div>
+        <Twinkle x="19%" y="12%" size={px(0.016)} delay="0s" />
+        <Twinkle x="15%" y="34%" size={px(0.01)} delay=".8s" />
+        <Twinkle x="77%" y="9%" size={px(0.012)} delay="1.3s" />
+        {[["10%", "47%", ".4s"], ["83%", "29%", "1s"], ["92%", "22%", ".2s"], ["88%", "45%", "1.6s"], ["70%", "40%", ".6s"]].map(([x, y, d]) => (
+          <span key={x + y} className="absolute size-0.5 rounded-full bg-white/80 animate-breathe motion-reduce:animate-none" style={{ left: x, top: y, animationDelay: d }} aria-hidden="true" />
+        ))}
+        {/* Glowing waves along the bottom */}
+        <svg className="absolute inset-x-0 bottom-0 h-[18%] w-full" viewBox="0 0 1000 180" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="p3-gen-wave" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#1ec8ff" stopOpacity=".9" />
+              <stop offset=".45" stopColor="#1ec8ff" stopOpacity=".15" />
+              <stop offset="1" stopColor="#1ec8ff" stopOpacity=".95" />
+            </linearGradient>
+          </defs>
+          <path d="M0 110 C 200 40 380 170 560 120 S 860 60 1000 90 V180 H0 Z" fill="rgb(13 110 180 / 0.18)" />
+          <path d="M0 150 C 240 90 420 190 640 140 S 900 100 1000 130 V180 H0 Z" fill="rgb(1 150 230 / 0.16)" />
+          <path d="M0 110 C 200 40 380 170 560 120 S 860 60 1000 90" fill="none" stroke="url(#p3-gen-wave)" strokeWidth="2.5" />
+          <path d="M0 150 C 240 90 420 190 640 140 S 900 100 1000 130" fill="none" stroke="url(#p3-gen-wave)" strokeWidth="1.5" opacity=".7" />
+        </svg>
 
-          <div className="relative flex w-[78%] flex-col items-center text-center text-white">
-            {!compact && (
-              <div className="animate-float motion-reduce:animate-none" style={{ marginBottom: w * 0.03 }}>
-                <SlideStack size={Math.round(w * 0.1)} />
-              </div>
-            )}
-            <p className={cn("font-bold tracking-tight", compact ? "text-base" : w > 820 ? "text-3xl" : "text-2xl")}>
-              Generating Your <span className="text-brand-3">Presentation</span>
-            </p>
-            {!compact && <p className="mt-1.5 text-sm text-brand-3/80">Creating slides, adding content, and designing for you…</p>}
+        <div className="absolute flex items-center gap-1.5 rounded-full border border-brand-3/35 bg-[#062a44]/80 font-semibold text-white backdrop-blur" style={{ left: px(0.033), top: px(0.033), padding: `${px(0.005)}px ${px(0.014)}px`, fontSize: Math.max(10, px(0.014)) }} aria-hidden="true">
+          <Sparkles className="text-brand-3" style={{ width: Math.max(10, px(0.015)), height: Math.max(10, px(0.015)) }} /> AI is working
+        </div>
 
-            {/* Progress bar, with a glowing head, and the percentage beside it */}
-            <div className={cn("flex w-[86%] items-center gap-3", compact ? "mt-3" : "mt-6")}>
-              <div className="relative h-2 flex-1 rounded-full bg-white/10 ring-1 ring-white/5">
-                <div className="relative h-full rounded-full bg-gradient-to-r from-brand to-brand-3 shadow-[0_0_14px_rgb(1_196_249/0.6)] transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }}>
-                  <span className="absolute top-1/2 right-0 size-3 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_4px_rgb(1_196_249/0.8)]" />
-                </div>
-              </div>
-              <span className={cn("shrink-0 font-bold tabular-nums", compact ? "text-sm" : "text-lg")}>{pct}%</span>
+        <div className="relative flex flex-col items-center text-center text-white" style={{ width: px(0.82), marginBottom: px(0.03) }}>
+          {!compact && (
+            <div className="animate-float motion-reduce:animate-none" style={{ marginBottom: px(0.04) }}>
+              <SlideStack size={px(0.118)} />
             </div>
+          )}
+          <p className="leading-tight font-bold tracking-tight" style={{ fontSize: Math.max(16, px(0.036)) }}>
+            Generating Your <span className="text-[#22c3ff]">Presentation</span>
+          </p>
+          {!compact && (
+            <p className="text-[#56c6f5]" style={{ marginTop: px(0.018), fontSize: px(0.021) }}>
+              Creating slides, adding content, and designing for you…
+            </p>
+          )}
 
-            {/* The four steps, joined by a line that fills as they finish */}
-            <ol className={cn("relative grid w-full grid-cols-4", compact ? "mt-4" : "mt-7")}>
-              <span className="absolute h-px bg-white/15" style={{ top: dot / 2, left: "12.5%", right: "12.5%" }} aria-hidden="true" />
-              <span className="absolute h-px bg-brand-3 transition-[width] duration-700" style={{ top: dot / 2, left: "12.5%", width: `${(active / (STEPS.length - 1)) * 75}%` }} aria-hidden="true" />
-              {STEPS.map((s, i) => {
-                const state = i < active ? "done" : i === active ? "active" : "todo";
-                const Icon = state === "done" ? Check : s.icon;
-                return (
-                  <li key={s.label} className="relative flex flex-col items-center gap-2" aria-current={state === "active" ? "step" : undefined}>
-                    <span
-                      className={cn(
-                        "flex items-center justify-center rounded-full transition-colors",
-                        state === "done" && "bg-brand-3 text-[#04121f] shadow-[0_0_16px_rgb(1_196_249/0.55)]",
-                        state === "active" && "bg-[#06243a] text-brand-3 ring-2 ring-brand-3 shadow-[0_0_20px_rgb(1_196_249/0.6)]",
-                        state === "todo" && "bg-[#071a2b] text-white/45 ring-1 ring-white/20",
-                      )}
-                      style={{ width: dot, height: dot }}
-                    >
-                      <Icon className={compact ? "size-3.5" : "size-[18px]"} strokeWidth={state === "done" ? 3 : 2} />
-                    </span>
-                    <span className={cn("font-semibold", compact ? "text-[9px]" : "text-xs", state === "todo" ? "text-white/45" : "text-white")}>{s.label}</span>
-                  </li>
-                );
-              })}
-            </ol>
+          {/* Progress bar with a glowing head, and the percentage beside it */}
+          <div className="flex w-full items-center" style={{ marginTop: px(compact ? 0.03 : 0.048), gap: px(0.016) }}>
+            <div className="relative flex-1 rounded-full bg-[#0a2c47] ring-1 ring-[#1d5c88]/60" style={{ height: Math.max(6, px(0.016)) }}>
+              <div className="relative h-full rounded-full bg-linear-to-r from-[#0b4f8c] via-[#119bea] to-[#3fd6ff] shadow-[0_0_14px_rgb(1_196_249/0.55)] transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }}>
+                <span className="absolute top-1/2 right-0 translate-x-1/3 -translate-y-1/2 rounded-full bg-[#dff7ff] shadow-[0_0_10px_5px_rgb(63_214_255/0.85)]" style={{ width: px(0.03), height: Math.max(6, px(0.016)) }} />
+              </div>
+            </div>
+            <span className="shrink-0 font-bold tabular-nums" style={{ fontSize: Math.max(13, px(0.026)) }}>{pct}%</span>
           </div>
+
+          {/* The four steps, joined by lines that light up as they finish */}
+          <ol className="relative grid grid-cols-4" style={{ width: px(0.8), marginTop: px(compact ? 0.035 : 0.045) }}>
+            {STEPS.slice(1).map((s, i) => (
+              <span key={s.label} className={cn("absolute h-[1.5px] transition-colors", i < active ? "bg-[#22c3ff]" : "bg-[#1f557c]")} style={{ top: dot / 2, left: `calc(${12.5 + i * 25}% + ${dot / 2 + 4}px)`, width: `calc(25% - ${dot + 8}px)` }} aria-hidden="true" />
+            ))}
+            {STEPS.map((s, i) => {
+              const state = i < active ? "done" : i === active ? "active" : "todo";
+              const Icon = state === "done" ? Check : s.icon;
+              return (
+                <li key={s.label} className="relative flex flex-col items-center" aria-current={state === "active" ? "step" : undefined}>
+                  <span
+                    className={cn(
+                      "flex items-center justify-center rounded-full transition-colors",
+                      state === "done" && "bg-linear-to-b from-[#3fd6ff] to-[#0f9fe8] text-white shadow-[0_0_16px_rgb(1_196_249/0.6)]",
+                      state === "active" && "bg-[#062a44] text-[#bfefff] ring-2 ring-[#29c6ff] shadow-[0_0_18px_rgb(1_196_249/0.65)]",
+                      state === "todo" && "bg-[#06213a] text-[#5bb8ec] ring-[1.5px] ring-[#2a6f9e]",
+                    )}
+                    style={{ width: dot, height: dot }}
+                  >
+                    <Icon style={{ width: dot * 0.48, height: dot * 0.48 }} strokeWidth={state === "done" ? 3 : 2.2} />
+                  </span>
+                  <span className={cn("font-bold whitespace-nowrap", state === "todo" ? "text-[#4fb0e6]" : "text-white")} style={{ marginTop: px(0.014), fontSize: Math.max(9, px(0.0185)) }}>
+                    {s.label}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </div>
     </div>
