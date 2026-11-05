@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { phpPost } from "@/lib/php-api";
 import { cn } from "@/lib/utils";
 import { SubHeading, ToggleRow } from "./settings-parts";
+import { FEEDBACK_STYLES, FeedbackIcon, type FeedbackStyle } from "./feedback-style";
 
 /**
  * The presenter part of the Settings drawer: what plays over the
@@ -45,6 +46,8 @@ type PresenterSettings = {
   autoresponder_id: number | null;
   list_id: string;
   feedback: boolean;
+  /** The feedback form's look in the viewer (absent from an older server: stars). */
+  feedback_style?: FeedbackStyle;
   /** AI summary report: viewers can download the key summary (PDF) at the end. */
   summary: boolean;
   avatar_video_status: AvatarVideoStatus;
@@ -223,6 +226,7 @@ export function usePresenterSettings(projectId: string, open: boolean) {
         autoresponder_id: form.lead_form ? (form.autoresponder_id ?? "") : "",
         list_id: form.lead_form ? form.list_id : "",
         feedback: form.feedback,
+        feedback_style: form.feedback_style ?? "stars",
         summary: form.summary,
       });
       setForm(r.settings);
@@ -675,7 +679,37 @@ export function SummarySection({ p }: { p: Loaded }) {
 export function FeedbackSection({ p }: { p: Loaded }) {
   return (
     <>
-      <ToggleRow id="presenter-feedback" title="Ask for feedback" hint="At the end, asks each visitor once for a 1-5 star rating and a comment." checked={p.form.feedback} onChange={(v) => p.set({ feedback: v })} first />
+      <ToggleRow id="presenter-feedback" title="Ask for feedback" hint="At the end, asks each visitor once for a 1-5 rating and a comment." checked={p.form.feedback} onChange={(v) => p.set({ feedback: v })} first />
+      <div className={cn("grid gap-2", !p.form.feedback && "pointer-events-none opacity-50")}>
+        <SubHeading>Rating style</SubHeading>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Rating style">
+          {FEEDBACK_STYLES.map((s) => {
+            const on = (p.form.feedback_style ?? "stars") === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => p.set({ feedback_style: s.id })}
+                className={cn(
+                  "grid gap-1.5 rounded-lg border p-2 text-left transition-colors",
+                  on ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/50",
+                )}
+              >
+                <span className="flex gap-1">
+                  {([1, 3, 5] as const).map((lv) => (
+                    <span key={lv} className="flex size-8 items-center justify-center rounded-md bg-sky-100">
+                      <FeedbackIcon style={s.id} level={lv} className="size-6" />
+                    </span>
+                  ))}
+                </span>
+                <span className="flex items-center gap-1 text-xs font-semibold">{on ? <Check className="size-3.5 text-primary" /> : null}{s.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <SaveButton p={p} />
     </>
   );
