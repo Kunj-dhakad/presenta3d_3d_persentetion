@@ -45,7 +45,11 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
       const d = e.data as PreviewMessage;
       if (!d || d.source !== "deck3d-preview") return;
       const buildId = shownBuildRef.current;
-      if (d.type === "ready") setLoading(false);
+      if (d.type === "ready") {
+        setLoading(false);
+        // The editor's preview needs no fullscreen button (the deck hides it on this request).
+        frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "chrome", fullscreen: false }, "*");
+      }
       else if (d.type === "slide") {
         setSlide(Number.isInteger(d.index) && d.index > 0 ? d.index : 1);
         // A presentation is showing: ask it for a picture of slide 1 (drawn once slide 1 has settled).

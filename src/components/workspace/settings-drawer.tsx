@@ -55,7 +55,7 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3.5 thin-scroll">
           <Accordion type="single" collapsible defaultValue="template" className="grid gap-2.5">
-            <Section value="template" icon={<Palette />} tone="blue" title="Template & colours">
+            <Section value="template" icon={<Palette />} tone="blue" title="Colours">
               <DesignPart d={d} ready={designReady}>{(x) => <TemplateSection d={x} />}</DesignPart>
             </Section>
             {/* The presenter avatar is switched off: the talking avatar now belongs to the presentation's

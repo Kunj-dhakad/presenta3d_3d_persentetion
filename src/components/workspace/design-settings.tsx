@@ -125,8 +125,13 @@ function SaveButton({ d, id, onClick, label = "Save" }: { d: DesignState; id: st
   );
 }
 
-export function TemplateSection({ d }: { d: Loaded }) {
-  const { deck, colors, busy } = d;
+/**
+ * The ready-made templates (look + colours). Hidden from the Settings drawer for now:
+ * kept here to bring back by rendering <TemplatePicker d={d} /> in TemplateSection.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept to bring the templates back
+function TemplatePicker({ d }: { d: Loaded }) {
+  const { deck, busy } = d;
   return (
     <>
       <SubHeading first>Template</SubHeading>
@@ -157,8 +162,16 @@ export function TemplateSection({ d }: { d: Loaded }) {
           );
         })}
       </div>
+    </>
+  );
+}
 
-      <SubHeading>Colour palettes</SubHeading>
+/** Colours of the presentation: palettes and custom colours (the templates are hidden: TemplatePicker). */
+export function TemplateSection({ d }: { d: Loaded }) {
+  const { colors, busy } = d;
+  return (
+    <>
+      <SubHeading first>Colour palettes</SubHeading>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {DECK_PALETTES.map((p) => (
           <button key={p.id} disabled={busy !== null} onClick={() => void d.save(`palette:${p.id}`, { design: p.colors }, `“${p.name}” colours applied`)} className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-2 text-left text-xs transition hover:border-brand/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60">

@@ -411,6 +411,15 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen?.().catch(() => {});
 }
 
+// The fullscreen button is hidden while the deck is fullscreen, and when the page showing it
+// asks (the presenter / public player and the editor preview: action "chrome", fullscreen false).
+const fsBtn = document.getElementById("fs");
+let fsHiddenByHost = false;
+function syncFullscreenButton() {
+  if (fsBtn) fsBtn.style.display = fsHiddenByHost || document.fullscreenElement ? "none" : "";
+}
+document.addEventListener("fullscreenchange", syncFullscreenButton);
+
 window.addEventListener("keydown", (e) => {
   if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
   else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
@@ -470,6 +479,10 @@ window.addEventListener("message", (e) => {
   else if (action === "thumbnail") {
     thumbWanted = true;
     scheduleThumbnail();
+  }
+  else if (action === "chrome") {
+    fsHiddenByHost = e.data.fullscreen === false;
+    syncFullscreenButton();
   }
   // The PHP viewer narrates the deck and moves it on when a slide's voice ends;
   // the deck's own timer must not move it as well.
