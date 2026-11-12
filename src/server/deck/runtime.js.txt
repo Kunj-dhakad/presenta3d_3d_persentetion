@@ -1363,6 +1363,8 @@ window.addEventListener("message", (e) => {
   else if (action === "chrome") {
     fsHiddenByHost = e.data.fullscreen === false;
     syncFullscreenButton();
+    // The host's own controls sit top right, over the "← → or scroll to travel" hint: hide it.
+    if (e.data.hint === false && hintEl) hintEl.style.display = "none";
   }
   // The PHP viewer narrates the deck and moves it on when a slide's voice ends;
   // the deck's own timer must not move it as well.

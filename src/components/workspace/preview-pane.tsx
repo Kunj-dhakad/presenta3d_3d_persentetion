@@ -51,7 +51,7 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
       if (d.type === "ready") {
         setLoading(false);
         // The editor's preview needs no fullscreen button (the deck hides it on this request).
-        frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "chrome", fullscreen: false }, "*");
+        frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "chrome", fullscreen: false, hint: false }, "*");
       }
       else if (d.type === "slide") {
         setSlide(Number.isInteger(d.index) && d.index > 0 ? d.index : 1);
