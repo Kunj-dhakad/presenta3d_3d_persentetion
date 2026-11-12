@@ -10,13 +10,13 @@ import { IconTile, StatePill } from "./settings-parts";
 
 type Tone = React.ComponentProps<typeof IconTile>["tone"];
 
-function Section({ value, icon, tone, title, on, children }: { value: string; icon: React.ReactNode; tone: Tone; title: string; on?: boolean; children: React.ReactNode }) {
+function Section({ value, icon, tone, title, on, locked, children }: { value: string; icon: React.ReactNode; tone: Tone; title: string; on?: boolean; locked?: boolean; children: React.ReactNode }) {
   return (
     <AccordionItem value={value}>
       <AccordionTrigger>
         <IconTile tone={tone}>{icon}</IconTile>
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        <StatePill on={on} />
+        <StatePill on={on} locked={locked} />
       </AccordionTrigger>
       <AccordionContent>{children}</AccordionContent>
     </AccordionItem>
@@ -80,7 +80,7 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
             <Section value="brand" icon={<Stamp />} tone="slate" title="Footer branding" on={deck?.footer.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <BrandingSection d={x} />}</DesignPart>
             </Section>
-            <Section value="lead" icon={<Contact />} tone="blue" title="Lead form" on={form?.lead_form}>
+            <Section value="lead" icon={<Contact />} tone="blue" title="Lead form" on={form?.lead_form} locked={!!p.data?.plan && !p.data.plan.lead_form}>
               <PresenterGate p={p}>{(x) => <LeadSection p={x} slideCount={designReady ? d.deck?.slideCount : undefined} />}</PresenterGate>
             </Section>
             <Section value="feedback" icon={<Star />} tone="amber" title="Audience feedback" on={form?.feedback}>

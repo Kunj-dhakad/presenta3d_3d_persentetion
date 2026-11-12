@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Pause, Play, Search, Sparkles, Upload } from "lucide-react";
+import { Check, Loader2, Lock, Pause, Play, Search, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +71,9 @@ type Stats = {
   slide_views: number[];
   recent_feedback: { rating: number; message: string; at: string }[];
 };
-type SettingsResponse = { settings: PresenterSettings; voices: Voice[]; avatars: Avatar[]; default_avatar?: string; autoresponders: Responder[]; stats: Stats };
+/** What the owner's plan includes (absent from an older server: everything). */
+type PlanInfo = { lead_form: boolean; autoresponder: boolean; lead_form_message?: string; autoresponder_message?: string };
+type SettingsResponse = { settings: PresenterSettings; plan?: PlanInfo; voices: Voice[]; avatars: Avatar[]; default_avatar?: string; autoresponders: Responder[]; stats: Stats };
 
 const WELCOME_MAX = 300;
 /** Making a talking avatar: one background step may take ~2 minutes (narration + DupDub). */
@@ -617,6 +619,19 @@ export function LeadSection({ p, slideCount }: { p: Loaded; slideCount?: number 
   const afterOptions = Array.from({ length: slideCount || 15 }, (_, i) => i + 1);
   // A saved slide the deck no longer has (it got shorter) stays listed, so the field is not blank.
   if (!afterOptions.includes(form.lead_after_slide)) afterOptions.push(form.lead_after_slide);
+  // Not in the owner's plan (Lead forms come with OTO3 Automation): locked, no toggle.
+  if (data.plan && !data.plan.lead_form) {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3" role="note">
+        <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">Built-in lead form</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{data.plan.lead_form_message || "Lead forms are not in your plan. Upgrade your plan to use them."}</p>
+        </div>
+      </div>
+    );
+  }
+  const responderLocked = !!data.plan && !data.plan.autoresponder;
   return (
     <>
       <ToggleRow id="presenter-lead" title="Built-in lead form" hint="Asks each visitor once for their details. Leads appear on your Leads page and in the CRM." checked={form.lead_form} onChange={(v) => p.set({ lead_form: v })} first>
@@ -634,7 +649,7 @@ export function LeadSection({ p, slideCount }: { p: Loaded; slideCount?: number 
         </div>
         <SubHeading>Send leads to</SubHeading>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Select value={form.autoresponder_id ? String(form.autoresponder_id) : "none"} onValueChange={(v) => { p.setLists([]); p.set({ autoresponder_id: v === "none" ? null : Number(v), list_id: "" }); }}>
+          <Select disabled={responderLocked} value={form.autoresponder_id ? String(form.autoresponder_id) : "none"} onValueChange={(v) => { p.setLists([]); p.set({ autoresponder_id: v === "none" ? null : Number(v), list_id: "" }); }}>
             <SelectTrigger aria-label="Autoresponder"><SelectValue placeholder="Autoresponder" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="none">No autoresponder (Leads page only)</SelectItem>
@@ -652,7 +667,9 @@ export function LeadSection({ p, slideCount }: { p: Loaded; slideCount?: number 
             </Select>
           ) : null}
         </div>
-        {data.autoresponders.length === 0 ? <p className="text-xs text-muted-foreground">Connect an autoresponder in Integrations to send leads to a mailing list.</p> : null}
+        {responderLocked ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Lock className="size-3.5" aria-hidden />{data.plan?.autoresponder_message || "Autoresponder integrations are not in your plan."}</p>
+        ) : data.autoresponders.length === 0 ? <p className="text-xs text-muted-foreground">Connect an autoresponder in Integrations to send leads to a mailing list.</p> : null}
       </ToggleRow>
       <SaveButton p={p} />
     </>

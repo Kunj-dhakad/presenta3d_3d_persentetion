@@ -41,7 +41,9 @@ export function IconTile({ tone, children }: { tone: keyof typeof TILE_TONES; ch
 }
 
 /** "On" / "Off" pill on a section header; nothing while unknown. */
-export function StatePill({ on }: { on: boolean | undefined }) {
+export function StatePill({ on, locked }: { on: boolean | undefined; locked?: boolean }) {
+  // Not in the owner's plan.
+  if (locked) return <span className="mr-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">Locked</span>;
   if (on === undefined) return null;
   return (
     <span className={cn("mr-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold", on ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground")}>{on ? "On" : "Off"}</span>
