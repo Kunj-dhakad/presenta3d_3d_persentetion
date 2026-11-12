@@ -15,7 +15,7 @@ import type { BuildSummary } from "@/lib/build-types";
 import { cn } from "@/lib/utils";
 import { getParentBranding } from "@/components/embed/parent-bridge";
 import { phpPost } from "@/lib/php-api";
-import { SubHeading, ToggleRow } from "./settings-parts";
+import { ACTION_BTN, SubHeading, ToggleRow } from "./settings-parts";
 
 /**
  * The design part of the Settings drawer: templates and colours, the Thank
@@ -25,23 +25,14 @@ import { SubHeading, ToggleRow } from "./settings-parts";
 
 type DeckView = { title: string; style: "3d" | "cinematic"; theme: DeckSpec["theme"]; colors: DeckColors; settings: DeckSettings; slideCount: number };
 
+// In the design's order (two columns): Background, Text / 3D color 1, 3D color 2 / Accent.
 const COLOR_FIELDS: [keyof DeckColors, string][] = [
   ["background", "Background"],
   ["text", "Text"],
+  ["primary", "3D color 1"],
+  ["secondary", "3D color 2"],
   ["accent", "Accent"],
-  ["primary", "3D colour 1"],
-  ["secondary", "3D colour 2"],
 ];
-
-function Swatches({ colors, className }: { colors: DeckColors; className?: string }) {
-  return (
-    <div className={cn("flex overflow-hidden rounded-md border border-border", className)} aria-hidden>
-      {[colors.background, colors.accent, colors.primary, colors.secondary, colors.text].map((c, i) => (
-        <span key={i} className="h-full flex-1" style={{ background: c }} />
-      ))}
-    </div>
-  );
-}
 
 /** A small picture of a template: its background, a glow in its 3D colours and the deck title. */
 function TemplateArt({ colors, title }: { colors: DeckColors; title: string }) {
@@ -119,8 +110,8 @@ export function DesignGate({ d, children }: { d: DesignState; children: (d: Load
 
 function SaveButton({ d, id, onClick, label = "Save" }: { d: DesignState; id: string; onClick: () => void; label?: string }) {
   return (
-    <div className="mt-4 flex justify-end">
-      <Button size="sm" disabled={d.busy !== null} onClick={onClick}>{d.busy === id ? <Loader2 className="animate-spin" /> : <Check />} {label}</Button>
+    <div className="mt-[15px] flex justify-end">
+      <Button className={ACTION_BTN} disabled={d.busy !== null} onClick={onClick}>{d.busy === id && <Loader2 className="animate-spin" />} {label}</Button>
     </div>
   );
 }
@@ -166,35 +157,50 @@ function TemplatePicker({ d }: { d: Loaded }) {
   );
 }
 
-/** Colours of the presentation: palettes and custom colours (the templates are hidden: TemplatePicker). */
+/**
+ * Colours of the presentation, as in the Figma "Colors" section: palette cards (a click applies one)
+ * and custom colours with "Apply Color" (the templates are hidden: TemplatePicker).
+ */
 export function TemplateSection({ d }: { d: Loaded }) {
   const { colors, busy } = d;
   return (
     <>
-      <SubHeading first>Colour palettes</SubHeading>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <SubHeading first>Color palettes</SubHeading>
+      <div className="flex flex-wrap justify-center gap-[15px]">
         {DECK_PALETTES.map((p) => (
-          <button key={p.id} disabled={busy !== null} onClick={() => void d.save(`palette:${p.id}`, { design: p.colors }, `“${p.name}” colours applied`)} className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-2 text-left text-xs transition hover:border-brand/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60">
-            <Swatches colors={p.colors} className="h-6" />
-            <span className="flex items-center gap-1">{busy === `palette:${p.id}` && <Loader2 className="size-3 animate-spin" />}{p.name}</span>
+          <button
+            key={p.id}
+            disabled={busy !== null}
+            title={`Apply “${p.name}”`}
+            onClick={() => void d.save(`palette:${p.id}`, { design: p.colors }, `“${p.name}” colours applied`)}
+            className="flex w-[106px] flex-col items-center gap-2.5 rounded-xl border border-black/5 bg-[#f4f8fb] p-2.5 transition hover:border-[#00a6ee]/40 hover:bg-white focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
+          >
+            <span className="flex h-[21px] w-full overflow-hidden rounded-md bg-white" aria-hidden>
+              {p.swatch.map((c, i) => <span key={i} className="h-full flex-1" style={{ background: c }} />)}
+            </span>
+            <span className="flex items-center gap-1 text-xs leading-[1.26] font-medium text-black/60">{busy === `palette:${p.id}` && <Loader2 className="size-3 animate-spin" />}{p.name}</span>
           </button>
         ))}
       </div>
 
-      <SubHeading>Custom colours</SubHeading>
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+      <div className="mt-[15px] border-t border-black/10" />
+      <SubHeading>Custom palettes</SubHeading>
+      <div className="grid grid-cols-2 gap-x-[15px] gap-y-2.5 rounded-xl border border-black/5 bg-[#f4f8fb] p-[15px]">
         {/* Cinematic slides are photographs: only the background, text and accent colours apply. */}
         {COLOR_FIELDS.filter(([key]) => d.deck.style !== "cinematic" || (key !== "primary" && key !== "secondary")).map(([key, label]) => (
-          <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <label key={key} className="flex h-[26px] cursor-pointer items-center justify-between gap-2 rounded-md border border-[#e5e7eb] bg-white pr-[5px] pl-2.5 text-[10px] leading-normal text-[#6b7280]" title={colors[key]}>
             {label}
-            <span className="flex items-center gap-1.5">
-              <input type="color" value={colors[key]} onChange={(e) => d.setColors({ ...colors, [key]: e.target.value })} className="h-8 w-9 shrink-0 cursor-pointer rounded-md border border-border bg-transparent" />
-              <code className="truncate text-[10.5px]">{colors[key]}</code>
-            </span>
+            <input
+              type="color"
+              value={colors[key]}
+              onChange={(e) => d.setColors({ ...colors, [key]: e.target.value })}
+              aria-label={`${label} colour`}
+              className="h-4 w-[45px] shrink-0 cursor-pointer appearance-none rounded border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+            />
           </label>
         ))}
       </div>
-      <SaveButton d={d} id="colors" label="Apply colours" onClick={() => void d.save("colors", { design: colors }, "Colours applied")} />
+      <SaveButton d={d} id="colors" label="Apply Color" onClick={() => void d.save("colors", { design: colors }, "Colours applied")} />
     </>
   );
 }

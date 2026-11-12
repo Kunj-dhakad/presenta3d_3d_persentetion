@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Mic, MicOff } from "lucide-react";
+import { MicOff } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { FigMic } from "./figma-icons";
 
 /** The browser's speech recognition (Chrome, Edge, Safari); not in every browser's types. */
 type Recognition = {
@@ -101,8 +102,8 @@ export function VoiceButton({ onText, onFinal, disabled, className }: { onText: 
 
   if (!supported) return null;
   return (
-    <span className={cn("flex items-center gap-1", className)}>
-      <span className="flex overflow-hidden rounded-md border border-border text-[10.5px]" role="group" aria-label="Voice language">
+    <span className={cn("flex items-center gap-2", className)}>
+      <span className="flex h-[30px] items-stretch overflow-hidden rounded-lg border border-black/10 bg-[#f4f8fb] text-[11px] font-medium" role="group" aria-label="Voice language">
         {VOICE_LANGUAGES.map((l) => (
           <button
             key={l.id}
@@ -110,7 +111,7 @@ export function VoiceButton({ onText, onFinal, disabled, className }: { onText: 
             onClick={() => chooseLang(l.id)}
             aria-pressed={lang === l.id}
             disabled={listening}
-            className={cn("px-1.5 py-0.5 transition", lang === l.id ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground")}
+            className={cn("px-2 transition", lang === l.id ? "bg-[#00a6ee] text-white" : "text-black/60 hover:text-foreground")}
           >
             {l.label}
           </button>
@@ -124,11 +125,12 @@ export function VoiceButton({ onText, onFinal, disabled, className }: { onText: 
         aria-label={listening ? "Stop listening" : "Speak a command"}
         title={listening ? "Listening… click to stop" : "Speak a command, e.g. “make the text bigger”"}
         className={cn(
-          "flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:text-foreground disabled:opacity-40",
+          // The design's 30px square mic button.
+          "flex size-[30px] items-center justify-center rounded-lg border border-black/10 bg-[#f4f8fb] text-black/60 transition hover:text-foreground disabled:opacity-40",
           listening && "animate-pulse border-destructive bg-destructive text-white hover:text-white",
         )}
       >
-        {listening ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}
+        {listening ? <MicOff className="size-3" /> : <FigMic className="size-3" />}
       </button>
     </span>
   );

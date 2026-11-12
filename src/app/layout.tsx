@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Geist_Mono, Outfit, Plus_Jakarta_Sans } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
-// The PHP app's font, so the editor inside it looks like the same product.
+// The editor's font in the Figma design ("All Project HTML FInal" → Present 3D).
+const outfit = Outfit({ variable: "--font-outfit", subsets: ["latin"] });
+// The PHP app's font; the design keeps it for the Save / Apply buttons.
 const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
@@ -23,7 +25,7 @@ export const viewport: Viewport = { themeColor: "#f4f8fb", colorScheme: "light" 
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${outfit.variable} ${jakarta.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full">
         <TooltipProvider delayDuration={250}>{children}</TooltipProvider>
         <Toaster position="bottom-right" />

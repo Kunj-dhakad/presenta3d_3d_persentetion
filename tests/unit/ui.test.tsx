@@ -128,8 +128,9 @@ describe("preview while a presentation is being made", () => {
       </TooltipProvider>
     );
     const { rerender, container } = render(view(true));
-    // The stage is named under the slide and again in the list of steps.
-    expect(screen.getAllByText(/Creating the images/).length).toBeGreaterThan(0);
+    // Painting the images is the design's third step, "Designing Slides"; the earlier steps show as done.
+    expect(screen.getByText("Designing Slides").closest('[aria-current="step"]')).toBeTruthy();
+    expect(screen.getByText("Writing Content").closest('[aria-current="step"]')).toBeNull();
     expect(screen.getByText("60%")).toBeTruthy();
     expect(container.querySelector("iframe")).toBeNull();
     rerender(view(false));

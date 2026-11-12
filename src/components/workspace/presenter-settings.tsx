@@ -13,8 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { phpPost } from "@/lib/php-api";
 import { cn } from "@/lib/utils";
-import { SubHeading, ToggleRow } from "./settings-parts";
-import { FEEDBACK_STYLES, FeedbackIcon, type FeedbackStyle } from "./feedback-style";
+import { ACTION_BTN, SubHeading, ToggleRow } from "./settings-parts";
+import { FEEDBACK_STYLES, type FeedbackStyle } from "./feedback-style";
 
 /**
  * The presenter part of the Settings drawer: what plays over the
@@ -454,9 +454,9 @@ export function PresenterGate({ p, children }: { p: PresenterState; children: (p
 
 function SaveButton({ p }: { p: PresenterState }) {
   return (
-    <div className="mt-4 flex items-center justify-end gap-3">
-      <span className="text-xs text-muted-foreground">Applies at once, no need to publish again.</span>
-      <Button size="sm" onClick={() => void p.save()} disabled={!p.form || p.saving}>{p.saving ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
+    // The design's gradient Save button, bottom right.
+    <div className="mt-[15px] flex items-center justify-end">
+      <Button className={ACTION_BTN} onClick={() => void p.save()} disabled={!p.form || p.saving} title="Applies at once, no need to publish again.">{p.saving && <Loader2 className="animate-spin" />} Save</Button>
     </div>
   );
 }
@@ -697,35 +697,30 @@ export function FeedbackSection({ p }: { p: Loaded }) {
   return (
     <>
       <ToggleRow id="presenter-feedback" title="Ask for feedback" hint="At the end, asks each visitor once for a 1-5 rating and a comment." checked={p.form.feedback} onChange={(v) => p.set({ feedback: v })} first />
-      <div className={cn("grid gap-2", !p.form.feedback && "pointer-events-none opacity-50")}>
-        <SubHeading>Rating style</SubHeading>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Rating style">
-          {FEEDBACK_STYLES.map((s) => {
-            const on = (p.form.feedback_style ?? "stars") === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => p.set({ feedback_style: s.id })}
-                className={cn(
-                  "grid gap-1.5 rounded-lg border p-2 text-left transition-colors",
-                  on ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/50",
-                )}
-              >
-                <span className="flex gap-1">
-                  {([1, 3, 5] as const).map((lv) => (
-                    <span key={lv} className="flex size-8 items-center justify-center rounded-md bg-sky-100">
-                      <FeedbackIcon style={s.id} level={lv} className="size-6" />
-                    </span>
-                  ))}
-                </span>
-                <span className="flex items-center gap-1 text-xs font-semibold">{on ? <Check className="size-3.5 text-primary" /> : null}{s.label}</span>
-              </button>
-            );
-          })}
-        </div>
+      {/* The design's four rating-style cards: a picture of the feedback form in that style; the chosen one has a blue border. */}
+      <div className={cn("mt-1 grid grid-cols-2 gap-x-[11px] gap-y-3", !p.form.feedback && "pointer-events-none opacity-50")} role="radiogroup" aria-label="Rating style">
+        {FEEDBACK_STYLES.map((s) => {
+          const on = (p.form.feedback_style ?? "stars") === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={`${s.label} rating`}
+              title={`${s.label} rating`}
+              onClick={() => p.set({ feedback_style: s.id })}
+              className={cn(
+                "flex h-[104px] items-center justify-center rounded-xl border bg-[#f4f8fb] p-1 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                on ? "border-[#00a6ee]" : "border-black/5 hover:border-[#00a6ee]/50",
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- the design's small picture */}
+              <img src={`/brand/feedback-${s.id}.webp`} alt="" className="h-24 w-[150px] rounded-md object-contain" draggable={false} />
+              <span className="sr-only">{s.label}</span>
+            </button>
+          );
+        })}
       </div>
       <SaveButton p={p} />
     </>

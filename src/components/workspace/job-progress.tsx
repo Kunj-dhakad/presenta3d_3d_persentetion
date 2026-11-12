@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Check, Loader2, X, Minus, Circle, FileCode2, AlertTriangle, Square, Bot } from "lucide-react";
+import { X, Minus, FileCode2, AlertTriangle } from "lucide-react";
 import type { LiveJob, StageState } from "@/stores/workspace";
 import type { PipelineStage } from "@/lib/jobs";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { FigBot, FigCheck, FigCircle, FigSpinner, FigStop } from "./figma-icons";
 
 const STAGES: { id: PipelineStage; label: string }[] = [
   { id: "understand", label: "Understand request" },
@@ -30,12 +30,13 @@ const PRESENTATION_STAGES: { id: PipelineStage; label: string }[] = [
 
 const ROLE_LABEL: Record<string, string> = { frontend: "Frontend", threeD: "3D", design: "Design", repair: "Repair", reviewer: "Review", planner: "Planner" };
 
+// Stage icons from the design: blue check, blue spinner, grey ring (15px).
 function StageIcon({ state }: { state?: StageState }) {
-  if (state === "start") return <Loader2 className="size-3.5 animate-spin text-brand" />;
-  if (state === "done") return <Check className="size-3.5 text-success" />;
-  if (state === "failed") return <X className="size-3.5 text-destructive" />;
-  if (state === "skipped") return <Minus className="size-3.5 text-muted-foreground" />;
-  return <Circle className="size-3 text-muted-foreground/50" />;
+  if (state === "start") return <FigSpinner className="size-[15px] shrink-0 animate-spin text-[#00a6ee]" />;
+  if (state === "done") return <FigCheck className="size-[15px] shrink-0 text-[#00a6ee]" />;
+  if (state === "failed") return <X className="size-[15px] shrink-0 text-destructive" />;
+  if (state === "skipped") return <Minus className="size-[15px] shrink-0 text-muted-foreground" />;
+  return <FigCircle className="size-[15px] shrink-0 text-[#c9d2dd]" />;
 }
 
 /** Step-by-step server log of the running generation, newest at the bottom. */
@@ -45,14 +46,14 @@ function LiveLog({ logs, running }: { logs: LiveJob["logs"]; running: boolean })
     end.current?.scrollIntoView({ block: "nearest" });
   }, [logs.length]);
   return (
-    <div className="mt-3 rounded-lg border border-border/70 bg-background/40 p-2">
-      <p className="flex items-center gap-1.5 px-1 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-        <span className={cn("size-1.5 rounded-full", running ? "animate-pulse bg-success" : "bg-muted-foreground/50")} />
+    <div className="mt-3 rounded-[10px] border border-border bg-[#f4f8fb] p-3">
+      <p className="flex items-center gap-1.5 pb-1.5 text-[11px] leading-none font-medium text-[#64748b] uppercase">
+        <span className={cn("size-1.5 rounded-full", running ? "animate-pulse bg-[#22c55e]" : "bg-[#22c55e]/60")} />
         Live log
       </p>
-      <ol className="thin-scroll grid max-h-40 gap-0.5 overflow-y-auto px-1 font-mono text-[11px] leading-relaxed">
+      <ol className="thin-scroll grid max-h-40 gap-1.5 overflow-y-auto text-[11px] leading-[1.26]">
         {logs.map((l, i) => (
-          <li key={i} ref={i === logs.length - 1 ? end : undefined} className={cn("text-muted-foreground", l.level === "warn" && "text-warning", l.level === "error" && "text-destructive")}>
+          <li key={i} ref={i === logs.length - 1 ? end : undefined} className={cn("text-[#64748b]", l.level === "warn" && "text-warning", l.level === "error" && "text-destructive")}>
             {l.message}
           </li>
         ))}
@@ -67,28 +68,29 @@ export function JobProgress({ job, onCancel, variant = "code" }: { job: LiveJob;
   const tasks = Object.values(job.tasks);
   const visibleStages = (presentation ? PRESENTATION_STAGES : STAGES).filter((s) => (s.id !== "repair" && !(presentation && (s.id === "review" || s.id === "images"))) || job.stages[s.id]);
   return (
-    <div className="rounded-xl border border-border bg-card/60 p-3.5 text-sm" aria-live="polite">
+    // The design's progress card: white, 14px corners, 16px padding.
+    <div className="rounded-[14px] border border-border bg-white p-4 text-sm" aria-live="polite">
       <div className="flex items-center gap-2">
-        <Bot className="size-4 text-brand" />
-        <span className="font-medium">{running ? "Working on it" : job.status === "succeeded" ? "Finished" : job.status === "cancelled" ? "Cancelled" : "Stopped"}</span>
+        <FigBot className="size-[17px] shrink-0 text-[#00a6ee]" />
+        <span className="text-[15px] leading-none font-medium text-foreground">{running ? "Working on it" : job.status === "succeeded" ? "Finished" : job.status === "cancelled" ? "Cancelled" : "Stopped"}</span>
         {running && (
-          <Button size="xs" variant="ghost" className="ml-auto text-muted-foreground" onClick={onCancel}>
-            <Square className="size-3" /> Stop
-          </Button>
+          <button type="button" className="ml-auto flex items-center gap-1.5 rounded text-[13px] leading-none text-[#64748b] transition hover:text-foreground" onClick={onCancel}>
+            <FigStop className="size-[13px]" /> Stop
+          </button>
         )}
       </div>
-      {job.understanding && <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">{job.understanding}</p>}
+      {job.understanding && <p className="mt-3 text-[13px] leading-[1.6] text-[#64748b]">{job.understanding}</p>}
 
-      <ol className="mt-3 grid gap-1.5">
+      <ol className="mt-3 grid gap-[9px]">
         {visibleStages.map((s) => {
           const st = job.stages[s.id];
           return (
-            <li key={s.id} className={cn("flex items-center gap-2 text-[12.5px]", !st && "text-muted-foreground/70")}>
+            <li key={s.id} className={cn("flex min-w-0 items-center gap-2.5 text-sm leading-[1.26]", st ? "text-foreground" : "text-[#a3aebd]")}>
               <StageIcon state={st?.state} />
-              <span>{s.label}</span>
-              {st?.detail && <span className="truncate text-xs text-muted-foreground">· {st.detail}</span>}
+              <span className="shrink-0">{s.label}</span>
+              {st?.detail && <span className="truncate text-[13px] text-[#64748b]">{st.detail}</span>}
               {presentation && s.id === "generate" && st?.state === "start" && job.chars > 0 && (
-                <span className="shrink-0 text-xs text-muted-foreground">· {(job.chars / 1000).toFixed(1)}k chars received</span>
+                <span className="shrink-0 text-[13px] text-[#64748b]">· {(job.chars / 1000).toFixed(1)}k chars received</span>
               )}
             </li>
           );

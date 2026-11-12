@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, GitCompare, Loader2, RotateCcw, TriangleAlert, CheckCircle2, XCircle, Sparkles, FlaskConical } from "lucide-react";
+import { GitCompare, Loader2, RotateCcw, TriangleAlert, CheckCircle2, XCircle, Sparkles, FlaskConical } from "lucide-react";
 import type { ChatMessageRow, LiveJob } from "@/stores/workspace";
+import { FigArrowUp, FigCheckCircle, FigUndo } from "./figma-icons";
 import { JobProgress } from "./job-progress";
 import { VoiceButton } from "./voice-input";
 import { Button } from "@/components/ui/button";
@@ -73,8 +74,9 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 thin-scroll">
+    // The Figma chat panel: #f4f8fb, 16px padding, 14px between messages.
+    <div className="flex h-full min-h-0 flex-col bg-[#f4f8fb]">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto p-4 thin-scroll">
         {loading && messages.length === 0 && !job && (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading conversation…
@@ -87,25 +89,28 @@ export function ChatPanel({
             <p className="max-w-xs text-xs text-muted-foreground">{emptyHint ?? "Describe what to build or what to change. Follow-ups make targeted edits to the existing files."}</p>
           </div>
         )}
-        <div className="grid gap-4">
+        <div className="grid gap-3.5">
           {messages.map((m) =>
             m.role === "user" ? (
-              <div key={m.id} className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-[13.5px] leading-relaxed">
+              <div key={m.id} className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-[14px] bg-[#e8f6fd] px-3.5 py-2.5 text-sm leading-[1.26] text-foreground">
                 {m.content}
               </div>
             ) : (
-              <div key={m.id} className="max-w-[95%] text-[13.5px] leading-relaxed">
+              <div key={m.id} className="text-sm leading-[1.5] text-foreground">
                 <div className={cn("whitespace-pre-wrap", m.meta?.error && "text-destructive")}>{m.content}</div>
                 {presentation && m.meta?.buildStatus && (
-                  <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-card/50 px-3 py-2">
+                  // The design's "Ready · N slides" chip, with "Undo this change" on the right.
+                  <div className="mt-3.5 flex items-center gap-2 rounded-[10px] border border-border bg-white px-3 py-[9px]">
                     {m.meta.buildStatus === "succeeded" ? (
-                      <span className="flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="size-3.5" />Ready{(m.meta as { slides?: number }).slides ? ` · ${(m.meta as { slides?: number }).slides} slides` : ""}</span>
+                      <span className="flex items-center gap-2 text-xs leading-none text-[#16a34a]"><FigCheckCircle className="size-[15px]" />Ready{(m.meta as { slides?: number }).slides ? ` · ${(m.meta as { slides?: number }).slides} slides` : ""}</span>
                     ) : (
-                      <span className="flex items-center gap-1.5 text-xs text-destructive"><XCircle className="size-3.5" />Preview failed</span>
+                      <span className="flex items-center gap-2 text-xs leading-none text-destructive"><XCircle className="size-[15px]" />Preview failed</span>
                     )}
                     <span className="flex-1" />
                     {m.meta.preVersionId && (
-                      <Button size="xs" variant="ghost" disabled={busy} onClick={() => onRevert(m)}><RotateCcw /> Undo this change</Button>
+                      <button type="button" disabled={busy} onClick={() => onRevert(m)} className="flex items-center gap-1.5 rounded text-xs leading-none font-medium text-foreground transition hover:text-[#00a6ee] disabled:opacity-50">
+                        <FigUndo className="size-3" /> Undo this change
+                      </button>
                     )}
                   </div>
                 )}
@@ -147,7 +152,7 @@ export function ChatPanel({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-border p-3">
+      <div className="shrink-0 px-4 pb-4">
         {ai && !ai.configured && (
           <p className="mb-2 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -160,9 +165,9 @@ export function ChatPanel({
           </p>
         )}
         {messages.length > 0 && !jobRunning && (
-          <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5 thin-scroll">
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-0.5 thin-scroll">
             {SUGGESTIONS.map((s) => (
-              <button key={s} onClick={() => setValue(s)} className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11.5px] text-muted-foreground transition hover:border-brand/40 hover:text-foreground">
+              <button key={s} onClick={() => setValue(s)} className="shrink-0 rounded-[14px] border border-border bg-[#eef3f8] px-3 py-1.5 text-xs leading-[1.26] text-[#64748b] transition hover:border-[#00a6ee]/40 hover:text-foreground">
                 {s}
               </button>
             ))}
@@ -173,7 +178,7 @@ export function ChatPanel({
             e.preventDefault();
             submit();
           }}
-          className="rounded-xl border border-border bg-card focus-within:border-brand/50"
+          className="rounded-[14px] border border-border bg-white focus-within:border-[#00a6ee]/50"
         >
           <textarea
             value={value}
@@ -188,15 +193,20 @@ export function ChatPanel({
             rows={3}
             maxLength={8000}
             aria-label="Message"
-            className="w-full resize-none bg-transparent px-3 pt-2.5 text-[13.5px] outline-none placeholder:text-muted-foreground"
+            className="min-h-[74px] w-full resize-none bg-transparent px-3.5 pt-3.5 text-sm leading-[1.43] outline-none placeholder:text-black/60"
           />
-          <div className="flex items-center justify-between gap-2 px-2 pb-2">
-            <span className="min-w-0 truncate text-[11px] text-muted-foreground">{ai?.model ? `${ai.provider} · ${ai.model}` : ""}</span>
+          <div className="flex items-center justify-between gap-2 px-3 pb-3">
+            {/* The model in use (the design's grey pill). */}
+            {ai?.model ? (
+              <span className="min-w-0 truncate rounded-lg border border-black/10 bg-[#f4f8fb] px-2.5 py-[7px] text-xs leading-none font-medium text-black/60" title={`${ai.provider} · ${ai.model}`}>
+                {ai.provider === "mock" ? "Test mode" : ai.model.toUpperCase()}
+              </span>
+            ) : null}
             <span className="flex-1" />
             {/* Speak instead of typing (PRD 3): sent as soon as the speaker stops. */}
             {presentation ? <VoiceButton onText={setValue} onFinal={(t) => submit(t)} disabled={busy} /> : null}
-            <button type="submit" disabled={!value.trim() || busy} aria-label="Send" className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition hover:bg-primary/85 disabled:opacity-40">
-              {jobRunning ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
+            <button type="submit" disabled={!value.trim() || busy} aria-label="Send" className="flex size-[30px] items-center justify-center rounded-lg bg-[#00a6ee] text-white transition hover:bg-[#0097da] disabled:opacity-60">
+              {jobRunning ? <Loader2 className="size-3 animate-spin" /> : <FigArrowUp className="size-3" />}
             </button>
           </div>
         </form>

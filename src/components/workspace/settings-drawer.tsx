@@ -1,6 +1,7 @@
 "use client";
 
-import { AudioLines, Contact, FileText, Info, Palette, Stamp, Star, ThumbsUp } from "lucide-react";
+import { Info } from "lucide-react";
+import { FigFeedback, FigFooter, FigLeadForm, FigMicrophone, FigPalette, FigSummary, FigThumbsUp } from "./figma-icons";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { BrandingSection, DesignGate, TemplateSection, ThankYouSection, useDesignSettings, type DesignState } from "./design-settings";
@@ -49,13 +50,13 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent aria-describedby="settings-drawer-desc">
-        <SheetHeader className="border-b border-border">
+        <SheetHeader>
           <SheetTitle>Presentation settings</SheetTitle>
           <SheetDescription id="settings-drawer-desc">Design rebuilds the preview; the presenter applies at once in Present and on the public link.</SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3.5 thin-scroll">
-          <Accordion type="single" collapsible defaultValue="template" className="grid gap-2.5">
-            <Section value="template" icon={<Palette />} tone="blue" title="Colours">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 thin-scroll">
+          <Accordion type="single" collapsible className="grid gap-2.5">
+            <Section value="template" icon={<FigPalette />} tone="blue" title="Colors">
               <DesignPart d={d} ready={designReady}>{(x) => <TemplateSection d={x} />}</DesignPart>
             </Section>
             {/* The presenter avatar is switched off: the talking avatar now belongs to the presentation's
@@ -65,7 +66,7 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
               <PresenterGate p={p}>{(x) => <AvatarSection p={x} />}</PresenterGate>
             </Section>
             */}
-            <Section value="voice" icon={<AudioLines />} tone="amber" title="Voice-over & captions" on={form ? form.narration || form.subtitles : undefined}>
+            <Section value="voice" icon={<FigMicrophone />} tone="rose" title="Voice-over & captions" on={form ? form.narration || form.subtitles : undefined}>
               <PresenterGate p={p}>{(x) => <VoiceSection p={x} />}</PresenterGate>
             </Section>
             {/* Auto-play is on by default (defaultDeckSettings) and the viewer's Auto control switches it;
@@ -74,19 +75,19 @@ export function SettingsDrawer({ projectId, open, onOpenChange, designReady, onS
               <DesignPart d={d} ready={designReady}>{(x) => <AutoplaySection d={x} />}</DesignPart>
             </Section>
             */}
-            <Section value="thanks" icon={<ThumbsUp />} tone="coral" title="Thank-you slide" on={deck?.thankYou.enabled}>
+            <Section value="thanks" icon={<FigThumbsUp />} tone="coral" title="Thank-you slide" on={deck?.thankYou.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <ThankYouSection d={x} />}</DesignPart>
             </Section>
-            <Section value="brand" icon={<Stamp />} tone="slate" title="Footer branding" on={deck?.footer.enabled}>
+            <Section value="brand" icon={<FigFooter />} tone="slate" title="Footer branding" on={deck?.footer.enabled}>
               <DesignPart d={d} ready={designReady}>{(x) => <BrandingSection d={x} />}</DesignPart>
             </Section>
-            <Section value="lead" icon={<Contact />} tone="blue" title="Lead form" on={form?.lead_form} locked={!!p.data?.plan && !p.data.plan.lead_form}>
+            <Section value="lead" icon={<FigLeadForm />} tone="cyan" title="Lead form" on={form?.lead_form} locked={!!p.data?.plan && !p.data.plan.lead_form}>
               <PresenterGate p={p}>{(x) => <LeadSection p={x} slideCount={designReady ? d.deck?.slideCount : undefined} />}</PresenterGate>
             </Section>
-            <Section value="feedback" icon={<Star />} tone="amber" title="Audience feedback" on={form?.feedback}>
+            <Section value="feedback" icon={<FigFeedback />} tone="amber" title="Audience feedback" on={form?.feedback}>
               <PresenterGate p={p}>{(x) => <FeedbackSection p={x} />}</PresenterGate>
             </Section>
-            <Section value="summary" icon={<FileText />} tone="green" title="AI summary report" on={form?.summary}>
+            <Section value="summary" icon={<FigSummary />} tone="green" title="AI summary report" on={form?.summary}>
               <PresenterGate p={p}>{(x) => <SummarySection p={x} />}</PresenterGate>
             </Section>
           </Accordion>

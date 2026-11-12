@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, ArrowLeft, Eye, Loader2, MessageSquare, Pencil, Play, Rocket, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, Eye, Loader2, MessageSquare, Pencil, RotateCcw } from "lucide-react";
+import { FigBack, FigMobile, FigMonitor, FigPlay, FigRocket, FigSettings, FigTablet } from "./figma-icons";
 import { useWorkspace, type ChatMessageRow, type ProjectMeta } from "@/stores/workspace";
 import { api, ApiError, errorMessage, streamJob } from "@/lib/api-client";
 import type { BuildSummary } from "@/lib/build-types";
@@ -24,6 +25,10 @@ type Conversation = { id: string; title: string };
 /** /api/projects/[id]/command: applied at once, or needs the full AI edit. */
 type CommandResponse = { applied: boolean; needsAi: boolean; reply: string; preVersionId?: string | null; build: BuildSummary };
 type ConfigResponse = { config: { aiProvider: string; openai: { configured: boolean; model: string | null } } };
+
+/** The top bar's white outlined buttons (Settings, Present) in the design. */
+const TOP_BTN = "h-9 gap-2 rounded-lg border-black/15 bg-white px-[15px] text-sm font-medium text-black/80 hover:bg-[#f4f8fb] hover:text-black";
+const VIEWPORT_ICONS: Record<ViewportId, typeof FigMonitor> = { desktop: FigMonitor, tablet: FigTablet, mobile: FigMobile };
 
 const toAiStatus = (c: ConfigResponse): AiStatus =>
   c.config.aiProvider === "mock" ? { configured: true, provider: "mock", model: "offline test provider" } : { configured: c.config.openai.configured, provider: "openai", model: c.config.openai.model };
@@ -343,50 +348,52 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="relative flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+      {/* Top bar as in the Figma frames "Editor – …": 61px, white, title left, device switch centred, actions right. */}
+      <header className="relative flex h-[61px] shrink-0 items-center gap-4 border-b border-border bg-white px-4">
         {inIframe() && (
-          <button onClick={() => notifyParent("P3D_BACK")} className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Back to presentations" title="Back to presentations">
-            <ArrowLeft className="size-4" />
+          <button onClick={() => notifyParent("P3D_BACK")} className="-mx-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Back to presentations" title="Back to presentations">
+            <FigBack className="size-[18px]" />
           </button>
         )}
         {renaming ? (
-          <Input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => void rename()} onKeyDown={(e) => { if (e.key === "Enter") void rename(); if (e.key === "Escape") setRenaming(false); }} className="h-8 max-w-72 text-sm" aria-label="Presentation name" />
+          <Input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => void rename()} onKeyDown={(e) => { if (e.key === "Enter") void rename(); if (e.key === "Escape") setRenaming(false); }} className="h-8 max-w-72 text-[15px]" aria-label="Presentation name" />
         ) : (
-          <button onClick={() => { setNameDraft(project?.name ?? ""); setRenaming(true); }} className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-accent" title="Rename">
-            <span className="truncate text-sm font-medium">{project?.name ?? "Loading…"}</span>
+          <button onClick={() => { setNameDraft(project?.name ?? ""); setRenaming(true); }} className="group -mx-1.5 flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-accent" title="Rename">
+            <span className="truncate text-[15px] font-medium text-foreground">{project?.name ?? "Loading…"}</span>
             <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
           </button>
         )}
-        {/* Preview size, in the middle of the bar (the wireframe's device switch); off until the presentation is ready. */}
-        <div className={cn("absolute left-1/2 hidden -translate-x-1/2 items-center gap-0.5 rounded-xl border border-border bg-muted/80 p-1 lg:flex", jobRunning && "opacity-50")} role="radiogroup" aria-label="Preview size" aria-disabled={jobRunning}>
+        {/* Preview size, in the middle of the bar; off until the presentation is ready. */}
+        <div className={cn("absolute left-1/2 hidden h-10 -translate-x-1/2 items-center gap-1 rounded-[14px] border border-black/10 bg-white px-1.5 lg:flex", jobRunning && "opacity-50")} role="radiogroup" aria-label="Preview size" aria-disabled={jobRunning}>
           {(Object.keys(VIEWPORTS) as ViewportId[]).map((id) => {
             const V = VIEWPORTS[id];
+            const Icon = VIEWPORT_ICONS[id];
             return (
-              <button key={id} type="button" role="radio" aria-checked={viewport === id} aria-label={V.label} title={jobRunning ? "Available when the presentation is ready" : V.label} disabled={jobRunning} onClick={() => setViewport(id)} className={cn("flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-semibold text-muted-foreground transition focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed", viewport === id ? "bg-card text-brand shadow-xs" : "enabled:hover:text-foreground")}>
-                <V.icon className="size-3.5" />
+              <button key={id} type="button" role="radio" aria-checked={viewport === id} aria-label={V.label} title={jobRunning ? "Available when the presentation is ready" : V.label} disabled={jobRunning} onClick={() => setViewport(id)} className={cn("flex h-[30px] items-center gap-1.5 rounded-[10px] px-3 text-sm transition focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed", viewport === id ? "bg-[#e8f6fd] font-medium text-[#00a6ee]" : "text-black/60 enabled:hover:text-foreground")}>
+                <Icon className="size-[15px]" />
                 <span className="hidden xl:inline">{V.label.split(" ")[0]}</span>
               </button>
             );
           })}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title="Template, colours, voice-over, captions, auto-play, Thank-you slide, lead form, feedback">
-            <SlidersHorizontal /> <span className="max-sm:sr-only">Settings</span>
+          <Button variant="outline" className={TOP_BTN} onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title="Colours, voice-over, captions, Thank-you slide, footer, lead form, feedback, AI summary">
+            <FigSettings className="size-3.5" /> <span className="max-sm:sr-only">Settings</span>
           </Button>
           {inIframe() ? (
             // Inside the PHP app, Present opens its full-page viewer, with the presenter on top.
-            <Button size="sm" variant="secondary" disabled={!hasPreview || jobRunning} onClick={() => notifyParent("P3D_PRESENT", { projectId })}>
-              <Play /> <span className="max-sm:sr-only">Present</span>
+            <Button variant="outline" className={TOP_BTN} disabled={!hasPreview || jobRunning} onClick={() => notifyParent("P3D_PRESENT", { projectId })}>
+              <FigPlay className="size-3.5" /> <span className="max-sm:sr-only">Present</span>
             </Button>
           ) : (
-            <Button size="sm" variant="secondary" asChild disabled={!hasPreview || jobRunning}>
+            <Button variant="outline" className={TOP_BTN} asChild disabled={!hasPreview || jobRunning}>
               <Link href={hasPreview && !jobRunning ? paths.present(projectId) : "#"} aria-disabled={!hasPreview || jobRunning} className={cn((!hasPreview || jobRunning) && "pointer-events-none opacity-50")}>
-                <Play /> <span className="max-sm:sr-only">Present</span>
+                <FigPlay className="size-3.5" /> <span className="max-sm:sr-only">Present</span>
               </Link>
             </Button>
           )}
-          <Button size="sm" onClick={() => (inIframe() ? void publishNow() : setShareOpen(true))} disabled={!hasPreview || publishing || jobRunning}>
-            {publishing ? <Loader2 className="animate-spin" /> : <Rocket />} {publishing ? "Publishing…" : "Publish"}
+          <Button className="h-9 gap-2 rounded-lg bg-[#00a6ee] bg-none px-[15px] text-sm font-medium text-white shadow-none hover:bg-[#0097da] hover:brightness-100" onClick={() => (inIframe() ? void publishNow() : setShareOpen(true))} disabled={!hasPreview || publishing || jobRunning}>
+            {publishing ? <Loader2 className="size-3.5 animate-spin" /> : <FigRocket className="size-3.5" />} {publishing ? "Publishing…" : "Publish"}
           </Button>
         </div>
       </header>
@@ -403,9 +410,9 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex shrink-0 border-b border-border" role="tablist">
+          <div className="flex shrink-0 border-b border-border bg-white" role="tablist">
             {([["chat", MessageSquare, "Chat"], ["preview", Eye, "Preview"]] as const).map(([id, Icon, label]) => (
-              <button key={id} role="tab" aria-selected={mobileTab === id} onClick={() => setMobileTab(id)} className={cn("flex flex-1 items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground", mobileTab === id && "border-b-2 border-brand text-foreground")}>
+              <button key={id} role="tab" aria-selected={mobileTab === id} onClick={() => setMobileTab(id)} className={cn("flex flex-1 items-center justify-center gap-1.5 border-b-2 border-transparent py-2.5 text-sm text-black/60", mobileTab === id && "border-[#00a6ee] font-medium text-[#00a6ee]")}>
                 <Icon className="size-3.5" /> {label}
               </button>
             ))}

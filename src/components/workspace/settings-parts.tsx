@@ -4,19 +4,19 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-/** Small upper-case heading inside a Settings section. */
+/** Small upper-case heading inside a Settings section (the design's "COLOR PALETTES"). */
 export function SubHeading({ children, first }: { children: React.ReactNode; first?: boolean }) {
-  return <h4 className={cn("mb-2.5 text-[11.5px] font-bold tracking-[0.08em] text-muted-foreground uppercase", first ? "mt-2" : "mt-4")}>{children}</h4>;
+  return <h4 className={cn("mb-[15px] text-xs leading-[1.26] font-medium text-black/60 uppercase", first ? "mt-0" : "mt-[15px]")}>{children}</h4>;
 }
 
 /** An on/off row: title and hint on the left, a switch on the right; `children` show while it is on. */
 export function ToggleRow({ id, title, hint, checked, onChange, first, children }: { id: string; title: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; first?: boolean; children?: React.ReactNode }) {
   return (
-    <div className={cn("py-3", !first && "border-t border-border", first && "pt-0")}>
-      <div className="flex items-center gap-3.5">
+    <div className={cn("py-3", !first && "border-t border-black/10", first && "pt-0")}>
+      <div className="flex items-start gap-3.5">
         <div className="min-w-0 flex-1">
-          <Label htmlFor={id} className="text-sm font-semibold">{title}</Label>
-          {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
+          <Label htmlFor={id} className="text-xs leading-[1.26] font-medium text-black/80">{title}</Label>
+          {hint ? <p className="mt-1 text-xs leading-[1.26] text-black/60">{hint}</p> : null}
         </div>
         <Switch id={id} checked={checked} onCheckedChange={onChange} />
       </div>
@@ -25,27 +25,31 @@ export function ToggleRow({ id, title, hint, checked, onChange, first, children 
   );
 }
 
+// The design's tile colours behind each section's (coloured) icon.
 const TILE_TONES = {
-  blue: "bg-brand-soft text-brand",
-  rose: "bg-rose-50 text-rose-600",
-  amber: "bg-amber-50 text-amber-600",
-  coral: "bg-orange-50 text-orange-600",
-  green: "bg-emerald-50 text-emerald-600",
-  cyan: "bg-cyan-50 text-cyan-600",
-  slate: "bg-muted text-foreground/70",
+  blue: "bg-[linear-gradient(180deg,rgb(0_166_238/0.1),rgb(1_201_251/0.1))]",
+  rose: "bg-[#ffeded]",
+  amber: "bg-[#fffbeb]",
+  coral: "bg-[#fdf7df]",
+  green: "bg-[#ecfdf5]",
+  cyan: "bg-[#e6f6fe]",
+  slate: "bg-[#eef3f7]",
 };
 
-/** The coloured icon tile at the start of a section header. */
+/** The 35px icon tile at the start of a section header; white while the section is open. */
 export function IconTile({ tone, children }: { tone: keyof typeof TILE_TONES; children: React.ReactNode }) {
-  return <span className={cn("flex size-[30px] shrink-0 items-center justify-center rounded-[9px] [&_svg]:size-[15px]", TILE_TONES[tone])}>{children}</span>;
+  return <span className={cn("flex size-[35px] shrink-0 items-center justify-center rounded-[7px] group-data-[state=open]/acc:bg-white [&_svg]:size-[18px]", TILE_TONES[tone])}>{children}</span>;
 }
 
-/** "On" / "Off" pill on a section header; nothing while unknown. */
+/** "ON" / "OFF" pill on a section header; nothing while unknown. */
 export function StatePill({ on, locked }: { on: boolean | undefined; locked?: boolean }) {
+  const pill = "mr-1 rounded-[5px] border border-black/5 px-[7px] py-[3px] text-[8px] leading-[1.26] font-medium uppercase";
   // Not in the owner's plan.
-  if (locked) return <span className="mr-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">Locked</span>;
+  if (locked) return <span className={cn(pill, "bg-amber-50 text-amber-700")}>Locked</span>;
   if (on === undefined) return null;
-  return (
-    <span className={cn("mr-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold", on ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground")}>{on ? "On" : "Off"}</span>
-  );
+  return <span className={cn(pill, on ? "bg-[#eefdf4] text-[#16a34a]/70" : "bg-[#f4f8fb] text-black/60")}>{on ? "On" : "Off"}</span>;
 }
+
+/** The design's gradient action button (Save, Apply Color). */
+export const ACTION_BTN =
+  "h-[38px] rounded-lg bg-[linear-gradient(180deg,#0081b9,#01c9fb)] px-4 font-cta text-sm font-semibold text-white shadow-[0_4px_60px_rgb(0_53_72/0.2)] hover:brightness-105";
