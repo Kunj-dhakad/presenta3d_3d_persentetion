@@ -667,6 +667,12 @@ export function LeadSection({ p, slideCount }: { p: Loaded; slideCount?: number 
             </Select>
           ) : null}
         </div>
+        {/* The service gave no lists (a wrong or incomplete API key, or no list made there yet). */}
+        {!responderLocked && form.autoresponder_id && !listsLoading && lists.length === 0 ? (
+          <p className="text-xs text-amber-700" role="status">
+            No lists found for this autoresponder. Check its API key in Integrations (a Mailchimp key ends with its data centre, e.g. &quot;-us21&quot;) and that it has at least one list or audience.
+          </p>
+        ) : null}
         {responderLocked ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Lock className="size-3.5" aria-hidden />{data.plan?.autoresponder_message || "Autoresponder integrations are not in your plan."}</p>
         ) : data.autoresponders.length === 0 ? <p className="text-xs text-muted-foreground">Connect an autoresponder in Integrations to send leads to a mailing list.</p> : null}
