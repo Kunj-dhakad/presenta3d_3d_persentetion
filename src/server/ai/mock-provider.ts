@@ -207,6 +207,12 @@ ${broken ? "console.log(pad('x', 3));\n" : ""}`;
 function respond(schemaName: string, input: string): unknown {
   const request = userRequest(input);
   switch (schemaName) {
+    // A new presentation's name (server/deck/draft-title.ts): the topic's first words in title case.
+    case "presentation_title": {
+      const topic = input.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).pop() ?? "Presentation";
+      const words = topic.replace(/[^\p{L}\p{N}\s&-]/gu, " ").split(/\s+/).filter(Boolean).slice(0, 5);
+      return { title: words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") || "New Presentation" };
+    }
     case "project_spec": {
       const three = is3d(request);
       return {
