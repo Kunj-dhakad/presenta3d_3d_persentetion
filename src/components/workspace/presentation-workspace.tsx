@@ -65,6 +65,12 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const jobRunning = Boolean(job && (job.status === "running" || job.status === "queued"));
   // The AI model for the next request: the chat dropdown's choice, else the server's default (OpenAI only).
   const [chosenModel, chooseModel] = useChosenModel();
+  // Settings are off while a generation runs: close the drawer if one starts while it is open.
+  const [wasRunning, setWasRunning] = useState(jobRunning);
+  if (wasRunning !== jobRunning) {
+    setWasRunning(jobRunning);
+    if (jobRunning) setSettingsOpen(false);
+  }
   const model = ai?.provider === "openai" ? (chosenModel ?? ai.model) : null;
 
   // The PHP page shows this presentation's own address (edit/<id>) once it is open.
@@ -383,7 +389,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
           })}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" className={TOP_BTN} onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title="Colours, voice-over, captions, Thank-you slide, footer, lead form, feedback, AI summary">
+          {/* Off while a presentation is being made or changed, like the size switch, Present and Publish. */}
+          <Button variant="outline" className={TOP_BTN} disabled={jobRunning} onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title={jobRunning ? "Available when the presentation is ready" : "Colours, voice-over, captions, Thank-you slide, footer, lead form, feedback, AI summary"}>
             <FigSettings className="size-3.5" /> <span className="max-sm:sr-only">Settings</span>
           </Button>
           {inIframe() ? (
