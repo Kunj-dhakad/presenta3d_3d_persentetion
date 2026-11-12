@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { GitCompare, Loader2, RotateCcw, TriangleAlert, CheckCircle2, XCircle, Sparkles, FlaskConical } from "lucide-react";
 import type { ChatMessageRow, LiveJob } from "@/stores/workspace";
-import { FigArrowUp, FigCheckCircle, FigUndo } from "./figma-icons";
+import { FigAngleDown, FigArrowUp, FigCheckCircle, FigUndo } from "./figma-icons";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TEXT_MODELS, modelLabel } from "@/lib/ai-models";
 import { JobProgress } from "./job-progress";
 import { VoiceButton } from "./voice-input";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,8 @@ export function ChatPanel({
   emptyHint,
   variant = "code",
   loading = false,
+  model,
+  onModelChange,
 }: {
   messages: ChatMessageRow[];
   job: LiveJob | null;
@@ -53,6 +57,9 @@ export function ChatPanel({
   variant?: "code" | "presentation";
   /** The conversation is still loading: show a spinner instead of the empty state. */
   loading?: boolean;
+  /** The AI model for the next request and how to change it (the model dropdown). */
+  model?: string | null;
+  onModelChange?: (model: string) => void;
 }) {
   const presentation = variant === "presentation";
   const SUGGESTIONS = presentation ? PRESENTATION_SUGGESTIONS : CODE_SUGGESTIONS;
@@ -196,10 +203,26 @@ export function ChatPanel({
             className="min-h-[74px] w-full resize-none bg-transparent px-3.5 pt-3.5 text-sm leading-[1.43] outline-none placeholder:text-black/60"
           />
           <div className="flex items-center justify-between gap-2 px-3 pb-3">
-            {/* The model in use (the design's grey pill). */}
-            {ai?.model ? (
+            {/* The AI model (the design's grey "GPT-5.4" pill): a dropdown when the parent lets the presenter choose. */}
+            {model && onModelChange ? (
+              <Select value={model} onValueChange={onModelChange} disabled={busy}>
+                <SelectTrigger
+                  aria-label="AI model"
+                  title="AI model for your next request"
+                  icon={<FigAngleDown className="size-3 text-black/60" />}
+                  className="h-[31px] gap-6 rounded-lg border-black/10 bg-[#f4f8fb] py-0 pr-2.5 pl-2.5 text-xs font-medium text-black/60 data-[size=default]:h-[31px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent side="top">
+                  {[...TEXT_MODELS.map((m) => m.id), ...(TEXT_MODELS.some((m) => m.id === model) ? [] : [model])].map((id) => (
+                    <SelectItem key={id} value={id} className="text-xs">{modelLabel(id)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : ai?.model ? (
               <span className="min-w-0 truncate rounded-lg border border-black/10 bg-[#f4f8fb] px-2.5 py-[7px] text-xs leading-none font-medium text-black/60" title={`${ai.provider} · ${ai.model}`}>
-                {ai.provider === "mock" ? "Test mode" : ai.model.toUpperCase()}
+                {ai.provider === "mock" ? "Test mode" : modelLabel(ai.model)}
               </span>
             ) : null}
             <span className="flex-1" />

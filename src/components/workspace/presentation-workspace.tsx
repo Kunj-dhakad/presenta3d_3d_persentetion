@@ -16,6 +16,7 @@ import { ChatPanel, type AiStatus } from "./chat-panel";
 import { PreviewPane, VIEWPORTS, type ViewportId } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 import { SettingsDrawer } from "./settings-drawer";
+import { useChosenModel } from "./chosen-model";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { inIframe, notifyParent, paths } from "@/components/embed/parent-bridge";
@@ -62,6 +63,9 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const sendingRef = useRef(false);
   const [sending, setSending] = useState(false);
   const jobRunning = Boolean(job && (job.status === "running" || job.status === "queued"));
+  // The AI model for the next request: the chat dropdown's choice, else the server's default (OpenAI only).
+  const [chosenModel, chooseModel] = useChosenModel();
+  const model = ai?.provider === "openai" ? (chosenModel ?? ai.model) : null;
 
   // The PHP page shows this presentation's own address (edit/<id>) once it is open.
   useEffect(() => {
@@ -134,7 +138,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       try {
         const r = await api<{ jobId: string; conversationId: string; userMessageId: string }>(`/api/projects/${projectId}/generate`, {
           method: "POST",
-          json: { prompt, mode: "auto", conversationId },
+          json: { prompt, mode: "auto", conversationId, model: model ?? undefined },
         });
         setConversationId(r.conversationId);
         setMessages((m) => [...m, { id: r.userMessageId, role: "user", content: prompt, createdAt: new Date().toISOString(), meta: null }]);
@@ -151,7 +155,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         setSending(false);
       }
     },
-    [projectId, conversationId, follow],
+    [projectId, conversationId, follow, model],
   );
 
   /**
@@ -179,7 +183,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       if (!hasDeck || jobRunning) return send(prompt);
       setCommanding(true);
       try {
-        const r = await api<CommandResponse>(`/api/projects/${projectId}/command`, { method: "POST", json: { text: prompt } });
+        const r = await api<CommandResponse>(`/api/projects/${projectId}/command`, { method: "POST", json: { text: prompt, model: model ?? undefined } });
         if (r.applied) {
           useWorkspace.getState().setBuildFromServer(r.build, null);
           void loadProject();
@@ -199,7 +203,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         setCommanding(false);
       }
     },
-    [hasDeck, jobRunning, projectId, send, loadProject, undoCommand],
+    [hasDeck, jobRunning, projectId, send, loadProject, undoCommand, model],
   );
 
   // Initial load.
@@ -340,6 +344,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       emptyHint="Describe your presentation: topic, audience, number of slides and the mood. Then ask for changes, typed or spoken (mic), like “make the text bigger” or “make slide 2 about pricing”."
       variant="presentation"
       loading={!loaded}
+      model={model}
+      onModelChange={chooseModel}
     />
       </div>
     </div>

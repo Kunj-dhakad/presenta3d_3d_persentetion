@@ -11,6 +11,8 @@ const Body = z.object({
   name: z.string().trim().max(120).optional(),
   /** "cinematic": AI images and trailer-style titles instead of 3D scenes (see server/deck/cine-pipeline.ts). */
   style: z.enum(["3d", "cinematic"]).optional(),
+  /** The AI model to write it with (lib/ai-models.ts); missing: OPENAI_MODEL. */
+  model: z.string().max(60).optional(),
 });
 
 /**
@@ -20,8 +22,8 @@ const Body = z.object({
  */
 export const POST = api(
   async ({ req, user }) => {
-    const provider = textProviderOrThrow();
     const body = await readJson(req, Body, 64 * 1024);
+    const provider = textProviderOrThrow(body.model);
     const draftName = body.name || draftNameFrom(body.prompt);
     const project = await createProject(user.id, { name: draftName, category: "presentation", framework: body.style === "cinematic" ? "cinematic" : "three" });
     const started = await startDeckGeneration({ userId: user.id, projectId: project.id, provider, request: { prompt: body.prompt, mode: "auto", draftName }, isNew: true });

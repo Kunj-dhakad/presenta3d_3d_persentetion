@@ -13,6 +13,8 @@ const Body = z.object({
   text: z.string().trim().min(1, "Say or type what to change").max(500, "Keep commands under 500 characters"),
   // The slide the presenter is on (1-based), for "this slide".
   slide: z.number().int().min(1).max(200).nullable().optional(),
+  /** The model chosen in the chat's dropdown (lib/ai-models.ts); missing: OPENAI_MODEL. */
+  model: z.string().max(60).optional(),
 });
 
 /**
@@ -29,7 +31,7 @@ export const POST = api<{ id: string }>(
     const body = await readJson(req, Body, 16 * 1024);
     if (await activeProjectJob(project.id)) throw new HttpError(409, "Wait until the presentation has finished generating.", "JOB_RUNNING");
     const deck = await loadDeck(project.id);
-    const { data } = await textProviderOrThrow().structured({
+    const { data } = await textProviderOrThrow(body.model).structured({
       operation: "deck.command",
       schema: DeckCommandSchema,
       schemaName: "deck_command",

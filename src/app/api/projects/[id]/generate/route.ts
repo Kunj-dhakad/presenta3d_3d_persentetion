@@ -13,6 +13,8 @@ const GenerateBody = z.object({
   conversationId: z.string().max(40).nullable().optional(),
   mode: z.enum(["auto", "repair"]).default("auto"),
   runtimeErrors: z.array(z.string().max(2000)).max(20).optional(),
+  /** The model chosen in the chat's dropdown (lib/ai-models.ts); missing: OPENAI_MODEL. */
+  model: z.string().max(60).optional(),
 });
 
 /**
@@ -22,8 +24,8 @@ const GenerateBody = z.object({
  */
 export const POST = api<{ id: string }>(
   async ({ req, user, params }) => {
-    const provider = textProviderOrThrow();
     const [project, body] = await Promise.all([getOwnedProject(user.id, params.id), readJson(req, GenerateBody, 64 * 1024)]);
+    const provider = textProviderOrThrow(body.model);
     // The client follows the running job in the chat (details.jobId) instead of starting a second one.
     const running = await activeProjectJob(project.id);
     if (running) throw new HttpError(409, "A generation is already running for this project", "JOB_RUNNING", { jobId: running.id });

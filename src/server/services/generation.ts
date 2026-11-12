@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { db } from "@/server/db/client";
 import { HttpError } from "@/server/http/errors";
-import { getTextProvider } from "@/server/ai/provider";
+import { getTextProvider, isAllowedTextModel } from "@/server/ai/provider";
 import { AIError, type TextModelProvider } from "@/server/ai/types";
 import { createDeferredJob } from "@/server/jobs/runner";
 import type { DeckJobInput } from "@/server/jobs/deferred";
@@ -16,9 +16,11 @@ export type GenerationRequest = {
   draftName?: string;
 };
 
-export function textProviderOrThrow(): TextModelProvider {
+/** `model`: the presenter's choice from the chat's dropdown (checked by getTextProvider). */
+export function textProviderOrThrow(model?: string | null): TextModelProvider {
+  if (model && !isAllowedTextModel(model)) throw new HttpError(400, "This AI model is not available", "MODEL_NOT_ALLOWED");
   try {
-    return getTextProvider();
+    return getTextProvider(model);
   } catch (err) {
     if (err instanceof AIError && err.code === "NOT_CONFIGURED") throw new HttpError(503, err.message, "AI_NOT_CONFIGURED");
     throw err;
@@ -58,6 +60,8 @@ export async function startDeckGeneration(input: {
     conversationId: conversation.id,
     runtimeErrors: request.runtimeErrors,
     draftName: request.draftName,
+    // The job's steps run on the model the request was started with.
+    model: provider.name === "openai" ? provider.model : undefined,
     startedAt: new Date().toISOString(),
   };
   // The job id is chosen up front so the message and the job are written in parallel.

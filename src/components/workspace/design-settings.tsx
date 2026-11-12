@@ -173,7 +173,8 @@ export function TemplateSection({ d }: { d: Loaded }) {
             disabled={busy !== null}
             title={`Apply “${p.name}”`}
             onClick={() => void d.save(`palette:${p.id}`, { design: p.colors }, `“${p.name}” colours applied`)}
-            className="flex w-[106px] flex-col items-center gap-2.5 rounded-xl border border-black/5 bg-[#f4f8fb] p-2.5 transition hover:border-[#00a6ee]/40 hover:bg-white focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
+            // Three to a row whatever the drawer's width (a scrollbar must not push the third one down).
+            className="flex w-[calc((100%-30px)/3)] flex-col items-center gap-2.5 rounded-xl border border-black/5 bg-[#f4f8fb] p-2.5 transition hover:border-[#00a6ee]/40 hover:bg-white focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
           >
             <span className="flex h-[21px] w-full overflow-hidden rounded-md bg-white" aria-hidden>
               {p.swatch.map((c, i) => <span key={i} className="h-full flex-1" style={{ background: c }} />)}

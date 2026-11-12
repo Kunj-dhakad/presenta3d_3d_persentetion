@@ -91,32 +91,31 @@ export function VoiceButton({ onText, onFinal, disabled, className }: { onText: 
     r.start();
   }
 
+  /* The EN / हि switch is not in the Figma design, so it is hidden; the mic keeps the language last chosen
+     (English if none). To bring it back, restore chooseLang and the switch below.
   function chooseLang(id: string) {
     try {
       localStorage.setItem(LANG_KEY, id);
     } catch {
-      /* not remembered: stays English */
+      // not remembered: stays English
     }
     window.dispatchEvent(new Event(LANG_EVENT));
   }
+  */
 
   if (!supported) return null;
   return (
     <span className={cn("flex items-center gap-2", className)}>
+      {/* Voice language switch (hidden, see above):
       <span className="flex h-[30px] items-stretch overflow-hidden rounded-lg border border-black/10 bg-[#f4f8fb] text-[11px] font-medium" role="group" aria-label="Voice language">
         {VOICE_LANGUAGES.map((l) => (
-          <button
-            key={l.id}
-            type="button"
-            onClick={() => chooseLang(l.id)}
-            aria-pressed={lang === l.id}
-            disabled={listening}
-            className={cn("px-2 transition", lang === l.id ? "bg-[#00a6ee] text-white" : "text-black/60 hover:text-foreground")}
-          >
+          <button key={l.id} type="button" onClick={() => chooseLang(l.id)} aria-pressed={lang === l.id} disabled={listening}
+            className={cn("px-2 transition", lang === l.id ? "bg-[#00a6ee] text-white" : "text-black/60 hover:text-foreground")}>
             {l.label}
           </button>
         ))}
       </span>
+      */}
       <button
         type="button"
         onClick={() => (listening ? rec.current?.stop() : start())}

@@ -21,10 +21,10 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content>) {
   return (
     <SheetPrimitive.Portal>
-      {/* The design: the editor behind is blurred and lightened. */}
+      {/* The design: the editor behind is slightly blurred and greyed. */}
       <SheetPrimitive.Overlay
         data-slot="sheet-overlay"
-        className="fixed inset-0 z-50 bg-[#f4f8fb]/45 supports-backdrop-filter:backdrop-blur-[3px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        className="fixed inset-0 z-50 bg-[#0f172a]/15 supports-backdrop-filter:backdrop-blur-[1.5px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
       />
       <SheetPrimitive.Content
         data-slot="sheet-content"

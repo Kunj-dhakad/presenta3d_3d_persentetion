@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Monitor, Tablet, Smartphone, RotateCw, ExternalLink, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Play, CircleCheck, Check, ScanSearch, SquarePen, Image as ImageIcon, Layers } from "lucide-react";
+// RotateCw, ExternalLink, Play, CircleCheck and Tooltip are for the hidden preview tools (see PreviewPane).
+import { Monitor, Tablet, Smartphone, AlertTriangle, Loader2, Wand2, ChevronDown, ChevronUp, Check, ScanSearch, SquarePen, Image as ImageIcon, Layers } from "lucide-react";
 import { useWorkspace } from "@/stores/workspace";
 import { api } from "@/lib/api-client";
 import { formatDiagnostic, type PreviewMessage } from "@/lib/build-types";
 import type { PipelineStage } from "@/lib/jobs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +24,8 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
   const build = useWorkspace((s) => s.build);
   const nonce = useWorkspace((s) => s.previewNonce);
   const runtimeErrors = useWorkspace((s) => s.runtimeErrors);
-  const { refreshPreview, pushRuntimeError, runBuild, openFile } = useWorkspace.getState();
+  // runBuild and refreshPreview belong to the hidden preview tools (see below).
+  const { pushRuntimeError, openFile } = useWorkspace.getState();
   const [showIssues, setShowIssues] = useState(true);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -99,7 +100,9 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[#f4f8fb]">
-      {/* Preview tools, laid over the 36px above the slide (the design shows only the slide on #f4f8fb). */}
+      {/* Preview tools (status, Build now, Refresh, Open in a new tab): not in the Figma design, so hidden.
+          To bring them back, restore this block and runBuild / refreshPreview and the Tooltip, Play, RotateCw,
+          ExternalLink and CircleCheck imports.
       <div className="absolute inset-x-0 top-0 z-10 flex h-9 items-center gap-1 px-3">
         <div className="mr-2 flex min-w-0 flex-1 items-center gap-2 text-[11px] text-[#64748b]">
           {busy || build.status === "building" ? <Loader2 className="size-3 shrink-0 animate-spin text-brand" /> : build.status === "failed" ? <AlertTriangle className="size-3 shrink-0 text-destructive" /> : build.previewUrl ? <CircleCheck className="size-3 shrink-0 text-success" /> : <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" />}
@@ -130,16 +133,16 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
           <TooltipContent>Open in new tab (still sandboxed)</TooltipContent>
         </Tooltip>
       </div>
+      */}
 
       {build.stale && (
-        <div className="absolute inset-x-3 top-9 z-10 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-1.5 text-xs text-warning">
+        <div className="absolute inset-x-3 top-3 z-10 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-1.5 text-xs text-warning">
           <AlertTriangle className="size-3.5" /> The latest build failed. Showing the last working version.
         </div>
       )}
 
-      {/* The slide in the design: 996×640 (it keeps that shape), 20px corners, 12px from the sides,
-          centred with room for the tools above. */}
-      <div ref={boxRef} className={cn("relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-3 py-9", viewport !== "desktop" && !busy && "grid-dots")}>
+      {/* The slide in the design: 996×640 (it keeps that shape), 20px corners, 12px around it, centred. */}
+      <div ref={boxRef} className={cn("relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3", viewport !== "desktop" && !busy && "grid-dots")}>
         {busy ? (
           <GeneratingSkeleton box={box} />
         ) : src ? (

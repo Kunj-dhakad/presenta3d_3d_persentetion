@@ -14,6 +14,8 @@ export const DeckJobInput = z.object({
   conversationId: z.string(),
   runtimeErrors: z.array(z.string()).optional(),
   draftName: z.string().optional(),
+  /** The OpenAI model chosen in the chat (missing: OPENAI_MODEL). */
+  model: z.string().optional(),
   startedAt: z.string(),
 });
 export type DeckJobInput = z.infer<typeof DeckJobInput>;
@@ -33,7 +35,7 @@ export async function startDeferredJob(job: JobRow, opts: { budgetMs?: number } 
   const input = parsed.data;
   const projectId = job.projectId;
   return claimJob(job.id, async (ctx) => {
-    const provider = getTextProvider();
+    const provider = getTextProvider(input.model);
     // Cinematic presentations (framework "cinematic", set when they are created) have their own pipeline.
     const project = await db.project.findUnique({ where: { id: projectId }, select: { framework: true } });
     const run = project?.framework === "cinematic" ? runCinePipeline : runDeckPipeline;
