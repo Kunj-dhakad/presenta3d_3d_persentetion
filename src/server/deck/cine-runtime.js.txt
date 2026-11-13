@@ -489,6 +489,11 @@ window.addEventListener("message", (e) => {
   // The PHP viewer narrates the deck and moves it on when a slide's voice ends;
   // the deck's own timer must not move it as well.
   else if (action === "autoplay") setPlaying(Boolean(e.data.on));
+  // While the PHP viewer's voice-over plays, it moves the slides itself: the auto-play button is hidden.
+  else if (action === "autoplay-button") {
+    const btn = document.getElementById("play");
+    if (btn) btn.style.display = e.data.visible === false ? "none" : "";
+  }
 });
 
 window.addEventListener("hashchange", () => {
