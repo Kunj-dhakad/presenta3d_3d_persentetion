@@ -101,6 +101,9 @@ const AVATAR_STATUS_TEXT: Record<AvatarVideoStatus, string> = {
 export function usePresenterSettings(projectId: string, open: boolean) {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [form, setForm] = useState<PresenterSettings | null>(null);
+  // The settings as last saved (or loaded): a switch saved on its own sends these plus its change,
+  // so it never also saves another section's unsaved edits.
+  const saved = useRef<PresenterSettings | null>(null);
   const [lists, setLists] = useState<ResponderList[]>([]);
   /** Which autoresponder `lists` belongs to; its lists are loading until it matches the chosen one. */
   const [listsFor, setListsFor] = useState<number | null>(null);
@@ -120,6 +123,7 @@ export function usePresenterSettings(projectId: string, open: boolean) {
         setError(null);
         setData(r);
         setForm(r.settings);
+        saved.current = r.settings;
         setAvatarStatus(r.settings.avatar_video_status);
       },
       (e) => live && setError((e as Error).message),
@@ -201,6 +205,31 @@ export function usePresenterSettings(projectId: string, open: boolean) {
     audio.play().catch(() => setPreviewing(false));
   }
 
+  /** The PHP record (3d-view/settings) for `s`. */
+  function post(s: PresenterSettings) {
+    return phpPost<{ settings: PresenterSettings; message?: string }>("3d-view/settings", {
+      id: projectId,
+      save: 1,
+      narration: s.narration,
+      voice_id: s.voice_id,
+      subtitles: s.subtitles,
+      subtitle_text_color: s.subtitle_text_color,
+      subtitle_bg_color: s.subtitle_bg_color,
+      avatar: s.avatar,
+      avatar_id: s.avatar_id ?? "",
+      chat: s.chat,
+      welcome_text: s.welcome_text,
+      lead_form: s.lead_form,
+      lead_after_slide: s.lead_after_slide,
+      lead_fields: JSON.stringify(s.lead_fields),
+      autoresponder_id: s.lead_form ? (s.autoresponder_id ?? "") : "",
+      list_id: s.lead_form ? s.list_id : "",
+      feedback: s.feedback,
+      feedback_style: s.feedback_style ?? "stars",
+      summary: s.summary,
+    });
+  }
+
   /** Saves every presenter setting at once (one PHP record), from whichever section's Save was pressed. */
   async function save() {
     if (!form) return;
@@ -210,31 +239,37 @@ export function usePresenterSettings(projectId: string, open: boolean) {
     }
     setSaving(true);
     try {
-      const r = await phpPost<{ settings: PresenterSettings; message?: string }>("3d-view/settings", {
-        id: projectId,
-        save: 1,
-        narration: form.narration,
-        voice_id: form.voice_id,
-        subtitles: form.subtitles,
-        subtitle_text_color: form.subtitle_text_color,
-        subtitle_bg_color: form.subtitle_bg_color,
-        avatar: form.avatar,
-        avatar_id: form.avatar_id ?? "",
-        chat: form.chat,
-        welcome_text: form.welcome_text,
-        lead_form: form.lead_form,
-        lead_after_slide: form.lead_after_slide,
-        lead_fields: JSON.stringify(form.lead_fields),
-        autoresponder_id: form.lead_form ? (form.autoresponder_id ?? "") : "",
-        list_id: form.lead_form ? form.list_id : "",
-        feedback: form.feedback,
-        feedback_style: form.feedback_style ?? "stars",
-        summary: form.summary,
-      });
+      const r = await post(form);
       setForm(r.settings);
+      saved.current = r.settings;
       setAvatarStatus(r.settings.avatar_video_status);
       toast.success(r.message || "Presenter settings saved.");
     } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * A section with nothing but switches saves at once (no Save button): the change on top of the
+   * last saved settings, so other sections' unsaved edits stay unsaved. Undone in the form if it fails.
+   */
+  async function saveNow(patch: Partial<PresenterSettings>) {
+    const base = saved.current;
+    if (!base) return;
+    const before = Object.fromEntries(Object.keys(patch).map((k) => [k, base[k as keyof PresenterSettings]])) as Partial<PresenterSettings>;
+    set(patch);
+    setSaving(true);
+    try {
+      const r = await post({ ...base, ...patch });
+      saved.current = r.settings;
+      // Only the switched settings take the server's answer; anything being edited elsewhere stays as typed.
+      const keys = Object.keys(patch) as (keyof PresenterSettings)[];
+      setForm((f) => (f ? { ...f, ...Object.fromEntries(keys.map((k) => [k, r.settings[k]])) } : f));
+      toast.success("Saved");
+    } catch (e) {
+      set(before);
       toast.error((e as Error).message);
     } finally {
       setSaving(false);
@@ -258,7 +293,7 @@ export function usePresenterSettings(projectId: string, open: boolean) {
     }
   }
 
-  return { data, form, set, error, saving, save, previewing, playSample, voice, avatarStatus, lists, setLists, listsLoading, addAvatar };
+  return { data, form, set, error, saving, save, saveNow, previewing, playSample, voice, avatarStatus, lists, setLists, listsLoading, addAvatar };
 }
 
 /**
@@ -690,11 +725,12 @@ export function SummarySection({ p }: { p: Loaded }) {
         title="Offer the AI summary report"
         hint="At the end, viewers can download the key points of the presentation, written by AI, as a PDF."
         checked={p.form.summary}
-        onChange={(v) => p.set({ summary: v })}
+        // Only a switch here: it saves at once (no Save button).
+        onChange={(v) => void p.saveNow({ summary: v })}
         first
       />
       <p className="mt-3 text-xs text-muted-foreground">Your own report (the summary plus views, leads, ratings and what visitors asked) is in the presentation list&apos;s menu: AI report (PDF).</p>
-      <SaveButton p={p} />
+      {/* <SaveButton p={p} /> not needed: the switch saves at once. */}
     </>
   );
 }
@@ -702,7 +738,8 @@ export function SummarySection({ p }: { p: Loaded }) {
 export function FeedbackSection({ p }: { p: Loaded }) {
   return (
     <>
-      <ToggleRow id="presenter-feedback" title="Ask for feedback" hint="At the end, asks each visitor once for a 1-5 rating and a comment." checked={p.form.feedback} onChange={(v) => p.set({ feedback: v })} first />
+      {/* A switch and a choice of style: both save at once (no Save button). */}
+      <ToggleRow id="presenter-feedback" title="Ask for feedback" hint="At the end, asks each visitor once for a 1-5 rating and a comment." checked={p.form.feedback} onChange={(v) => void p.saveNow({ feedback: v })} first />
       {/* The design's four rating-style cards: a picture of the feedback form in that style; the chosen one has a blue border. */}
       <div className={cn("mt-1 grid grid-cols-2 gap-x-[11px] gap-y-3", !p.form.feedback && "pointer-events-none opacity-50")} role="radiogroup" aria-label="Rating style">
         {FEEDBACK_STYLES.map((s) => {
@@ -715,7 +752,8 @@ export function FeedbackSection({ p }: { p: Loaded }) {
               aria-checked={on}
               aria-label={`${s.label} rating`}
               title={`${s.label} rating`}
-              onClick={() => p.set({ feedback_style: s.id })}
+              onClick={() => !on && void p.saveNow({ feedback_style: s.id })}
+              disabled={p.saving}
               className={cn(
                 "flex h-[104px] items-center justify-center rounded-xl border bg-[#f4f8fb] p-1 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                 on ? "border-[#00a6ee]" : "border-black/5 hover:border-[#00a6ee]/50",
@@ -728,7 +766,7 @@ export function FeedbackSection({ p }: { p: Loaded }) {
           );
         })}
       </div>
-      <SaveButton p={p} />
+      {/* <SaveButton p={p} /> not needed: the switch and the style save at once. */}
     </>
   );
 }
