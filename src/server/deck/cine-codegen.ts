@@ -121,8 +121,17 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 @media (max-width: 760px) {
   #brand { left: auto; right: 12px; bottom: auto; top: 14px; max-width: 50vw; }
   #brand img { height: 22px; }
-  .slide { align-items: flex-end !important; justify-content: center !important; text-align: center; padding-bottom: 96px; }
+  /* Phones: the text in the middle of the screen (it sat at the bottom), clear of the chip above and
+     the dots bar below; "safe" keeps the top in view when a slide has more text than fits. */
+  .slide { align-items: center !important; align-items: safe center !important; justify-content: center !important; text-align: center; padding: 64px 20px 92px; }
   .layout-left .content, .layout-right .content { max-width: 100%; }
+  /* The text is centred, so the shade is too (a side gradient left the text over the bright side). */
+  .slide .slide-shade { background: linear-gradient(0deg, rgba(var(--shade),.8), rgba(var(--shade),.5) 50%, rgba(var(--shade),.62)); }
+  .layout-left .content::before, .layout-right .content::before { content: ""; position: absolute; inset: -14% -12%; z-index: -1; pointer-events: none; background: radial-gradient(closest-side, rgba(var(--shade), .5), transparent); }
+  .title { font-size: calc(clamp(30px, 8.6vw, 44px) * var(--ts, 1)); }
+  .layout-hero .title { font-size: calc(clamp(36px, 11vw, 56px) * var(--ts, 1)); }
+  .subtitle { margin-top: 14px; }
+  .bullets { margin-top: 20px; gap: 10px; }
   .bullets { justify-items: center; }
   #hint, #chip-title, #chip .sep { display: none; }
   .dot { width: 14px; }
