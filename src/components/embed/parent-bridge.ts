@@ -12,6 +12,10 @@
  *   iframe → PHP   P3D_OPENED           { projectId }  a presentation was created or opened
  *   iframe → PHP   P3D_BACK             back to PHP's list of 3D presentations
  *   iframe → PHP   P3D_PRESENT          { projectId }  open PHP's full-page viewer
+ *   iframe → PHP   P3D_PUBLISH_ASK      { projectId }  about to publish: PHP asks "Public or Password protected?"
+ *   PHP → iframe   P3D_PUBLISH_ASKING   its popup is open
+ *   PHP → iframe   P3D_PUBLISH_GO       saved: publish now
+ *   PHP → iframe   P3D_PUBLISH_CANCEL   closed without saving: do not publish
  *   iframe → PHP   P3D_PUBLISHED        { projectId }  published; open PHP's publish page (link, embed, QR, social)
  *
  * Opened directly (no parent page) the token can come as ?token= instead,
@@ -86,4 +90,33 @@ export function publicLink(url: string | null): string | null {
 export function notifyParent(type: string, data: Record<string, unknown> = {}) {
   if (!inIframe()) return;
   window.parent.postMessage({ type, ...data }, parentOrigin);
+}
+
+/** How long to wait for the PHP page to say its popup is open; a PHP page without it never answers. */
+const ASK_ACK_MS = 2500;
+
+/**
+ * Before publishing, the PHP page asks who may view the presentation (Public / Password protected,
+ * its assets/js/p3-access.js) and saves the choice. Resolves true to publish, false when the owner
+ * closed the popup. Not inside the PHP app, or a PHP page that does not answer: true.
+ */
+export function askPublishAccess(projectId: string): Promise<boolean> {
+  if (!inIframe()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (go: boolean) => {
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timer);
+      resolve(go);
+    };
+    function onMessage(e: MessageEvent) {
+      if (e.source !== window.parent || (parentOrigin !== "*" && e.origin !== parentOrigin)) return;
+      const type = (e.data as { type?: unknown } | null)?.type;
+      if (type === "P3D_PUBLISH_ASKING") clearTimeout(timer);
+      else if (type === "P3D_PUBLISH_GO") done(true);
+      else if (type === "P3D_PUBLISH_CANCEL") done(false);
+    }
+    window.addEventListener("message", onMessage);
+    const timer = setTimeout(() => done(true), ASK_ACK_MS);
+    notifyParent("P3D_PUBLISH_ASK", { projectId });
+  });
 }

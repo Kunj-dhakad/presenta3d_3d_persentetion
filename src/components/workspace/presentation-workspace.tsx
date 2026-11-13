@@ -19,7 +19,7 @@ import { SettingsDrawer } from "./settings-drawer";
 import { useChosenModel } from "./chosen-model";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
-import { inIframe, notifyParent, paths } from "@/components/embed/parent-bridge";
+import { askPublishAccess, inIframe, notifyParent, paths } from "@/components/embed/parent-bridge";
 
 type ProjectResponse = { project: ProjectMeta; lastBuild: (BuildSummary & { createdAt: string }) | null };
 type Conversation = { id: string; title: string };
@@ -308,6 +308,11 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   async function publishNow() {
     if (publishing) return;
     setPublishing(true);
+    // The PHP page first asks "Public or Password protected?"; closing its popup does not publish.
+    if (!(await askPublishAccess(projectId))) {
+      setPublishing(false);
+      return;
+    }
     try {
       const r = await api<{ deployment: { status: string; error: string | null } }>(`/api/projects/${projectId}/publish`, { method: "POST" });
       if (r.deployment.status === "ready") {
