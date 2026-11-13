@@ -170,7 +170,8 @@ ${STYLE}  </style>
   </div>
   <div class="progress" aria-hidden="true"><div id="progress"></div></div>
   <div id="chip" class="pill"><span id="counter"></span><span class="sep"></span><span id="chip-title"></span></div>
-  <div id="hint" class="pill">&#8592; &#8594; or scroll to travel</div>
+  <!-- The "← → or scroll to travel" hint is hidden: it sat behind the players' own buttons (top right).
+  <div id="hint" class="pill">&#8592; &#8594; or scroll to travel</div> -->
   <div id="notes" role="note"></div>
   <footer id="brand" hidden></footer>
   <div id="peek" aria-hidden="true"><div class="peek-img"></div><div class="peek-cap"><span class="peek-n"></span><span class="peek-c"></span></div></div>
