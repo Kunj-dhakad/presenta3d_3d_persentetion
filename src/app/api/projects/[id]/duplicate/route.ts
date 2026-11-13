@@ -3,6 +3,8 @@ import { duplicateProject, getFiles, markWorkingVersion, snapshot } from "@/serv
 import { buildProject } from "@/server/build/builder";
 import { serializeProject } from "@/server/services/serialize";
 import { audit } from "@/server/audit";
+import { db } from "@/server/db/client";
+import { storage } from "@/server/storage/storage";
 import type { Framework } from "@/lib/schemas/project";
 
 export const POST = api<{ id: string }>(
@@ -16,6 +18,16 @@ export const POST = api<{ id: string }>(
       if (build.status === "succeeded") {
         const v = await snapshot(p.id, "auto", { summary: "Copy", files });
         await markWorkingVersion(p.id, v.id);
+        // The listing shows deckmedia/<project>/thumb-<build>.jpg, which the editor makes when a build
+        // is first shown. A copy has the same first slide, so it takes the original's picture now
+        // (it showed the placeholder until it was opened in the editor).
+        try {
+          const src = await db.project.findUnique({ where: { id: params.id }, select: { lastWorkingBuildId: true } });
+          const thumb = src?.lastWorkingBuildId ? await storage().get(`deckmedia/${params.id}/thumb-${src.lastWorkingBuildId}.jpg`) : null;
+          if (thumb) await storage().put(`deckmedia/${p.id}/thumb-${build.buildId}.jpg`, thumb, "image/jpeg");
+        } catch {
+          // No picture is not a failed copy: the editor makes one when the copy is opened.
+        }
       }
     }
     return { project: serializeProject(p) };
