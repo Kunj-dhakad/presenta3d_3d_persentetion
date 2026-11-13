@@ -88,12 +88,20 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 @media (max-width: 760px) {
   #brand { left: auto; right: 12px; bottom: auto; top: 14px; max-width: 50vw; }
   #brand img { height: 22px; }
-  .slide { align-items: flex-end !important; justify-content: center !important; text-align: center; padding-bottom: 96px; }
+  /* Phones: the text in the middle of the screen (it sat at the bottom), clear of the chip above and
+     the dots bar below; "safe" keeps the top in view when a slide has more text than fits. */
+  .slide { align-items: center !important; align-items: safe center !important; justify-content: center !important; text-align: center; padding: 64px 20px 92px; }
   .layout-left .content, .layout-right .content { max-width: 100%; }
-  .bullets { justify-items: center; }
+  /* Centred over the 3D scene: the soft shade behind the text on every layout. */
+  .layout-left .content::before, .layout-right .content::before { content: ""; position: absolute; inset: -14% -12%; z-index: -1; pointer-events: none; background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 62%, transparent), transparent); }
+  .title { font-size: calc(clamp(30px, 8.6vw, 44px) * var(--ts, 1)); }
+  .layout-hero .title { font-size: calc(clamp(36px, 11vw, 56px) * var(--ts, 1)); }
+  .subtitle { margin-top: 14px; }
+  .bullets { justify-items: center; margin-top: 20px; gap: 10px; }
   #hint, #chip-title, #chip .sep { display: none; }
   .dot { width: 14px; }
-  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stats { grid-template-columns: repeat(2, 1fr); margin-top: 22px; gap: 10px; }
+  .stat { padding: 14px; }
 }
 `;
 
