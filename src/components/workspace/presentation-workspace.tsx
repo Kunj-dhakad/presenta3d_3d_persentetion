@@ -38,6 +38,21 @@ const toAiStatus = (c: ConfigResponse): AiStatus =>
  * Simplified workspace for 3D presentations: chat on the left, a large live
  * preview on the right, and Present / Publish actions. No code editor.
  */
+/**
+ * Run `fn` again after a short wait when it fails: the host (AWS Amplify) drops a request now and then,
+ * and the reload after a finished job must not leave the page showing an unfinished request.
+ */
+async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= tries || (e instanceof ApiError && e.status >= 400 && e.status < 500)) throw e;
+      await new Promise((r) => setTimeout(r, 800 * i));
+    }
+  }
+}
+
 export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -119,13 +134,15 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       if (ctrl.signal.aborted) return;
       followingJob.current = null;
       try {
-        await loadProject();
-        const cs = await api<{ conversations: Conversation[] }>(`/api/projects/${projectId}/conversations`);
-        const cid = cs.conversations[0]?.id ?? null;
-        if (cid) {
-          setConversationId(cid);
-          await loadMessages(cid);
-        }
+        await withRetry(async () => {
+          await loadProject();
+          const cs = await api<{ conversations: Conversation[] }>(`/api/projects/${projectId}/conversations`);
+          const cid = cs.conversations[0]?.id ?? null;
+          if (cid) {
+            setConversationId(cid);
+            await loadMessages(cid);
+          }
+        });
       } catch (e) {
         toast.error(errorMessage(e));
       }
@@ -289,6 +306,30 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  // The last message is the owner's and nothing runs: before saying the request did not finish, read the chat
+  // and the project again once, since the reply may only have been missed (a dropped request at the job's end).
+  const lastMessage = messages[messages.length - 1];
+  const maybeLostId = loaded && !jobRunning && !sending && lastMessage?.role === "user" ? lastMessage.id : null;
+  const [lostChecked, setLostChecked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!maybeLostId || lostChecked === maybeLostId) return;
+    let stopped = false;
+    const timer = setTimeout(() => {
+      void withRetry(async () => {
+        if (conversationId) await loadMessages(conversationId);
+        await loadProject();
+      })
+        .catch(() => {})
+        .then(() => {
+          if (!stopped) setLostChecked(maybeLostId);
+        });
+    }, 1200);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [maybeLostId, lostChecked, conversationId, loadMessages, loadProject]);
+
   if (loadError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
@@ -330,7 +371,7 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   // The last request got no answer and nothing is running: its job was lost (the tab was closed
   // before it started, or the server stopped it). Offer to send it again.
   const last = messages[messages.length - 1];
-  const unanswered = loaded && !jobRunning && !sending && last?.role === "user" ? last : null;
+  const unanswered = maybeLostId && lostChecked === maybeLostId && last?.role === "user" ? last : null;
   const chat = (
     <div className="flex h-full min-h-0 flex-col">
       {unanswered && (
