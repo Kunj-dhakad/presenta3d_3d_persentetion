@@ -13,9 +13,11 @@ export function isAllowedTextModel(model: string): boolean {
 /**
  * Provider selection. Callers depend on TextModelProvider only. To add a
  * provider, implement the interface and register it here. `model`: the
- * presenter's choice; anything not allowed falls back to OPENAI_MODEL.
+ * presenter's choice in the dropdown, which is for show only: every request
+ * runs on the server's OPENAI_MODEL, whatever is chosen.
  */
 export function getTextProvider(model?: string | null): TextModelProvider {
+  void model; // shown in the dropdown, not used
   if (env().AI_PROVIDER === "mock") return new MockTextProvider();
-  return new OpenAITextProvider(model && isAllowedTextModel(model) ? model : undefined);
+  return new OpenAITextProvider();
 }
