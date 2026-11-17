@@ -33,9 +33,9 @@ const LAYOUTS: { id: Layout; label: string; icon: typeof LayoutTemplate }[] = [
   { id: "left", label: "Text left", icon: PanelLeft },
   { id: "right", label: "Text right", icon: PanelRight },
   { id: "center", label: "Centered", icon: TextAlignCenter },
-  { id: "stats", label: "Numbers", icon: Hash },
+  { id: "stats", label: "Big numbers", icon: Hash },
 ];
-const LAYOUT_NAME: Record<Layout, string> = { hero: "cover", left: "text left", right: "text right", center: "centered", stats: "numbers" };
+const LAYOUT_NAME: Record<Layout, string> = { hero: "cover", left: "text left", right: "text right", center: "centered", stats: "big numbers" };
 const MAX_BULLETS = 5;
 const MAX_STATS = 4;
 const MAX_IMAGE_MB = 5;
@@ -286,11 +286,18 @@ export function SlideEditor({ projectId, open, onClose, disabled, onOpenSettings
             {/* Numbers (stats layout) or bullets */}
             {draft.layout === "stats" ? (
               <section className="grid gap-2">
-                <SubHeading first>Numbers</SubHeading>
+                <SubHeading first>Big numbers</SubHeading>
+                {/* What the two boxes are: the number shown big, and the line under it (the placeholders alone looked like values). */}
+                <p className="-mt-2 text-xs text-black/55">Shown large on the slide, each with a short line under it, e.g. <b className="font-semibold text-black/70">3.2x</b> · longer viewing time. Up to {MAX_STATS}.</p>
+                <div className="flex gap-2 text-[11px] font-medium text-black/50" aria-hidden="true">
+                  <span className="w-[34%] pl-1">Number</span>
+                  <span className="flex-1 pl-1">What it means</span>
+                  <span className="w-9" />
+                </div>
                 {draft.stats.map((x, i) => (
                   <div key={i} className="flex gap-2">
-                    <Input value={x.value} maxLength={20} placeholder="3.2x" aria-label={`Number ${i + 1}`} className="w-[34%]" onChange={(e) => set({ stats: draft.stats.map((y, j) => (j === i ? { ...y, value: e.target.value } : y)) })} />
-                    <Input value={x.label} maxLength={80} placeholder="What it means" aria-label={`Number ${i + 1} label`} onChange={(e) => set({ stats: draft.stats.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)) })} />
+                    <Input value={x.value} maxLength={20} placeholder="e.g. 87%" aria-label={`Number ${i + 1}`} className="w-[34%] font-semibold" onChange={(e) => set({ stats: draft.stats.map((y, j) => (j === i ? { ...y, value: e.target.value } : y)) })} />
+                    <Input value={x.label} maxLength={80} placeholder="e.g. recall after a week" aria-label={`Number ${i + 1} label`} onChange={(e) => set({ stats: draft.stats.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)) })} />
                     <Button size="icon" variant="ghost" aria-label={`Remove number ${i + 1}`} disabled={draft.stats.length <= 1} onClick={() => set({ stats: draft.stats.filter((_, j) => j !== i) })}><Trash2 /></Button>
                   </div>
                 ))}
