@@ -35,6 +35,12 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
   const [slide, setSlide] = useState(1);
   // Builds whose slide-1 thumbnail was asked for (once each; the presentation listing shows it).
   const thumbAsked = useRef(new Set<string>());
+  // A deck draws its thumbnail only while it shows slide 1. A build that opens on another slide (a rebuilt deck
+  // reopens on the slide being viewed: the pictures painted while it played on, a chat edit of slide 4) gets it
+  // from a second, unseen copy opened on slide 1 behind the preview; it is removed once the picture is in.
+  const [thumbFrame, setThumbFrame] = useState<{ buildId: string; src: string } | null>(null);
+  const thumbFrameRef = useRef<HTMLIFrameElement>(null);
+  const thumbFrameBuild = useRef<string | null>(null);
   const shownBuild = /\/preview\/([A-Za-z0-9_-]{8,58})\//.exec(build.previewUrl ?? "")?.[1] ?? null;
   const shownBuildRef = useRef(shownBuild);
   useEffect(() => {
@@ -44,6 +50,26 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
   // Messages from the sandboxed preview: accept only those from our iframe's window.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
+      // The unseen copy (slide 1, for the thumbnail): only its own messages, nothing shown from it.
+      const tw = thumbFrameRef.current?.contentWindow;
+      if (tw && e.source === tw) {
+        const d = e.data as PreviewMessage;
+        const forBuild = thumbFrameBuild.current;
+        if (!d || d.source !== "deck3d-preview" || !forBuild) return;
+        if (d.type === "ready") tw.postMessage({ type: "deck3d-deck", action: "autoplay", on: false }, "*");
+        else if (d.type === "slide") {
+          tw.postMessage({ type: "deck3d-deck", action: "autoplay", on: false }, "*");
+          tw.postMessage({ type: "deck3d-deck", action: "thumbnail" }, "*");
+        } else if (d.type === "thumbnail") {
+          const projectId = useWorkspace.getState().projectId;
+          thumbFrameBuild.current = null;
+          setThumbFrame(null);
+          if (projectId && typeof d.image === "string") {
+            void api(`/api/projects/${projectId}/thumbnail`, { method: "POST", json: { buildId: forBuild, image: d.image } }).catch(() => {});
+          }
+        }
+        return;
+      }
       if (e.source !== frameRef.current?.contentWindow) return;
       const d = e.data as PreviewMessage;
       if (!d || d.source !== "deck3d-preview") return;
@@ -63,10 +89,16 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
         // While a slide is edited the deck stays on it: a (re)loaded deck starts playing right after its first
         // "slide" message, so it is told again here (it arrives after that start).
         if (useWorkspace.getState().slideEditing) frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "autoplay", on: false }, "*");
-        // A presentation is showing: ask it for a picture of slide 1 (drawn once slide 1 has settled).
+        // A presentation is showing: ask it for a picture of slide 1 (drawn once slide 1 has settled); on
+        // another slide, the unseen copy on slide 1 draws it.
         if (buildId && !thumbAsked.current.has(buildId)) {
           thumbAsked.current.add(buildId);
-          frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "thumbnail" }, "*");
+          const url = useWorkspace.getState().build.previewUrl;
+          if (shown === 1 || !url) frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "thumbnail" }, "*");
+          else {
+            thumbFrameBuild.current = buildId;
+            setThumbFrame({ buildId, src: `${url}?editor=1&thumb=1#1` });
+          }
         }
       } else if (d.type === "thumbnail") {
         const projectId = useWorkspace.getState().projectId;
@@ -80,6 +112,16 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [pushRuntimeError]);
+
+  // The unseen copy goes after 30 s whatever happens (a deck that never answers); a newer build replaces it.
+  useEffect(() => {
+    if (!thumbFrame) return;
+    const t = setTimeout(() => {
+      if (thumbFrameBuild.current === thumbFrame.buildId) thumbFrameBuild.current = null;
+      setThumbFrame((f) => (f && f.buildId === thumbFrame.buildId ? null : f));
+    }, 30_000);
+    return () => clearTimeout(t);
+  }, [thumbFrame]);
 
   // The Slide content panel open: the deck stops playing by itself (it would move away from the slide edited).
   const slideEditing = useWorkspace((s) => s.slideEditing);
@@ -188,6 +230,22 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
               </div>
+            )}
+            {/* The unseen copy on slide 1, for the listing's thumbnail: behind the preview, transparent and not
+                clickable, at a desktop size (inside the window, so the browser keeps drawing it). */}
+            {thumbFrame && (
+              <iframe
+                key={thumbFrame.buildId}
+                ref={thumbFrameRef}
+                src={thumbFrame.src}
+                title="Thumbnail"
+                aria-hidden="true"
+                tabIndex={-1}
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                className="pointer-events-none absolute left-0 top-0 -z-10 border-0 opacity-0"
+                style={{ width: 1280, height: 720 }}
+              />
             )}
           </div>
         ) : (
