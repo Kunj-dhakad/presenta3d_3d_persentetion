@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Check, ChevronLeft, ChevronRight, Hash, ImageUp, Info, LayoutTemplate, Loader2, PanelLeft, PanelRight, Plus, RotateCcw, SquarePen, TextAlignCenter, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ImageUp, Info, Loader2, Plus, RotateCcw, SquarePen, Trash2, X } from "lucide-react";
 import { api, errorMessage } from "@/lib/api-client";
 import type { BuildSummary } from "@/lib/build-types";
 import { useWorkspace } from "@/stores/workspace";
@@ -14,8 +14,9 @@ import { cn } from "@/lib/utils";
 import { ACTION_BTN, SubHeading } from "./settings-parts";
 
 /**
- * The Slide content panel (the v8 editor's): one slide's words, layout and narration changed by hand,
- * and on a cinematic slide the presenter's own picture. It follows the preview (the slide shown is the
+ * The Slide content panel (the v8 editor's), kept simple: one slide's words (small heading, title, subtitle,
+ * bullets) and narration changed by hand, and on a cinematic slide the presenter's own picture. A slide's
+ * layout and big numbers are not offered here (they stay as they are; the chat changes them). It follows the preview (the slide shown is the
  * slide edited) and its arrows move the preview. Save rebuilds the presentation and keeps a version
  * (api/projects/[id]/slides); unsaved words are saved before moving to another slide. Success shows in the
  * panel itself (the foot says Saved, the picture is marked), not in toasts: they would cover the Save button.
@@ -28,16 +29,7 @@ type SlidesView = { style: "3d" | "cinematic"; thankYou: boolean; slides: SlideV
 type Saved = SlidesView & { build: BuildSummary | null };
 type Draft = Pick<SlideView, "layout" | "kicker" | "title" | "subtitle" | "bullets" | "stats" | "notes">;
 
-const LAYOUTS: { id: Layout; label: string; icon: typeof LayoutTemplate }[] = [
-  { id: "hero", label: "Cover", icon: LayoutTemplate },
-  { id: "left", label: "Text left", icon: PanelLeft },
-  { id: "right", label: "Text right", icon: PanelRight },
-  { id: "center", label: "Centered", icon: TextAlignCenter },
-  { id: "stats", label: "Big numbers", icon: Hash },
-];
-const LAYOUT_NAME: Record<Layout, string> = { hero: "cover", left: "text left", right: "text right", center: "centered", stats: "big numbers" };
 const MAX_BULLETS = 5;
-const MAX_STATS = 4;
 const MAX_IMAGE_MB = 5;
 
 const draftOf = (s: SlideView): Draft => ({ layout: s.layout, kicker: s.kicker, title: s.title, subtitle: s.subtitle, bullets: [...s.bullets], stats: s.stats.map((x) => ({ ...x })), notes: s.notes });
@@ -191,7 +183,7 @@ export function SlideEditor({ projectId, open, onClose, disabled, onOpenSettings
         <div className="min-w-0 flex-1">
           <h2 className="text-[15px] leading-tight font-semibold text-black">Slide content</h2>
           <p className="truncate text-xs text-black/55">
-            {!data ? "Loading…" : onThankYou ? `Thank-you slide (after slide ${total})` : `Slide ${index + 1} of ${total} · ${LAYOUT_NAME[(draft ?? slide!).layout]}`}
+            {!data ? "Loading…" : onThankYou ? `Thank-you slide (after slide ${total})` : `Slide ${index + 1} of ${total}`}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -224,20 +216,6 @@ export function SlideEditor({ projectId, open, onClose, disabled, onOpenSettings
           </div>
         ) : draft && slide ? (
           <div className="grid gap-5">
-            {/* Layout */}
-            <section>
-              <SubHeading first>Layout</SubHeading>
-              <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Layout">
-                {LAYOUTS.map(({ id, label, icon: Icon }) => (
-                  <button key={id} type="button" role="radio" aria-checked={draft.layout === id} onClick={() => set({ layout: id, ...(id === "stats" && !draft.stats.length ? { stats: [{ value: "", label: "" }] } : {}) })}
-                    className={cn("flex flex-col items-center gap-1.5 rounded-xl border px-1 py-2.5 text-[11px] font-medium transition focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none", draft.layout === id ? "border-[#00a6ee] bg-[#e8f6fd] text-[#0088cc]" : "border-black/10 text-black/65 hover:border-black/20 hover:bg-[#f4f8fb]")}>
-                    <Icon className="size-4" />
-                    <span className="leading-tight">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
             {/* Picture (cinematic) */}
             {data.style === "cinematic" && (
               <section>
@@ -283,28 +261,8 @@ export function SlideEditor({ projectId, open, onClose, disabled, onOpenSettings
               </Field>
             </section>
 
-            {/* Numbers (stats layout) or bullets */}
-            {draft.layout === "stats" ? (
-              <section className="grid gap-2">
-                <SubHeading first>Big numbers</SubHeading>
-                {/* What the two boxes are: the number shown big, and the line under it (the placeholders alone looked like values). */}
-                <p className="-mt-2 text-xs text-black/55">Shown large on the slide, each with a short line under it, e.g. <b className="font-semibold text-black/70">3.2x</b> · longer viewing time. Up to {MAX_STATS}.</p>
-                <div className="flex gap-2 text-[11px] font-medium text-black/50" aria-hidden="true">
-                  <span className="w-[34%] pl-1">Number</span>
-                  <span className="flex-1 pl-1">What it means</span>
-                  <span className="w-9" />
-                </div>
-                {draft.stats.map((x, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input value={x.value} maxLength={20} placeholder="e.g. 87%" aria-label={`Number ${i + 1}`} className="w-[34%] font-semibold" onChange={(e) => set({ stats: draft.stats.map((y, j) => (j === i ? { ...y, value: e.target.value } : y)) })} />
-                    <Input value={x.label} maxLength={80} placeholder="e.g. recall after a week" aria-label={`Number ${i + 1} label`} onChange={(e) => set({ stats: draft.stats.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)) })} />
-                    <Button size="icon" variant="ghost" aria-label={`Remove number ${i + 1}`} disabled={draft.stats.length <= 1} onClick={() => set({ stats: draft.stats.filter((_, j) => j !== i) })}><Trash2 /></Button>
-                  </div>
-                ))}
-                {draft.stats.length < MAX_STATS && <Button size="sm" variant="secondary" className="justify-self-start" onClick={() => set({ stats: [...draft.stats, { value: "", label: "" }] })}><Plus /> Add number</Button>}
-              </section>
-            ) : (
-              <section className="grid gap-2">
+            {/* Bullets (a slide's big numbers, if it has any, stay as they are) */}
+            <section className="grid gap-2">
                 <SubHeading first>Bullets</SubHeading>
                 {draft.bullets.map((b, i) => (
                   <div key={i} className="flex gap-2">
@@ -317,8 +275,7 @@ export function SlideEditor({ projectId, open, onClose, disabled, onOpenSettings
                 ) : (
                   <p className="text-xs text-black/55">Up to {MAX_BULLETS} bullets.</p>
                 )}
-              </section>
-            )}
+            </section>
 
             {/* Narration */}
             <section className="grid gap-1.5">

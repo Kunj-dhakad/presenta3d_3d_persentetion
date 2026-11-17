@@ -58,7 +58,6 @@ export function withSlideEdit(deck: DeckSpec, index: number, edit: SlideEdit): D
   const title = edit.title.trim();
   if (!title) throw new HttpError(400, "Give the slide a title.", "VALIDATION");
   const stats = edit.stats.map((x) => ({ value: x.value.trim(), label: x.label.trim() })).filter((x) => x.value || x.label);
-  if (edit.layout === "stats" && !stats.length) throw new HttpError(400, "Add at least one number for the Big numbers layout.", "VALIDATION");
   const next: DeckSlide = {
     ...old,
     layout: edit.layout,
