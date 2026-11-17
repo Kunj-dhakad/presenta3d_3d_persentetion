@@ -52,9 +52,17 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
         setLoading(false);
         // The editor's preview needs no fullscreen button (the deck hides it on this request).
         frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "chrome", fullscreen: false, hint: false }, "*");
+        // While a slide is edited the deck stays on it (also after the rebuild a save makes).
+        if (useWorkspace.getState().slideEditing) frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "autoplay", on: false }, "*");
       }
       else if (d.type === "slide") {
-        setSlide(Number.isInteger(d.index) && d.index > 0 ? d.index : 1);
+        const shown = Number.isInteger(d.index) && d.index > 0 ? d.index : 1;
+        setSlide(shown);
+        // The Slide content panel follows the preview.
+        useWorkspace.getState().setPreviewSlide(shown);
+        // While a slide is edited the deck stays on it: a (re)loaded deck starts playing right after its first
+        // "slide" message, so it is told again here (it arrives after that start).
+        if (useWorkspace.getState().slideEditing) frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "autoplay", on: false }, "*");
         // A presentation is showing: ask it for a picture of slide 1 (drawn once slide 1 has settled).
         if (buildId && !thumbAsked.current.has(buildId)) {
           thumbAsked.current.add(buildId);
@@ -72,6 +80,19 @@ export function PreviewPane({ onFixWithAI, busy, viewport = "desktop" }: { onFix
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [pushRuntimeError]);
+
+  // The Slide content panel open: the deck stops playing by itself (it would move away from the slide edited).
+  const slideEditing = useWorkspace((s) => s.slideEditing);
+  useEffect(() => {
+    if (slideEditing) frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "autoplay", on: false }, "*");
+  }, [slideEditing]);
+
+  // The Slide content panel asks for a slide: the deck goes to it ("goto" takes a 0-based index).
+  const slideGoto = useWorkspace((s) => s.slideGoto);
+  useEffect(() => {
+    if (!slideGoto) return;
+    frameRef.current?.contentWindow?.postMessage({ type: "deck3d-deck", action: "goto", index: slideGoto.slide - 1 }, "*");
+  }, [slideGoto]);
 
   useLayoutEffect(() => {
     const el = boxRef.current;

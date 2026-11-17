@@ -193,6 +193,13 @@ const StoredCineSchema = z.object({
   imagePrompt: z.string(),
   /** The generated image ("" while it is being painted, or when painting it failed). */
   image: z.string(),
+  /**
+   * The presenter's own picture (uploaded in the Slide content panel): kept when the AI edits the
+   * deck (cineToDeck), until they go back to the AI picture. Missing on generated pictures.
+   */
+  locked: z.boolean().optional(),
+  /** The AI picture the presenter's own replaced, to go back to at once. */
+  aiImage: z.string().optional(),
 });
 export type CineSlide = z.infer<typeof StoredCineSchema>;
 
@@ -358,13 +365,17 @@ export function validateDeck(input: unknown): DeckValidation {
 
 /** Trim a cinematic slide's fields; an image from anywhere else is dropped. */
 function normalizeCine(c: CineSlide): CineSlide {
+  const image = CINE_IMAGE_RE.test(c.image) ? c.image : "";
   return {
     text: c.text,
     camera: c.camera,
     transition: c.transition,
     pace: c.pace,
     imagePrompt: c.imagePrompt.slice(0, 1600),
-    image: CINE_IMAGE_RE.test(c.image) ? c.image : "",
+    image,
+    // The presenter's own picture (and the AI one it replaced): only while there is a picture.
+    ...(c.locked && image ? { locked: true } : {}),
+    ...(c.locked && image && c.aiImage && CINE_IMAGE_RE.test(c.aiImage) ? { aiImage: c.aiImage } : {}),
   };
 }
 

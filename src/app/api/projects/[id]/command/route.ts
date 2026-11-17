@@ -57,7 +57,8 @@ export const POST = api<{ id: string }>(
       let failed = 0;
       painted.forEach((r, k) => {
         const i = pictures[k].slide;
-        if (r.status === "fulfilled") next.slides[i] = { ...next.slides[i], cine: { ...next.slides[i].cine!, image: r.value } };
+        // A new AI picture replaces the presenter's own too (no longer kept through AI edits).
+        if (r.status === "fulfilled") next.slides[i] = { ...next.slides[i], cine: { ...next.slides[i].cine!, image: r.value, locked: undefined, aiImage: undefined } };
         else {
           failed++;
           console.warn(`[command] picture for slide ${i + 1} of ${project.id} failed: ${String(r.reason)}`);

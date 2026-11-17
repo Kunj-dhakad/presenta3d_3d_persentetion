@@ -81,6 +81,12 @@ type State = {
   saveError: string | null;
   lastSavedAt: number | null;
   autoBuild: boolean;
+  /** The slide the preview shows (1-based, as the deck reports it; the Thank-you slide counts). */
+  previewSlide: number;
+  /** A request to show a slide in the preview (1-based); `n` makes each request new. */
+  slideGoto: { slide: number; n: number } | null;
+  /** The Slide content panel is open: the preview does not play by itself (it would move away from the slide edited). */
+  slideEditing: boolean;
 };
 
 type Actions = {
@@ -104,6 +110,10 @@ type Actions = {
   startJob: (jobId: string) => void;
   applyJobEvent: (e: JobEvent) => void;
   setAutoBuild: (v: boolean) => void;
+  setPreviewSlide: (slide: number) => void;
+  /** Show slide `slide` (1-based) in the preview (the Slide content panel). */
+  gotoSlide: (slide: number) => void;
+  setSlideEditing: (on: boolean) => void;
 };
 
 const emptyBuild: BuildState = { status: "idle", buildId: null, previewUrl: null, errors: [], warnings: [], durationMs: null, stale: false };
@@ -124,9 +134,12 @@ export const useWorkspace = create<State & Actions>((set, get) => ({
   saveError: null,
   lastSavedAt: null,
   autoBuild: true,
+  previewSlide: 1,
+  slideGoto: null,
+  slideEditing: false,
 
   reset: (projectId) =>
-    set({ projectId, project: null, files: {}, saved: {}, openTabs: [], activePath: null, build: emptyBuild, runtimeErrors: [], job: null, saveError: null, lastSavedAt: null }),
+    set({ projectId, project: null, files: {}, saved: {}, openTabs: [], activePath: null, build: emptyBuild, runtimeErrors: [], job: null, saveError: null, lastSavedAt: null, previewSlide: 1, slideGoto: null }),
   setProject: (project) => set({ project }),
 
   loadFiles: (list) => {
@@ -227,6 +240,9 @@ export const useWorkspace = create<State & Actions>((set, get) => ({
       };
     }),
   refreshPreview: () => set((s) => ({ previewNonce: s.previewNonce + 1, runtimeErrors: [] })),
+  setPreviewSlide: (slide) => set((s) => (s.previewSlide === slide ? s : { previewSlide: slide })),
+  gotoSlide: (slide) => set((s) => ({ slideGoto: { slide, n: (s.slideGoto?.n ?? 0) + 1 } })),
+  setSlideEditing: (on) => set((s) => (s.slideEditing === on ? s : { slideEditing: on })),
   pushRuntimeError: (m) =>
     set((s) => {
       const key = `${m.type}:${m.message}`;

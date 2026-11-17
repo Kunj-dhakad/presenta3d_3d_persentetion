@@ -89,7 +89,12 @@ function layoutHint(layout: string): string {
       : "Compose a clear cinematic focal subject with a darker, low-detail central area where presentation text can remain readable.";
 }
 
-function cineImagePrompt(slide: CineSpecSlide, index: number, total: number, theme: CineSpec["theme"]): string {
+function cineImagePrompt(
+  slide: Pick<CineSpecSlide, "layout" | "title" | "subtitle" | "bullets">,
+  index: number,
+  total: number,
+  theme: Pick<CineSpec["theme"], "accent" | "background" | "environment">,
+): string {
   const layout = layoutHint(slide.layout);
   return [
     `Create a polished cinematic widescreen presentation background for slide ${index + 1} of ${total}.`,
@@ -125,14 +130,16 @@ function varyMotion(m: CineMotion, prev: CineMotion | null, i: number): CineMoti
  */
 export function cineToDeck(spec: CineSpec, previous: DeckSpec | null): { deck: DeckValidation; missing: number[] } {
   const painted = new Map<string, string>();
-  for (const s of previous?.slides ?? []) if (s.cine?.image && s.cine.imagePrompt) painted.set(imageKey(s.cine.imagePrompt), s.cine.image);
+  for (const s of previous?.slides ?? []) if (s.cine?.image && s.cine.imagePrompt && !s.cine.locked) painted.set(imageKey(s.cine.imagePrompt), s.cine.image);
+  const ownPicture = ownPictures(spec, previous);
   const missing: number[] = [];
   let prev: CineMotion | null = null;
   const slides = spec.slides.map((s: CineSpecSlide, i) => {
     const motion = varyMotion(s.motion, prev, i);
     prev = motion;
     const prompt = cineImagePrompt(s, i, spec.slides.length, spec.theme);
-    const image = painted.get(imageKey(prompt)) ?? "";
+    const own = ownPicture.get(i);
+    const image = own?.image ?? painted.get(imageKey(prompt)) ?? "";
     if (!image) missing.push(i);
     return {
       layout: s.layout,
@@ -144,7 +151,7 @@ export function cineToDeck(spec: CineSpec, previous: DeckSpec | null): { deck: D
       notes: s.notes,
       // The 3D fields are not used by the cinematic engine; kept valid for generic readers.
       scene: { kind: "particles", primary: spec.theme.accent, secondary: spec.theme.accent, speed: 1, density: 0.6, values: [] },
-      cine: { ...motion, imagePrompt: prompt, image },
+      cine: { ...motion, imagePrompt: prompt, image, ...(own ? { locked: true, ...(own.aiImage ? { aiImage: own.aiImage } : {}) } : {}) },
     };
   });
   const deck = validateDeck({
@@ -159,6 +166,49 @@ export function cineToDeck(spec: CineSpec, previous: DeckSpec | null): { deck: D
 }
 
 const imageKey = (prompt: string) => prompt.trim().toLowerCase().replace(/\s+/g, " ");
+const titleKey = (title: string) => title.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * The presenter's own pictures (cine.locked, uploaded in the Slide content panel) survive an AI edit:
+ * each goes to the new slide that is the same slide, found by its image prompt (its words did not
+ * change), else by its title, else (the deck kept its number of slides) by its place. Each picture is
+ * used once. Returns new slide index -> picture.
+ */
+function ownPictures(spec: CineSpec, previous: DeckSpec | null): Map<number, { image: string; aiImage?: string }> {
+  const out = new Map<number, { image: string; aiImage?: string }>();
+  const prevSlides = previous?.slides ?? [];
+  const own = prevSlides.map((s, i) => ({ i, s })).filter(({ s }) => s.cine?.locked && s.cine.image);
+  if (!own.length) return out;
+  const used = new Set<number>();
+  const take = (newIndex: number, oldIndex: number | undefined) => {
+    if (newIndex < 0 || oldIndex === undefined || used.has(oldIndex) || out.has(newIndex)) return;
+    const c = prevSlides[oldIndex].cine!;
+    used.add(oldIndex);
+    out.set(newIndex, { image: c.image, ...(c.aiImage ? { aiImage: c.aiImage } : {}) });
+  };
+  const n = spec.slides.length;
+  const prompts = spec.slides.map((s, i) => imageKey(cineImagePrompt(s, i, n, spec.theme)));
+  // 1. the same words (the same image prompt)
+  for (const { i, s } of own) take(prompts.indexOf(imageKey(s.cine!.imagePrompt)), i);
+  // 2. the same title
+  for (const { i, s } of own) {
+    const j = spec.slides.findIndex((x, k) => !out.has(k) && titleKey(x.title) !== "" && titleKey(x.title) === titleKey(s.title));
+    if (j >= 0) take(j, i);
+  }
+  // 3. the same place, when the deck kept its number of slides
+  if (n === prevSlides.length) for (const { i } of own) take(i, i);
+  return out;
+}
+
+/**
+ * The image prompt for a stored slide as it is now (after the presenter changed its words by hand),
+ * so an AI edit that keeps those words keeps its picture.
+ */
+export function cinePromptFor(deck: DeckSpec, index: number): string {
+  const s = deck.slides[index];
+  if (!s) return "";
+  return cineImagePrompt(s, index, deck.slides.length, deck.theme);
+}
 
 /** A stored cinematic deck in the model's format (for edits: the model sees what it wrote, without prompts or image URLs). */
 export function cineForPrompt(deck: DeckSpec): CineSpec {

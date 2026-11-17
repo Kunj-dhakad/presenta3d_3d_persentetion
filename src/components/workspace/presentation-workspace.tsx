@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, Eye, Loader2, MessageSquare, Pencil, RotateCcw } from "lucide-react";
+import { AlertCircle, Eye, Loader2, MessageSquare, Pencil, RotateCcw, SquarePen } from "lucide-react";
 import { FigBack, FigMobile, FigMonitor, FigPlay, FigRocket, FigSettings, FigTablet } from "./figma-icons";
 import { useWorkspace, type ChatMessageRow, type ProjectMeta } from "@/stores/workspace";
 import { api, ApiError, errorMessage, streamJob } from "@/lib/api-client";
@@ -16,6 +16,7 @@ import { ChatPanel, type AiStatus } from "./chat-panel";
 import { PreviewPane, VIEWPORTS, type ViewportId } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 import { SettingsDrawer } from "./settings-drawer";
+import { SlideEditor } from "./slide-editor";
 import { useChosenModel } from "./chosen-model";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const [shareOpen, setShareOpen] = useState(() => params.get("share") === "1");
   const [publishing, setPublishing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The Slide content panel (slide-editor.tsx), beside the preview.
+  const [slideOpen, setSlideOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
@@ -84,7 +87,10 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
   const [wasRunning, setWasRunning] = useState(jobRunning);
   if (wasRunning !== jobRunning) {
     setWasRunning(jobRunning);
-    if (jobRunning) setSettingsOpen(false);
+    if (jobRunning) {
+      setSettingsOpen(false);
+      setSlideOpen(false);
+    }
   }
   const model = ai?.provider === "openai" ? (chosenModel ?? ai.model) : null;
 
@@ -402,6 +408,9 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       </div>
     </div>
   );
+  const slideEditor = (className: string) => (
+    <SlideEditor projectId={projectId} open={slideOpen} onClose={() => setSlideOpen(false)} disabled={jobRunning || !hasPreview} onOpenSettings={() => setSettingsOpen(true)} className={className} />
+  );
   const preview = <PreviewPane busy={jobRunning} viewport={viewport} onFixWithAI={() => void send("The presentation preview shows errors. Regenerate the deck so it renders correctly.")} />;
 
   return (
@@ -436,6 +445,9 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           {/* Off while a presentation is being made or changed, like the size switch, Present and Publish. */}
+          <Button variant="outline" className={cn(TOP_BTN, slideOpen && "border-[#00a6ee] bg-[#e8f6fd] text-[#0088cc] hover:bg-[#e8f6fd] hover:text-[#0088cc]")} disabled={!hasPreview || jobRunning} onClick={() => setSlideOpen((o) => !o)} aria-pressed={slideOpen} title={jobRunning ? "Available when the presentation is ready" : "Change a slide's text, layout and narration (and a cinematic slide's picture)"}>
+            <SquarePen className="size-3.5" /> <span className="max-sm:sr-only">Slide content</span>
+          </Button>
           <Button variant="outline" className={TOP_BTN} disabled={jobRunning} onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" title={jobRunning ? "Available when the presentation is ready" : "Colours, voice-over, captions, Thank-you slide, footer, lead form, feedback, AI summary"}>
             <FigSettings className="size-3.5" /> <span className="max-sm:sr-only">Settings</span>
           </Button>
@@ -458,14 +470,17 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
       </header>
 
       {isDesktop ? (
-        <div className="min-h-0 flex-1">
-          <ResizablePanelGroup orientation="horizontal">
-            <ResizablePanel defaultSize="30" minSize={300} maxSize="45">
-              {chat}
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel minSize={420}>{preview}</ResizablePanel>
-          </ResizablePanelGroup>
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1">
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel defaultSize="30" minSize={300} maxSize="45">
+                {chat}
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel minSize={420}>{preview}</ResizablePanel>
+            </ResizablePanelGroup>
+          </div>
+          {slideOpen && slideEditor("w-[380px] shrink-0 border-l border-border")}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -477,6 +492,8 @@ export function PresentationWorkspace({ projectId }: { projectId: string }) {
             ))}
           </div>
           <div className="min-h-0 flex-1">{mobileTab === "chat" ? chat : preview}</div>
+          {/* Small screens: the panel over the editor. */}
+          {slideOpen && <div className="fixed inset-0 z-50">{slideEditor("h-full")}</div>}
         </div>
       )}
 
