@@ -3,7 +3,7 @@ import { db } from "@/server/db/client";
 import type { Prisma } from "@/generated/mysql-prisma/client";
 import { env } from "@/server/env";
 import type { JobContext } from "@/server/jobs/runner";
-import { AIError, type TextModelProvider } from "@/server/ai/types";
+import { AIError, publicMessage, type TextModelProvider } from "@/server/ai/types";
 import {
   EditPlanSchema,
   FileOperationsResultSchema,
@@ -96,7 +96,7 @@ async function callWithRetry<T>(fn: () => Promise<T>, ctx: JobContext, label: st
     return await fn();
   } catch (err) {
     if (err instanceof AIError && err.retryable && err.code !== "TRUNCATED" && !ctx.signal.aborted) {
-      ctx.emit({ type: "log", level: "warn", message: `${label}: ${err.message}. Retrying once.` });
+      ctx.emit({ type: "log", level: "warn", message: `${label}: the AI did not answer. Retrying once.` });
       return fn();
     }
     throw err;
@@ -478,7 +478,7 @@ export async function runProjectPipeline(ctx: JobContext, provider: TextModelPro
         ctx.emit({ type: "stage", stage: "repair", state: r.applied ? "done" : "failed", detail: `${r.applied} files changed` });
       } catch (err) {
         if (ctx.signal.aborted) break;
-        ctx.emit({ type: "stage", stage: "repair", state: "failed", detail: err instanceof Error ? err.message : "repair failed" });
+        ctx.emit({ type: "stage", stage: "repair", state: "failed", detail: publicMessage(err, "repair failed") });
         problems = [];
       }
       build = await doBuild();

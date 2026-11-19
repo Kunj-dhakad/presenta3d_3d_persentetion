@@ -2,6 +2,7 @@ import { z } from "zod";
 import { api, readJson, HttpError } from "@/server/http/api";
 import { env } from "@/server/env";
 import { openaiClient, mapOpenAIError } from "@/server/ai/openai-provider";
+import { publicMessage } from "@/server/ai/types";
 import { mediaProvider } from "@/server/media/providers";
 import { DEFAULT_IMAGE_MODEL } from "@/server/deck/cine-images";
 
@@ -49,7 +50,9 @@ export const POST = api(
       );
       b64 = res.data?.[0]?.b64_json;
     } catch (err) {
-      throw new HttpError(502, mapOpenAIError(err).message, "AI_ERROR");
+      const mapped = mapOpenAIError(err);
+      console.error("[avatar-image]", mapped.message);
+      throw new HttpError(502, publicMessage(mapped), "AI_ERROR");
     }
     if (!b64) throw new HttpError(502, "The AI returned no picture. Please try again.", "AI_ERROR");
     return { image: `data:image/jpeg;base64,${b64}` };

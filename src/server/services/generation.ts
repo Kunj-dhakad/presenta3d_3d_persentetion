@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/server/db/client";
 import { HttpError } from "@/server/http/errors";
 import { getTextProvider, isAllowedTextModel } from "@/server/ai/provider";
-import { AIError, type TextModelProvider } from "@/server/ai/types";
+import { AIError, publicMessage, type TextModelProvider } from "@/server/ai/types";
 import { createDeferredJob } from "@/server/jobs/runner";
 import type { DeckJobInput } from "@/server/jobs/deferred";
 
@@ -22,7 +22,10 @@ export function textProviderOrThrow(model?: string | null): TextModelProvider {
   try {
     return getTextProvider(model);
   } catch (err) {
-    if (err instanceof AIError && err.code === "NOT_CONFIGURED") throw new HttpError(503, err.message, "AI_NOT_CONFIGURED");
+    if (err instanceof AIError && err.code === "NOT_CONFIGURED") {
+      console.error("[ai]", err.message);
+      throw new HttpError(503, publicMessage(err), "AI_NOT_CONFIGURED");
+    }
     throw err;
   }
 }

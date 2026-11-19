@@ -55,6 +55,35 @@ export type AIErrorCode =
   | "UPSTREAM"
   | "CANCELLED";
 
+const BUSY = "Our servers are busy right now. Please try again in a few minutes. If this keeps happening, contact support.";
+
+/**
+ * The words a presenter may see for a failure. An AIError's own message names the AI company, its billing,
+ * keys and models: that is for the server log only. Anything else is the app's own wording and is kept,
+ * unless it names a provider or a key.
+ */
+export function publicMessage(err: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (err instanceof AIError) {
+    switch (err.code) {
+      case "CANCELLED":
+        return "Cancelled";
+      case "TIMEOUT":
+        return "This took too long. Please try again.";
+      case "REFUSED":
+        return "This request could not be completed. Please change your prompt and try again.";
+      case "TRUNCATED":
+      case "INVALID_OUTPUT":
+        return "The AI could not finish this. Please try again.";
+      default:
+        return BUSY; // no credits, rate limit, key, model, configuration, provider down
+    }
+  }
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  if (!message) return fallback;
+  if (/open\s?ai|meshy|elevenlabs|api[ _-]?key|_API_|billing|quota|credits?\b|\bsk-/i.test(message)) return BUSY;
+  return message;
+}
+
 export class AIError extends Error {
   constructor(
     readonly code: AIErrorCode,

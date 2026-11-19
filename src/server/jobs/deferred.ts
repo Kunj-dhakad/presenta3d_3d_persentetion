@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { db } from "@/server/db/client";
 import { getTextProvider } from "@/server/ai/provider";
+import { publicMessage } from "@/server/ai/types";
 import { runDeckPipeline } from "@/server/deck/pipeline";
 import { runCinePipeline } from "@/server/deck/cine-pipeline";
 import { claimJob, type RunOutcome } from "./runner";
@@ -51,7 +52,7 @@ export async function startDeferredJob(job: JobRow, opts: { budgetMs?: number } 
       // Cancelled, or taken over by another step after this instance was frozen: nothing to report here.
       if (ctx.signal.aborted) throw err;
       // Record the failure in the conversation so it is visible after reload.
-      const message = err instanceof Error ? err.message : "Generation failed";
+      const message = publicMessage(err, "Generation failed");
       const pre = await db.projectVersion.findFirst({
         where: { projectId, kind: "pre-ai", createdAt: { gte: new Date(input.startedAt) } },
         orderBy: { createdAt: "desc" },

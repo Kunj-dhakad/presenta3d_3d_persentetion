@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { db } from "@/server/db/client";
 import { env } from "@/server/env";
+import { publicMessage } from "@/server/ai/types";
 import type { Prisma } from "@/generated/mysql-prisma/client";
 import type { JobEvent, JobEventBody } from "@/lib/jobs";
 
@@ -206,7 +207,9 @@ function prepare<T>(jobId: string, work: (ctx: JobContext) => Promise<T | typeof
         return outcome;
       }
       const cancelled = h.controller.signal.aborted;
-      const message = cancelled ? "Cancelled" : err instanceof Error ? err.message : "Job failed";
+      // The presenter sees safe words; the real reason (provider, billing, key) goes to the server log only.
+      const message = cancelled ? "Cancelled" : publicMessage(err, "Job failed");
+      if (!cancelled) console.error(`[job ${h.id}]`, err instanceof Error ? `${err.name}: ${err.message}` : "unknown error");
       const status = cancelled ? "cancelled" : "failed";
       await settle(h, { type: "status", status, message }, { status, error: message.slice(0, 2000), finishedAt: new Date() });
     } finally {

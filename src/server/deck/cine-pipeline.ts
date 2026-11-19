@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { db } from "@/server/db/client";
 import type { Prisma } from "@/generated/mysql-prisma/client";
 import { CONTINUE, type JobContext } from "@/server/jobs/runner";
-import { AIError, type TextModelProvider } from "@/server/ai/types";
+import { AIError, publicMessage, type TextModelProvider } from "@/server/ai/types";
 import type { DeckSpec } from "@/lib/schemas/deck";
 import { CineSpecSchema, cineForPrompt, cineToDeck, imagePromptFor } from "@/lib/schemas/cine";
 import { ENVIRONMENTS, ENVIRONMENT_HINTS, ThankYouEditSchema, withThankYouEdit } from "@/lib/schemas/deck";
@@ -214,7 +214,7 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
       raw = await ask("");
     } catch (err) {
       if (err instanceof AIError && err.retryable && !ctx.signal.aborted) {
-        ctx.emit({ type: "log", level: "warn", message: `${err.message}. Retrying once.` });
+        ctx.emit({ type: "log", level: "warn", message: "The AI did not answer. Retrying once." });
         raw = await ask("");
       } else throw err;
     }
@@ -281,8 +281,9 @@ export async function runCinePipeline(ctx: JobContext, provider: TextModelProvid
         // A temporary problem (rate limit, timeout, server error) gets another round; anything else is final.
         if (e instanceof AIError && e.retryable) return;
         failed.add(i);
-        errors.push(e.message.slice(0, 300));
-        warn(`Slide ${i + 1}: the image could not be painted (${e.message.slice(0, 300)}); the slide uses its colours`);
+        console.error(`[cine-image ${ctx.jobId}]`, e.message);
+        errors.push(publicMessage(e).slice(0, 300));
+        warn(`Slide ${i + 1}: the image could not be painted (${publicMessage(e).slice(0, 300)}); the slide uses its colours`);
       }
     });
     let timer: ReturnType<typeof setTimeout> | undefined;

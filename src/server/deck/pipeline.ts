@@ -286,7 +286,7 @@ export async function runDeckPipeline(ctx: JobContext, provider: TextModelProvid
       raw = await ask("");
     } catch (err) {
       if (err instanceof AIError && err.retryable && !ctx.signal.aborted) {
-        ctx.emit({ type: "log", level: "warn", message: `${err.message}. Retrying once.` });
+        ctx.emit({ type: "log", level: "warn", message: "The AI did not answer. Retrying once." });
         raw = await ask("");
       } else throw err;
     }

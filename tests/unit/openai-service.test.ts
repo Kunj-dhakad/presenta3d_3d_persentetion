@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import { z } from "zod";
 import { OpenAITextProvider, mapOpenAIError, openaiClient, resetOpenAIClient } from "@/server/ai/openai-provider";
-import { AIError } from "@/server/ai/types";
+import { AIError, publicMessage } from "@/server/ai/types";
 import { db } from "@/server/db/client";
 import { resetEnvCache } from "@/server/env";
 
@@ -152,7 +152,15 @@ describe("OpenAI service (Responses API)", () => {
     // No credits, as an error event inside a stream (no HTTP status): named plainly, not retried.
     const noCredits = new OpenAI.APIError(undefined, { type: "insufficient_quota", code: "credit_balance_exhausted", message: "You have no credits remaining." }, "You have no credits remaining.", undefined);
     expect(mapOpenAIError(noCredits)).toMatchObject({ code: "RATE_LIMITED", retryable: false });
+    const streamError0 = new OpenAI.APIError(undefined, { type: "server_error", code: null, message: "The server had an error" }, "The server had an error", undefined);
     expect(mapOpenAIError(noCredits).message).toMatch(/no credits left.*Billing/);
+    // …but the presenter never reads that: no provider name, billing or key in what they are shown.
+    for (const e of [mapOpenAIError(noCredits), mapOpenAIError(streamError0), new AIError("AUTH", "OpenAI rejected the API key"), new Error("OPENAI_API_KEY is not set")]) {
+      expect(publicMessage(e)).toMatch(/servers are busy.*contact support/);
+      expect(publicMessage(e)).not.toMatch(/openai|credit|billing|key/i);
+    }
+    expect(publicMessage(new Error("Provider returned an empty file"))).toBe("Provider returned an empty file");
+    expect(publicMessage(new AIError("TIMEOUT", "OpenAI request timed out"))).toBe("This took too long. Please try again.");
     // Any other stream error shows OpenAI's words instead of "(?)".
     const streamError = new OpenAI.APIError(undefined, { type: "server_error", code: null, message: "The server had an error" }, "The server had an error", undefined);
     expect(mapOpenAIError(streamError).message).toBe("OpenAI error (?): The server had an error");

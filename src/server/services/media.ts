@@ -5,7 +5,6 @@ import { startJob } from "@/server/jobs/runner";
 import { storage } from "@/server/storage/storage";
 import { isProviderForKind, mediaProvider } from "@/server/media/providers";
 import { HttpError } from "@/server/http/errors";
-import { AIError } from "@/server/ai/types";
 import type { MediaRequest } from "@/lib/media";
 
 export function newStorageKey(ownerId: string, ext: string) {
@@ -31,17 +30,13 @@ export async function startMediaJob(userId: string, req: MediaRequest) {
     { userId, kind: req.kind, provider: info.id, model: info.model, input: req as never },
     async (ctx) => {
       ctx.emit({ type: "stage", stage: "generate", state: "start", detail: info.label });
-      let out;
-      try {
-        out = await provider.generate(req, {
-          signal: ctx.signal,
-          progress: ctx.progress,
-          log: (message) => ctx.emit({ type: "log", level: "info", message }),
-          setExternalId: (id) => void db.generationJob.update({ where: { id: ctx.jobId }, data: { externalId: id } }).catch(() => {}),
-        });
-      } catch (err) {
-        throw err instanceof AIError ? new Error(err.message) : err;
-      }
+      // A provider's error goes up as it is: the job runner turns it into safe words for the presenter.
+      const out = await provider.generate(req, {
+        signal: ctx.signal,
+        progress: ctx.progress,
+        log: (message) => ctx.emit({ type: "log", level: "info", message }),
+        setExternalId: (id) => void db.generationJob.update({ where: { id: ctx.jobId }, data: { externalId: id } }).catch(() => {}),
+      });
       if (!out.data.length) throw new Error("Provider returned an empty file");
       const storageKey = newStorageKey(userId, out.ext);
       await storage().put(storageKey, out.data, out.mimeType);
