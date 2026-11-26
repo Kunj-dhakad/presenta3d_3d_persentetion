@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { BuildDiagnostic, BuildSummary, PreviewIssue } from "@/lib/build-types";
+import { isBrowserExtensionIssue, type BuildDiagnostic, type BuildSummary, type PreviewIssue } from "@/lib/build-types";
 import type { JobEvent, PipelineStage, TaskEventPayload } from "@/lib/jobs";
 import { api } from "@/lib/api-client";
 
@@ -245,6 +245,8 @@ export const useWorkspace = create<State & Actions>((set, get) => ({
   setSlideEditing: (on) => set((s) => (s.slideEditing === on ? s : { slideEditing: on })),
   pushRuntimeError: (m) =>
     set((s) => {
+      // A browser extension's own error (e.g. MetaMask in the preview frame) is not the presentation's: not listed.
+      if (isBrowserExtensionIssue(m)) return {};
       const key = `${m.type}:${m.message}`;
       if (s.runtimeErrors.some((e) => `${e.type}:${e.message}` === key)) return {};
       return { runtimeErrors: [...s.runtimeErrors, { ...m, at: Date.now() }].slice(-30) };

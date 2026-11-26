@@ -20,7 +20,13 @@
     }
   };
   var sent = 0;
+  // Browser extensions (MetaMask...) inject scripts into every frame, this preview included. Their errors are not
+  // the presentation's, so they are not reported (the app filters them too, for previews built before this).
+  var fromExtension = function (text) {
+    return /\b(?:chrome|moz|safari-web|ms-browser)-extension:\/\//i.test(text) || /\bMetaMask\b|\binpage\.js\b/i.test(text);
+  };
   var report = function (kind, message, stack, file, line, col) {
+    if (fromExtension(String(message) + "\n" + (stack || "") + "\n" + (file || ""))) return;
     if (sent++ > 50) return; // bounded: a render loop error must not flood the parent
     post({
       type: kind,
@@ -50,7 +56,8 @@
     return origError.apply(console, arguments);
   };
   document.addEventListener("securitypolicyviolation", function (e) {
-    report("csp-violation", "Blocked by preview sandbox policy: " + e.violatedDirective + " " + (e.blockedURI || ""), "", "", 0, 0);
+    // e.sourceFile names the script that was blocked: an extension's own script is left out by report().
+    report("csp-violation", "Blocked by preview sandbox policy: " + e.violatedDirective + " " + (e.blockedURI || ""), "", e.sourceFile || "", e.lineNumber || 0, e.columnNumber || 0);
   });
 
   // Opaque-origin documents cannot use Web Storage; provide an in-memory stand-in.

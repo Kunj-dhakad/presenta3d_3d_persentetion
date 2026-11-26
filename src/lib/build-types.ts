@@ -38,6 +38,18 @@ export type PreviewMessage =
       column: number;
     };
 
+/**
+ * An issue raised by a browser extension's script, not by the presentation: extensions such as MetaMask inject
+ * their script into every frame, the preview included, where it cannot connect (opaque origin) or is blocked by the
+ * preview's policy. Such issues are not shown and never sent to "Fix with AI".
+ */
+const EXTENSION_SOURCE = /\b(?:chrome|moz|safari-web|ms-browser)-extension:\/\//i;
+const EXTENSION_MESSAGE = /\bMetaMask\b|\binpage\.js\b/i;
+export function isBrowserExtensionIssue(m: { message?: string; stack?: string; file?: string }): boolean {
+  const text = `${m.message ?? ""}\n${m.stack ?? ""}\n${m.file ?? ""}`;
+  return EXTENSION_SOURCE.test(text) || EXTENSION_MESSAGE.test(m.message ?? "");
+}
+
 export function formatDiagnostic(d: BuildDiagnostic): string {
   const loc = d.file ? `${d.file}${d.line ? `:${d.line}${d.column ? `:${d.column}` : ""}` : ""}` : "";
   return `${loc ? `${loc} — ` : ""}${d.message}`;
